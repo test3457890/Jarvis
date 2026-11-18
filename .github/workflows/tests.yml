@@ -34,7 +34,7 @@ jobs:
             (Join-Path $PWD "install.ps1"), [ref]$tokens, [ref]$errors
           )
           if ($errors.Count) { $errors | Out-String | Write-Error; exit 1 }
-      - run: python -m pip install "pytest>=8,<10" "Pillow>=10.4"
+      - run: python -m pip install "pytest>=8,<10" "Pillow>=10.4" "pypdf>=5,<7" "python-docx>=1.1,<2"
       - run: python -m pytest -q
 
   hud:

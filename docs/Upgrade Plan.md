@@ -4,6 +4,14 @@
 
 The installer and runtime offer standard and low-memory profiles. Low-memory uses qwen3:4b, qwen2.5-coder:1.5b, a 2048-token context, base.en speech recognition, keyword memory recall, and zero chat keep-alive. Model quality and speed require measurement on the target PC.
 
+## Document and memory delivery
+
+Selected local folders can be searched for PDF, Word, Markdown and text excerpts. Sources
+include PDF pages, Word paragraphs or tables, and text lines. The first version reads current
+files on demand with explicit size and coverage limits. Persistent indexing and OCR remain
+future work. The HUD supports review, edit, confirmed deletion and JSON export of remembered
+facts. Conversation deletion and backup/restore remain future work.
+
 ## Remaining deliveries
 
 1. Installation and releases. Add a setup screen, recoverable prerequisite checks, versioned release packages, an upgrade backup, and restoration of the previous version. Verify a clean Windows install and a failed upgrade recovery.

@@ -117,6 +117,8 @@ def serve(app, port: int):
                 return self._json({"error": "forbidden"}, 403)
             if self.path == "/api/state":
                 self._json(app.state())
+            elif self.path == "/api/memory":
+                self._json(app.memory_operation())
             elif self.path == "/api/dashboard":
                 self._json(app.dashboard())
             else:
@@ -159,6 +161,12 @@ def serve(app, port: int):
                 except OSError:
                     return self._json({"error": "The local image backend failed or is unavailable. Check the setup."}, 502)
                 self._json(output)
+            elif self.path == "/api/memory":
+                try:
+                    result = app.memory_operation(data)
+                except (ValueError, TypeError) as error:
+                    return self._json({"error": str(error)}, 400)
+                self._json(result)
             elif self.path == "/api/voice-preview":
                 self._json(app.preview_voice())
             elif self.path == "/api/confirm":

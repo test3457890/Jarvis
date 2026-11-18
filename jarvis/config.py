@@ -64,6 +64,7 @@ DEFAULTS = {
     "github_upload_repo": "",
     "github_upload_branch": "main",
     "notes_dir": str(APP_DIR / "notes"),
+    "document_folders": [],
     "search_folders": [
         str(Path.home() / "Documents"),
         str(Path.home() / "Desktop"),

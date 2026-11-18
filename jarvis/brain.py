@@ -234,6 +234,9 @@ class Brain:
                 return result
             if command == "/calc" and value.strip():
                 return skills.run(self.ctx, "calculate", {"expression": value.strip()})
+            if command == "/docs" and value.strip():
+                result = skills.run(self.ctx, "search_documents", {"query": value.strip()})
+                return result.removeprefix(secure.UNTRUSTED_NOTE).removesuffix(secure.UNTRUSTED_END)
             if command == "/files" and value.strip():
                 return skills.run(self.ctx, "search_files", {"query": value.strip()})
             if command == "/upload" and value.strip():
@@ -253,7 +256,7 @@ class Brain:
                 if command == "/undo":
                     return coder.undo_proposal(self.ctx)
             return ("Planning: /task title | due date | minutes, /tasks, /plan, /schedule today or /schedule week. "
-                    "Other commands: /calc expression, /files filename, /search query, /images query, /upload file. "
+                    "Other commands: /docs query, /calc expression, /files filename, /search query, /images query, /upload file. "
                     "In Coding mode: /fix, /diff, /apply, /undo.")
         except (ValueError, OSError, OllamaError) as error:
             return f"Couldn't complete the request: {error}"

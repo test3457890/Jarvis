@@ -108,6 +108,19 @@ class Memory:
         with self._lock:
             return self.db.execute("SELECT id, text FROM facts ORDER BY id").fetchall()
 
+    def edit_fact(self, fact_id: int, text: str) -> bool:
+        if not isinstance(text, str) or not text.strip() or len(text) > 4000:
+            raise ValueError("Enter a memory between 1 and 4000 characters.")
+        with self._lock, self.db:
+            result = self.db.execute("UPDATE facts SET text=?, embedding=NULL WHERE id=?",
+                                     (redact(text.strip()), fact_id))
+            return result.rowcount == 1
+
+    def delete_fact(self, fact_id: int) -> bool:
+        with self._lock, self.db:
+            result = self.db.execute("DELETE FROM facts WHERE id=?", (fact_id,))
+            return result.rowcount == 1
+
     def forget(self, query: str) -> list:
         matches = [(i, t) for i, t in self.all_facts() if query.lower() in t.lower()]
         with self._lock:
