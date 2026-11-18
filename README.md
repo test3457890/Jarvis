@@ -24,8 +24,8 @@ The new screenshots use synthetic conversation and sample image data.
 **Keeps your week on track**
 - Reads Canvas through your private calendar-feed link, so no API key is needed. It keeps
   a copy, so it still works offline.
-- Tasks, a calendar, and "plan my week": it fits study blocks into your free time before
-  every deadline, and tells you when there isn't enough time.
+- Open the [weekly planner](#weekly-planner) to fit study blocks around your calendar
+  and see how much time is missing before a deadline.
 - A watchdog that runs in the background: a daily briefing, deadline warnings 24 hours
   and 3 hours ahead, heads-ups before events, and reminders.
 - "What's falling behind?" shows anything overdue, due soon, or not planned yet.
@@ -102,6 +102,38 @@ Set the local Piper model path in `Jarvis.bat setup` and select Piper in the HUD
 `Jarvis.bat --mode talk --theme simple` opens a minimal talk view. For coding, type
 `/fix budget.py | handle empty input | rules.txt` to select a target and an optional related file.
 Use `/diff`, `/apply`, or `/undo`, or the corresponding HUD buttons.
+
+## Weekly planner
+
+Open Planner below the chat, enter a task, and select Plan my week. Choose View week
+to see study blocks alongside your appointments and deadlines. These controls also
+work when Ollama is stopped. They use the tasks and calendar events already on the PC,
+including the last Canvas sync.
+
+![Jarvis planning a one-hour lab report in two study sessions](docs/screenshots/planner.png)
+
+An all-day event appears on each date it covers. A calendar entry marked as free
+stays visible and leaves that time available for study.
+
+You can do the same from the HUD message box or from `Jarvis.bat --text`.
+
+| Command | Example |
+|---|---|
+| Add a task | `/task Finish lab report \| Friday @ 5 pm \| 60` adds an hour of work. The date and minutes are optional. A date without a time uses 11:59 pm. |
+| List open tasks | `/tasks` |
+| Build the next seven days | `/plan` |
+| Read a schedule | `/schedule today`, `/schedule tomorrow`, or `/schedule week` |
+
+Jarvis schedules the earliest deadline first. With the default 50-minute blocks,
+a 60-minute assignment can fit into a free morning as 50 minutes, a five-minute
+break, and 10 minutes. Planning again keeps blocks that already started and counts
+their time toward the estimate. Marking the task complete is a separate action.
+
+The planner flags work scheduled in the last 24 hours before a deadline. If you
+prefer a two-day buffer, set `study_lead_hours` to `48` in
+`%APPDATA%\Jarvis\config.json` and restart Jarvis. Set it to `0` to turn off
+that notice. When the buffer is tight, the planner uses available time up to the
+actual deadline and reports any minutes it still needs.
 
 ## Images
 

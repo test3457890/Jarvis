@@ -6,7 +6,7 @@ import threading
 import urllib.error
 import urllib.request
 
-from . import assistants, coder, net, online, secure, skills
+from . import assistants, coder, net, online, planner, secure, skills
 
 _YES = re.compile(r"^\W*(yes|yeah|yep|yup|sure|do it|confirm(ed)?|go ahead|affirmative|please do|ok(ay)?)\b", re.I)
 _NO = re.compile(r"^\W*(no|nope|cancel|stop|don'?t|never ?mind|abort)\b", re.I)
@@ -19,7 +19,7 @@ class OllamaError(RuntimeError):
 
 class Brain:
     def __init__(self, cfg, memory):
-        from . import coder, comms, planner
+        from . import comms
         self.cfg = cfg
         self.memory = memory
         planner.init_db(memory)
@@ -211,6 +211,19 @@ class Brain:
         if self.cfg.get("mode") == "talk":
             return "Talk mode is for conversation. Switch modes to use commands."
         try:
+            planning = {"/task": "add_task", "/tasks": "list_tasks", "/plan": "plan_week", "/schedule": "show_schedule"}
+            if command in planning:
+                args = {}
+                if command == "/task":
+                    args = planner.task_command_args(value)
+                elif command == "/schedule":
+                    args = {"when": value.strip() or "today"}
+                elif value.strip():
+                    return f"Use {command} without arguments."
+                result = skills.run(self.ctx, planning[command], args)
+                if self.ctx.pending:
+                    return f"Please confirm this request: {self.ctx.pending['preview']}."
+                return result.removeprefix(secure.UNTRUSTED_NOTE).removesuffix(secure.UNTRUSTED_END)
             if command == "/search" and value.strip():
                 return skills.run(self.ctx, "web_search", {"query": value})
             if command == "/images" and value.strip():
@@ -238,7 +251,8 @@ class Brain:
                     return coder.apply_proposal(self.ctx)
                 if command == "/undo":
                     return coder.undo_proposal(self.ctx)
-            return ("Available commands: /calc expression, /files filename, /search query, /images query, /upload file. "
+            return ("Planning: /task title | due date | minutes, /tasks, /plan, /schedule today or /schedule week. "
+                    "Other commands: /calc expression, /files filename, /search query, /images query, /upload file. "
                     "In Coding mode: /fix, /diff, /apply, /undo.")
         except (ValueError, OSError, OllamaError) as error:
             return f"Couldn't complete the request: {error}"
