@@ -36,6 +36,19 @@
   body[data-mode=briefing] #briefing { display:inline-block; }
   .chat-tools { display:flex; flex-wrap:wrap; gap:8px; padding:8px 16px; align-items:center; }
   .chat-tools button { font-size:12px; }
+  #images { border-top:1px solid var(--line); padding:8px 16px; max-height:46%; overflow:auto; }
+  body[data-mode=talk] #images { display:none; }
+  #images summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
+  #images .image-controls { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:10px 0; }
+  #images form { display:grid; align-content:start; border:1px solid var(--line); padding:8px; border-radius:6px; gap:6px; }
+  #images input { width:100%; min-width:0; font-size:13px; padding:5px; }
+  #images input[type=file] { border:0; padding:0; }
+  #image-results { display:flex; flex-wrap:wrap; gap:10px; }
+  #image-results figure { margin:3px 0; max-width:210px; }
+  #image-results img { display:block; max-width:100%; max-height:135px; border-radius:5px; margin-bottom:6px; }
+  #image-results a { color:var(--cyan2); overflow-wrap:anywhere; }
+  #image-status { color:var(--dim); white-space:pre-wrap; margin:5px 0; }
+  @media (max-width:900px) { #images .image-controls { grid-template-columns:1fr; } }
   .chat-tools [hidden], body[data-mode=talk] #t-internet { display:none; }
   .msg a { color:var(--cyan2); overflow-wrap:anywhere; }
   .msg.diff { max-width:100%; font-family:Consolas,monospace; font-size:13px; }
@@ -207,6 +220,33 @@
     <div id="log" role="log" aria-label="Conversation"></div>
     <div id="pending"><b>AWAITING YOUR AUTHORISATION</b><p id="pending-text"></p>
       <button class="yes" id="p-yes">Confirm</button><button class="no" id="p-no">Cancel</button></div>
+    <details id="images">
+      <summary>Images</summary>
+      <div class="image-controls">
+        <form id="image-search">
+          <label for="image-query">Web image search</label>
+          <input id="image-query" placeholder="Public search terms" maxlength="600" required>
+          <button id="image-search-button">Search images</button>
+        </form>
+        <form id="image-lookup">
+          <label for="image-file">Look up a local image</label>
+          <input type="file" id="image-file" accept="image/png,image/jpeg,image/webp" required>
+          <input id="image-question" aria-label="Question about the image" placeholder="What’s in this image?" maxlength="500">
+          <button>Describe image</button>
+        </form>
+        <form id="image-generate">
+          <label for="image-prompt">Generate an image</label>
+          <input id="image-prompt" placeholder="Describe the image" maxlength="1500" required>
+          <select id="image-quality" aria-label="Image generation quality">
+            <option value="draft">Draft · 512 px</option><option value="balanced" selected>Balanced · 768 px</option>
+            <option value="high">High · 1024 px</option>
+          </select>
+          <button id="image-generate-button">Generate locally</button>
+        </form>
+      </div>
+      <p id="image-status" role="status"></p>
+      <div id="image-results"></div>
+    </details>
     <form id="f"><input id="q" aria-label="Message to Jarvis" autocomplete="off" maxlength="4000" placeholder="Type to Jarvis, or say “Jarvis…”"><button>Send</button></form>
   </section>
 
@@ -282,6 +322,10 @@ function setToggles(st) {
   $('tuki-files').hidden = !tukiTools;
   const online = st.internet && !st.lockdown && st.mode !== 'talk';
   $('web-search').hidden = !online || !st.web_search;
+  $('image-search-button').disabled = !online || !st.web_search;
+  $('image-search-button').title = st.web_search ? 'Requires the Internet toggle and your approval' : 'Set up Brave Search first';
+  $('image-generate-button').disabled = !st.image_generator || !!st.lockdown;
+  $('image-generate-button').title = st.image_generator ? '' : 'Connect a local image generation API in Jarvis setup';
   $('upload-file').hidden = !online || !st.github_upload;
   $('t-speak').classList.toggle('off', !st.speak_replies);
   $('t-mic').classList.toggle('off', !st.mic_on); $('t-mic').disabled = !st.voice_available;
@@ -307,6 +351,7 @@ es.onmessage = e => {
   else if (ev.kind === 'system') add('system', ev.data);
   else if (ev.kind === 'toggles') setToggles(ev.data);
   else if (ev.kind === 'pending') setPending(ev.data);
+  else if (ev.kind === 'image_results') showImageResults(ev.data);
 };
 es.onerror = () => setState('offline');
 es.onopen = () => { if (document.body.dataset.state === 'offline') setState('idle'); };
@@ -337,6 +382,68 @@ $('tuki-calculate').onclick = () => fillCommand('/calc', 'Arithmetic expression'
 $('tuki-files').onclick = () => fillCommand('/files', 'Part of a filename');
 $('web-search').onclick = () => fillCommand('/search', 'Public search terms');
 $('upload-file').onclick = () => fillCommand('/upload', 'File relative to Jarvis Code');
+function imageStatus(text) { $('image-status').textContent = text; }
+function showImageResults(cards) {
+  $('images').open = true;
+  $('image-results').replaceChildren();
+  imageStatus(cards.length ? 'Image sources from Brave' : 'No image sources found.');
+  for (const card of cards) {
+    const tile = el('figure');
+    const link = el('a', '', card.title);
+    link.href = card.link; link.target = '_blank'; link.rel = 'noopener noreferrer';
+    if (card.thumbnail) {
+      const image = el('img');
+      image.src = 'data:image/jpeg;base64,' + card.thumbnail;
+      image.alt = card.title;
+      tile.appendChild(image);
+    }
+    tile.appendChild(link);
+    $('image-results').appendChild(tile);
+  }
+}
+async function imageOperation(form, kind, data) {
+  const button = form.querySelector('button');
+  button.disabled = true;
+  $('image-results').replaceChildren();
+  imageStatus(kind === 'generate' ? 'Generating locally. This can take a few minutes.' : 'Reading the image locally…');
+  try {
+    const result = await api('/api/images/' + kind, data);
+    if (result.error) return imageStatus(result.error);
+    if (kind === 'lookup') return imageStatus(result.text);
+    const image = el('img');
+    image.src = 'data:image/png;base64,' + result.image;
+    image.alt = 'Generated image';
+    const download = el('a', '', 'Download PNG');
+    download.href = image.src; download.download = result.name;
+    const tile = el('figure');
+    tile.append(image, download);
+    $('image-results').appendChild(tile);
+    imageStatus('Saved to your local Jarvis images folder.');
+  } catch { imageStatus('Image task failed. Check your local backend and try again.'); }
+  finally { button.disabled = false; }
+}
+$('image-search').onsubmit = e => {
+  e.preventDefault();
+  const query = $('image-query').value.trim();
+  if (query) { imageStatus('Review the search query in the chat confirmation.'); send('/images ' + query); }
+};
+$('image-lookup').onsubmit = e => {
+  e.preventDefault();
+  const file = $('image-file').files[0];
+  if (!file || file.size > 8 * 1024 * 1024) return imageStatus('Choose a PNG, JPEG or WebP file up to 8 MiB.');
+  const reader = new FileReader();
+  reader.onerror = () => imageStatus('Could not read the selected file.');
+  reader.onload = () => imageOperation(e.currentTarget || $('image-lookup'), 'lookup', {
+    image: reader.result.split(',')[1], question: $('image-question').value
+  });
+  reader.readAsDataURL(file);
+};
+$('image-generate').onsubmit = e => {
+  e.preventDefault();
+  imageOperation(e.currentTarget, 'generate', {
+    prompt: $('image-prompt').value, quality: $('image-quality').value
+  });
+};
 $('f').onsubmit = e => { e.preventDefault(); const t = $('q').value.trim(); if (!t) return; $('q').value = ''; api('/api/chat', {text:t}); };
 $('t-speak').onclick = () => api('/api/toggle', {what:'speak'}).then(setToggles);
 $('t-mic').onclick = () => api('/api/toggle', {what:'mic'}).then(setToggles);

@@ -34,5 +34,25 @@ jobs:
             (Join-Path $PWD "install.ps1"), [ref]$tokens, [ref]$errors
           )
           if ($errors.Count) { $errors | Out-String | Write-Error; exit 1 }
-      - run: python -m pip install "pytest>=8,<10"
+      - run: python -m pip install "pytest>=8,<10" "Pillow>=10.4"
       - run: python -m pytest -q
+
+  hud:
+    name: Capture HUD examples
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.12"
+      - run: python -m pip install playwright "Pillow>=10.4"
+      - run: python -m playwright install --with-deps chromium
+      - run: python -m scripts.capture_hud
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jarvis-hud-screenshots
+          path: hud-captures/*.png
+          if-no-files-found: error

@@ -5,13 +5,19 @@ speech, voice, memory and planner are all local. It works with the internet unpl
 and it can use [Project NOMAD](https://www.projectnomad.us) as an optional offline
 knowledge library.
 
-[Install Jarvis](#install-once) · [Set up Project NOMAD](#project-nomad-integration) · [Jarvis and TUKI](#jarvis-and-tuki)
+[Install Jarvis](#install-once) · [Set up Project NOMAD](#project-nomad-integration) · [Jarvis and TUKI](#jarvis-and-tuki) · [Images](#images)
 
 ## Screenshots
 
 | Boot sequence | HUD | Confirmation banner |
 |---|---|---|
 | ![Boot sequence](docs/screenshots/boot.png) | ![Jarvis HUD](docs/screenshots/hud.png) | ![Confirmation banner](docs/screenshots/confirm.png) |
+
+| Talk mode in Simple Light | Coding diff preview | Images panel |
+|---|---|---|
+| ![Talk mode with the Simple Light theme](docs/screenshots/talk-light.png) | ![TUKI showing a proposed code fix](docs/screenshots/coding-diff.png) | ![Images panel with a demonstration PNG](docs/screenshots/image-tools.png) |
+
+The new screenshots use synthetic conversation and sample image data.
 
 ## What it does
 
@@ -96,6 +102,26 @@ Set the local Piper model path in `Jarvis.bat setup` and select Piper in the HUD
 `Jarvis.bat --mode talk --theme simple` opens a minimal talk view. For coding, type
 `/fix budget.py | handle empty input | rules.txt` to select a target and an optional related file.
 Use `/diff`, `/apply`, or `/undo`, or the corresponding HUD buttons.
+
+## Images
+
+Open Images below the chat. It works in Everyday, Coding, and Briefing modes.
+For an existing Windows installation, install the updated dependency from the
+Jarvis folder with `.\.venv\Scripts\python.exe -m pip install -r requirements.txt`.
+
+| Tool | What it does | Setup |
+|---|---|---|
+| Web image search | Shows Brave image sources and thumbnails when Brave's image proxy provides them. Jarvis shows the search terms for approval before sending them. | Configure Brave Search, then turn Internet on. |
+| Local image lookup | Describe a PNG, JPEG or WebP or ask about its visible details. The selected image goes to Ollama on this PC. | Run `ollama pull gemma3:4b`, or configure another vision model in `vision_model`. |
+| Local generation | Sends a prompt to your local Stable Diffusion backend. Choose Draft, Balanced, or High and download the PNG from the HUD. | Run [Stable Diffusion WebUI](https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/API) with its API enabled, load a checkpoint, and enter `http://127.0.0.1:7860` as the generation API URL in `Jarvis.bat setup`. |
+
+Local lookup and generation work with Internet off after you install the model and
+backend. Image lookup describes a selected image. Web image search searches by
+the text you enter. Generated PNGs are also saved in `%APPDATA%\Jarvis\images`.
+
+For a lower-memory machine, start with Draft (512 px). High uses 1024 px and
+more sampling steps. Visual quality and speed depend on the loaded checkpoint and
+your hardware. Check the source and its usage terms before reusing a search result.
 
 ## Optional online tools
 
