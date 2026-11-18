@@ -110,6 +110,8 @@ to see study blocks alongside your appointments and deadlines. These controls al
 work when Ollama is stopped. They use the tasks and calendar events already on the PC,
 including the last Canvas sync.
 
+![Jarvis planning a one-hour lab report in two study sessions](docs/screenshots/planner.png)
+
 An all-day event appears on each date it covers. A calendar entry marked as free
 stays visible and leaves that time available for study.
 
