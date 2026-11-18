@@ -17,7 +17,7 @@ import threading
 import time
 import webbrowser
 
-from . import assistants, config, nomad, planner, secure, skills
+from . import assistants, config, images, net, nomad, planner, secure, skills
 from .brain import Brain
 from .memory import Memory
 
@@ -30,6 +30,8 @@ class App:
         self.memory = Memory()
         self.brain = Brain(cfg, self.memory)
         self._settings_lock = threading.Lock()
+        self._image_job = threading.Lock()
+        self.brain.ctx.on_images = lambda cards: self.emit("image_results", cards)
         self.memory.embed = self.brain.embed
         self.brain.ctx.on_pending = lambda p: self.emit(
             "pending", {"text": p["preview"], "id": p["id"]} if p else None)
@@ -68,6 +70,7 @@ class App:
                 "lockdown": bool(self.cfg.get("lockdown")),
                 "internet": bool(self.cfg.get("allow_internet_tools")),
                 "web_search": bool(self.cfg.get("allow_web_search") and secure.has_secret("brave_search_key")),
+                "image_generator": bool(net.local_image_endpoint(self.cfg.get("image_generation_url"))),
                 "github_upload": bool(self.cfg.get("github_upload_repo") and secure.has_secret("github_upload_token")),
                 "pending": {"text": pending["preview"], "id": pending.get("id")} if pending else None,
                 "model": (self.cfg.get("coder_model") or self.cfg["model"])
@@ -132,6 +135,18 @@ class App:
             state = self.state()
         self.emit("toggles", state)
         return state
+
+    def image_operation(self, kind, data):
+        if self.cfg.get("mode") == "talk" or self.cfg.get("lockdown"):
+            raise ValueError("Image tools are unavailable in Talk or Lockdown.")
+        if not self._image_job.acquire(blocking=False):
+            raise ValueError("An image task is already running.")
+        try:
+            if kind == "lookup":
+                return images.describe(self.cfg, data.get("image"), data.get("question"))
+            return images.generate(self.cfg, data.get("prompt"), data.get("quality"))
+        finally:
+            self._image_job.release()
 
     def preview_voice(self):
         if not self.speaker:
@@ -334,6 +349,8 @@ def setup(cfg):
     ask("Daily briefing time (HH:MM)", "briefing_time")
     ask("Windows voice name (try George if installed)", "sapi_voice_contains")
     ask("Optional local Piper voice model (.onnx path)", "piper_model")
+    ask("Local vision model (optional, pull it in Ollama first)", "vision_model")
+    ask("Local image generation API URL (optional, loopback only)", "image_generation_url")
 
     print("\nCANVAS. In Canvas open Calendar, click 'Calendar Feed' (bottom right), copy the link.")
     print(f"  Currently: {'connected' if secure.has_secret('canvas_feed_url') else 'not connected'}")

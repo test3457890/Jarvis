@@ -29,6 +29,20 @@ def _parse_endpoint(url: str) -> tuple[str, str, int] | None:
     return scheme, host, _norm_port(scheme, p.port)
 
 
+def local_image_endpoint(value):
+    if not isinstance(value, str):
+        return None
+    try:
+        url = urllib.parse.urlsplit(value)
+        port = url.port
+    except ValueError:
+        return None
+    if (url.scheme == "http" and url.hostname == "127.0.0.1" and url.username is None
+            and url.path in ("", "/") and not url.query and not url.fragment and port):
+        return f"http://127.0.0.1:{port}"
+    return None
+
+
 def allowed_endpoints(cfg: dict) -> set[tuple[str, str, int]]:
     """Build the exact set of allowed (scheme, host, port) tuples from config and secrets."""
     allowed: set[tuple[str, str, int]] = set()
@@ -57,10 +71,16 @@ def allowed_endpoints(cfg: dict) -> set[tuple[str, str, int]]:
             allowed.add(c)
             allowed.add(("https", c[1], 443))
 
+    for setting in ("vision_url", "image_generation_url"):
+        endpoint = local_image_endpoint(cfg.get(setting))
+        if endpoint:
+            allowed.add(_parse_endpoint(endpoint))
+
     if cfg.get("allow_internet_tools"):
         allowed.add(("https", "en.wikipedia.org", 443))
         if cfg.get("allow_web_search") and secure.has_secret("brave_search_key"):
             allowed.add(("https", "api.search.brave.com", 443))
+            allowed.add(("https", "imgs.search.brave.com", 443))
         if cfg.get("github_upload_repo") and secure.has_secret("github_upload_token"):
             allowed.add(("https", "api.github.com", 443))
 
@@ -76,7 +96,7 @@ def check_url(url: str, cfg: dict, purpose: str = "") -> str:
     return url
 
 
-def urlopen(req_or_url, cfg: dict, timeout: int = 20, purpose: str = "", *, allow_redirects=True):
+def urlopen(req_or_url, cfg: dict, timeout: int = 20, purpose: str = "", *, allow_redirects=True, bypass_proxy=False):
     """Open an HTTP/HTTPS URL only if both the initial URL and any redirects are allowlisted."""
     url = req_or_url.full_url if isinstance(req_or_url, urllib.request.Request) else str(req_or_url)
     check_url(url, cfg, purpose=purpose)
@@ -88,7 +108,10 @@ def urlopen(req_or_url, cfg: dict, timeout: int = 20, purpose: str = "", *, allo
             check_url(newurl, cfg, purpose=f"{purpose}:redirect" if purpose else "redirect")
             return super().redirect_request(req, fp, code, msg, headers, newurl)
 
-    opener = urllib.request.build_opener(_AllowlistRedirectHandler())
+    handlers = [_AllowlistRedirectHandler()]
+    if bypass_proxy:
+        handlers.append(urllib.request.ProxyHandler({}))
+    opener = urllib.request.build_opener(*handlers)
     return opener.open(req_or_url, timeout=timeout)
 
 

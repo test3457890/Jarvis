@@ -191,7 +191,7 @@ class Brain:
                 if self.ctx.pending:
                     self.confirm_pending(False)
                 return self._command(command)
-            if self.ctx.pending and self.ctx.pending["name"] in ("github_upload", "web_search"):
+            if self.ctx.pending and self.ctx.pending["name"] in ("github_upload", "web_search", "image_search"):
                 return self._confirm_online_text(command)
             reply = self._ask(command, room_context)
             if self.ctx.injection_seen:
@@ -213,6 +213,11 @@ class Brain:
         try:
             if command == "/search" and value.strip():
                 return skills.run(self.ctx, "web_search", {"query": value})
+            if command == "/images" and value.strip():
+                result = skills.run(self.ctx, "image_search", {"query": value})
+                if self.ctx.pending and self.ctx.pending["name"] == "image_search":
+                    return self.ctx.pending["preview"] + '. Use the HUD Confirm button or say “confirm image search”.'
+                return result
             if command == "/calc" and value.strip():
                 return skills.run(self.ctx, "calculate", {"expression": value.strip()})
             if command == "/files" and value.strip():
@@ -233,13 +238,14 @@ class Brain:
                     return coder.apply_proposal(self.ctx)
                 if command == "/undo":
                     return coder.undo_proposal(self.ctx)
-            return ("Available commands: /calc expression, /files filename, /search query, /upload file. "
+            return ("Available commands: /calc expression, /files filename, /search query, /images query, /upload file. "
                     "In Coding mode: /fix, /diff, /apply, /undo.")
         except (ValueError, OSError, OllamaError) as error:
             return f"Couldn't complete the request: {error}"
 
     def _confirm_online_text(self, text):
-        expected = {"github_upload": "confirm upload", "web_search": "confirm search"}
+        expected = {"github_upload": "confirm upload", "web_search": "confirm search",
+                    "image_search": "confirm image search"}
         name = self.ctx.pending["name"]
         if text.casefold().rstrip(".!?") == expected[name]:
             return self.confirm_pending(True)

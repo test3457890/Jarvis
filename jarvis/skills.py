@@ -95,6 +95,7 @@ class Context:
         self.applied_code = None
         self.proposal_seen = False
         self.pending = None  # {"name", "args", "preview"} waiting for the user's "yes"
+        self.on_images = lambda images: None
         self.on_pending = lambda pending: None
         self.injection_seen = False  # outside content this turn tried to give orders
         self.rate_limiter = secure.RateLimiter()
@@ -541,4 +542,4 @@ SKILLS["read_clipboard"]["untrusted"] = True
 SKILLS["read_note"]["untrusted"] = True
 
 # Load the other skill modules (they register themselves with @skill).
-from . import planner, comms, coder, nomad, online  # noqa: E402,F401
+from . import planner, comms, coder, nomad, online, images  # noqa: E402,F401

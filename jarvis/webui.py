@@ -10,7 +10,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import assistants, config
+from . import assistants, config, images
 
 UI_FILE = Path(__file__).with_name("ui.html")
 
@@ -81,7 +81,7 @@ def serve(app, port: int):
                         .replace("__JARVIS_TUKI_NAME__", assistants.TUKI_NAME)
                         .replace("__JARVIS_TUKI_FULL_NAME__", assistants.TUKI_FULL_NAME))
                 csp = ("default-src 'self'; script-src 'self' 'unsafe-inline'; "
-                       "style-src 'self' 'unsafe-inline'; connect-src 'self'")
+                       "style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:")
                 body = page.encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -127,7 +127,8 @@ def serve(app, port: int):
                 return self._json({"error": "forbidden"}, 403)
             try:
                 length = int(self.headers.get("Content-Length") or 0)
-                if not 0 <= length <= 100_000:
+                limit = images.MAX_UPLOAD_JSON if self.path == "/api/images/lookup" else 100_000
+                if not 0 <= length <= limit:
                     return self._json({"error": "invalid content length"}, 400)
                 data = json.loads(self.rfile.read(length) or b"{}")
                 if not isinstance(data, dict):
@@ -150,6 +151,14 @@ def serve(app, port: int):
                 except OSError:
                     return self._json({"error": "Could not save the setting."}, 500)
                 self._json(state)
+            elif self.path in ("/api/images/lookup", "/api/images/generate"):
+                try:
+                    output = app.image_operation(self.path.rsplit("/", 1)[1], data)
+                except ValueError as error:
+                    return self._json({"error": str(error)}, 400)
+                except OSError:
+                    return self._json({"error": "The local image backend failed or is unavailable. Check the setup."}, 502)
+                self._json(output)
             elif self.path == "/api/voice-preview":
                 self._json(app.preview_voice())
             elif self.path == "/api/confirm":

@@ -54,6 +54,9 @@ DEFAULTS = {
     # Offline by default. Turn on to allow tools that use the internet (Wikipedia).
     "allow_internet_tools": False,
     "allow_web_search": False,
+    "vision_url": "http://127.0.0.1:11434",
+    "vision_model": "gemma3:4b",
+    "image_generation_url": "",
     "github_upload_repo": "",
     "github_upload_branch": "main",
     "notes_dir": str(APP_DIR / "notes"),
