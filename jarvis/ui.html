@@ -36,6 +36,8 @@
   body[data-mode=briefing] #briefing { display:inline-block; }
   .chat-tools { display:flex; flex-wrap:wrap; gap:8px; padding:8px 16px; align-items:center; }
   .chat-tools button { font-size:12px; }
+  .chat > details { flex:0 0 auto; min-height:0; }
+  #log { min-height:0; }
   #knowledge { border-top:1px solid var(--line); padding:8px 16px; max-height:46%; overflow:auto; }
   #knowledge summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
   body[data-mode=talk] #knowledge { display:none; }
