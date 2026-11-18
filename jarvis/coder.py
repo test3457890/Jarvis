@@ -19,6 +19,12 @@ from .skills import skill
 
 _FENCE = re.compile(r"^[ \t]*```[^\s`]*[ \t]*\r?\n(.*?)^[ \t]*```[ \t]*\r?$", re.M | re.S)
 _MAX_SOURCE_CHARS = 12000
+
+
+def source_budget(cfg):
+    """Characters of file content per coding request. About four characters make a token; half the
+    model's context is left for instructions and the reply. Low-memory mode (2048 tokens) gets 4096."""
+    return max(2000, min(_MAX_SOURCE_CHARS, int(cfg.get("num_ctx", 8192)) * 2))
 _MAX_PREVIEW_CHARS = 4000
 _LANG_EXT = {"python": ".py", "javascript": ".js", "html": ".html", "css": ".css", "powershell": ".ps1",
              "batch": ".bat", "c": ".c", "cpp": ".cpp", "c++": ".cpp", "java": ".java", "csharp": ".cs",
@@ -53,6 +59,11 @@ def _safe_path(cfg, filename) -> Path:
         ":" in part or _reserved_name(part) for part in relative.parts
     ):
         raise ValueError("Use a relative path inside the code folder.")
+    walk = root
+    for part in relative.parts:
+        walk = walk / part
+        if walk.is_symlink() or getattr(os.path, "isjunction", lambda p: False)(walk):
+            raise ValueError(f"{filename} goes through a link. Jarvis does not follow links in the code folder.")
     path = root.joinpath(*relative.parts).resolve()
     if root not in path.parents:
         raise ValueError("Jarvis only edits files inside its code folder.")
@@ -197,6 +208,7 @@ class CodeProposal:
     changes: tuple
     diff: str
     checks: tuple = ()
+    context: tuple = ()
 
     # Single-file compatibility for callers that predate multi-file proposals.
     @property
@@ -225,24 +237,144 @@ def project_root(cfg, path):
     return root / relative.parts[0] if len(relative.parts) > 1 else root
 
 
-def project_context(cfg, path):
-    """Read-only project summary for the coding model: file list, kind and test command."""
-    root = project_root(cfg, path)
-    files = []
-    for current, dirs, names in os.walk(root):
-        dirs[:] = sorted(d for d in dirs if d not in _SKIP_DIRS and not d.startswith("."))
+_MAX_SCAN = 5000
+_MAX_CONTEXT_FILE = 200_000
+_TEXT_SUFFIXES = {".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".json", ".md", ".txt", ".toml", ".cfg",
+                  ".ini", ".yaml", ".yml", ".html", ".css", ".sh", ".ps1", ".sql", ".java", ".c", ".h", ".cpp",
+                  ".cs", ".go", ".rs"}
+
+
+def project_files(root):
+    """Bounded, link-free list of project text files. Returns (paths relative to root, truncated)."""
+    found, scanned = [], 0
+    for current, dirs, names in os.walk(root, followlinks=False):
+        dirs[:] = sorted(d for d in dirs if d not in _SKIP_DIRS and not d.startswith(".")
+                         and not os.path.islink(os.path.join(current, d)))
         for name in sorted(names):
-            if name.endswith(".bak"):
+            scanned += 1
+            if scanned > _MAX_SCAN:
+                return found, True
+            path = Path(current) / name
+            if name.endswith(".bak") or path.is_symlink():
                 continue
-            files.append((Path(current) / name).relative_to(root).as_posix())
-            if len(files) >= _MAX_TREE:
-                break
-        if len(files) >= _MAX_TREE:
-            break
-    command = test_command(root)
+            found.append(path.relative_to(root).as_posix())
+    return found, False
+
+
+def project_context(cfg, path):
+    """Read-only project summary for the coding model: file list, kind and commands."""
+    root = project_root(cfg, path)
+    files, truncated = project_files(root)
+    commands = project_commands(root)
     kind = "python" if any(f.endswith(".py") for f in files) else "node" if "package.json" in files else "other"
     return {"root": root.name if root != code_dir(cfg).resolve() else ".", "kind": kind,
-            "files": files, "test_command": " ".join(command) if command else None}
+            "files": files[:_MAX_TREE], "files_truncated": truncated or len(files) > _MAX_TREE,
+            "test_command": " ".join(commands["test"]) if commands.get("test") else None,
+            "build_command": " ".join(commands["build"]) if commands.get("build") else None}
+
+
+_IMPORT = re.compile(r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", re.M)
+_JS_IMPORT = re.compile(r"(?:import[^'\"]*from\s*|require\()\s*['\"](\.{1,2}/[^'\"]+)['\"]")
+_WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
+
+
+def related_files(cfg, targets, task, exclude=(), limit=3, budget=6000):
+    """Pick a few read-only files likely to matter: modules a target imports, files that import a
+    target, its tests, and files whose names appear in the request. Bounded by count and size."""
+    root = project_root(cfg, targets[0])
+    workspace = code_dir(cfg).resolve()
+    files, _ = project_files(root)
+    files = [f for f in files if Path(f).suffix.lower() in _TEXT_SUFFIXES]
+    target_rel = {t.resolve().relative_to(root).as_posix() for t in targets}
+    stems = {Path(t).stem for t in target_rel}
+    words = {w.lower() for w in _WORD.findall(task)}
+    imported = set()
+    for target in targets:
+        try:
+            text = target.read_text(encoding="utf-8", errors="replace")[:_MAX_CONTEXT_FILE]
+        except OSError:
+            continue
+        for a, b in _IMPORT.findall(text):
+            imported.add((a or b).split(".")[0])
+            imported.add((a or b).replace(".", "/"))
+        for spec in _JS_IMPORT.findall(text):
+            base = (target.parent / spec).resolve()
+            try:
+                imported.add(base.relative_to(root).as_posix())
+            except ValueError:
+                pass
+    scores = {}
+    for rel in files:
+        if rel in target_rel:
+            continue
+        path = root / rel
+        stem, no_ext = Path(rel).stem, rel.rsplit(".", 1)[0]
+        score = 0
+        if stem in imported or no_ext in imported:
+            score += 5
+        if any(stem in (f"test_{s}", f"{s}_test") or stem.startswith(f"test_{s}") for s in stems):
+            score += 4
+        if stem.lower() in words or rel.lower() in task.lower():
+            score += 3
+        if score == 0 and path.suffix == ".py" and path.stat().st_size <= _MAX_CONTEXT_FILE:
+            try:
+                head = path.read_text(encoding="utf-8", errors="replace")[:20000]
+            except OSError:
+                head = ""
+            if any(re.search(rf"\b(?:from|import)\s+{re.escape(s)}\b", head) for s in stems):
+                score += 4
+        if score:
+            scores[rel] = score
+    chosen, used = [], 0
+    for rel in sorted(scores, key=lambda r: (-scores[r], r)):
+        name = (root / rel).relative_to(workspace).as_posix()
+        if name in exclude or len(chosen) >= limit:
+            continue
+        size = (root / rel).stat().st_size
+        if size > budget - used:
+            continue
+        chosen.append(name)
+        used += size
+    return chosen
+
+
+select_related = related_files
+
+
+def files_in_output(cfg, root, output, limit=3):
+    """Workspace files named in test or build output, such as traceback paths."""
+    workspace = code_dir(cfg).resolve()
+    found = []
+    for match in re.finditer(r"([\w./\\:-]+\.(?:py|js|ts|mjs|cjs))", output):
+        text = match.group(1).replace("\\", "/")
+        candidate = Path(text) if Path(text).is_absolute() else root / text
+        try:
+            resolved = candidate.resolve()
+            name = resolved.relative_to(workspace).as_posix()
+        except (OSError, ValueError):
+            continue
+        if resolved.is_file() and not candidate.is_symlink() and name not in found:
+            found.append(name)
+        if len(found) >= limit:
+            break
+    return found
+
+
+def project_commands(root):
+    """Detected build and test commands. Nothing runs until the user approves the exact command."""
+    commands = {"test": test_command(root)}
+    if (root / "package.json").is_file():
+        try:
+            scripts = json.loads((root / "package.json").read_text(encoding="utf-8")).get("scripts") or {}
+        except (OSError, ValueError):
+            scripts = {}
+        npm = shutil.which("npm")
+        if scripts.get("build") and npm:
+            commands["build"] = [npm, "run", "build", "--silent"]
+    elif any(root.rglob("*.py")):
+        # Byte-compiles every file without importing or running it.
+        commands["build"] = [sys.executable, "-m", "compileall", "-q", "-x", r"(^|[\\/])(\.venv|venv|node_modules)([\\/]|$)", "."]
+    return commands
 
 
 def test_command(root):
@@ -387,7 +519,7 @@ def _ask_edits(cfg, task, target, editable, references, project):
         return parse(ask(repair))
 
 
-def _build_proposal(ctx, filenames, change, related_files=()):
+def _build_proposal(ctx, filenames, change, related_files=()):  # noqa: C901
     paths = []
     for name in filenames:
         path = _safe_path(ctx.cfg, name)
@@ -400,15 +532,22 @@ def _build_proposal(ctx, filenames, change, related_files=()):
         used += len(source)
         editable[name] = (original, source)
     references = {}
-    for related in related_files:
+    explicit = list(related_files)
+    automatic = [] if not ctx.cfg.get("auto_context", True) else select_related(
+        ctx.cfg, [path for _, path in paths], change, exclude=set(filenames) | set(explicit),
+        budget=max(0, source_budget(ctx.cfg) - used))
+    for related in explicit + automatic:
         reference = _safe_path(ctx.cfg, related)
         if related in editable or related in references:
             continue
         _, content = _read_source(reference)
+        if related in automatic and used + len(content) > source_budget(ctx.cfg):
+            continue
         used += len(content)
         references[related] = content
-    if used > _MAX_SOURCE_CHARS:
-        raise ValueError("The selected files exceed Jarvis's editing context. Select fewer or smaller files.")
+    if used > source_budget(ctx.cfg):
+        raise ValueError(f"The selected files exceed the {source_budget(ctx.cfg)}-character coding context for this "
+                         "performance profile. Select fewer or smaller files. Nothing was changed.")
     target = FileChange(paths[0][0], paths[0][1], editable[paths[0][0]][0], "")
     project = project_context(ctx.cfg, paths[0][1])
     results = _ask_edits(ctx.cfg, change, target, editable, references, project)
@@ -428,7 +567,7 @@ def _build_proposal(ctx, filenames, change, related_files=()):
         changes.append(FileChange(name, path, original, stored))
     if not changes:
         return None
-    return CodeProposal(tuple(changes), "\n".join(diffs), tuple(checks))
+    return CodeProposal(tuple(changes), "\n".join(diffs), tuple(checks), tuple(references))
 
 
 def propose_fix(ctx, filename, change, related_files=()):
@@ -445,6 +584,8 @@ def propose_fix(ctx, filename, change, related_files=()):
     ctx.proposal_seen = len(proposal.diff) <= _MAX_PREVIEW_CHARS
     files = ", ".join(change.filename for change in proposal.changes)
     checks = "Checks without running code: " + "; ".join(proposal.checks) + "."
+    if proposal.context:
+        checks += "\nRead-only context sent to the model: " + ", ".join(proposal.context) + "."
     if not ctx.proposal_seen:
         return (f"Preview only. No files changed. {files}. Type /diff to see the complete proposal before applying it.\n"
                 f"{checks}\n" + proposal.diff[:_MAX_PREVIEW_CHARS])
@@ -503,16 +644,47 @@ def apply_proposal(ctx):
         raise ValueError(str(error).replace("Nothing was saved", "The file changed. Nothing was saved")) from None
     ctx.code_proposal = None
     ctx.applied_code = proposal
+    _remember_undo(ctx, proposal)
     files = ", ".join(change.path.name for change in proposal.changes)
     tests = test_command(project_root(ctx.cfg, proposal.changes[0].path))
     hint = " Type /test to run the project tests after approval." if tests else ""
     return f"Updated {files}. Type /undo to restore the previous version.{hint}"
 
 
+_UNDO_KEY = "code-undo"
+
+
+def _remember_undo(ctx, proposal):
+    """Keep the last applied edit on disk so /undo still works after Jarvis restarts."""
+    import base64
+    from . import planner
+    record = [{"filename": c.filename, "code": c.code,
+               "original": None if c.original is None else base64.b64encode(c.original).decode()}
+              for c in proposal.changes]
+    try:
+        planner.kv_set(ctx.memory, _UNDO_KEY, record)
+    except Exception as error:  # Undo still works in this session.
+        print(f"[coder] Could not save undo information: {error}")
+
+
+def _restore_undo(ctx):
+    import base64
+    from . import planner
+    record = planner.kv_get(ctx.memory, _UNDO_KEY)
+    if not record:
+        return None
+    changes = []
+    for item in record:
+        path = _safe_path(ctx.cfg, item["filename"])
+        original = None if item["original"] is None else base64.b64decode(item["original"])
+        changes.append(FileChange(item["filename"], path, original, item["code"]))
+    return CodeProposal(tuple(changes), "")
+
+
 def undo_proposal(ctx):
-    proposal = ctx.applied_code
+    proposal = ctx.applied_code or _restore_undo(ctx)
     if not proposal:
-        return "There is no applied edit to undo in this session."
+        return "There is no applied edit to undo."
     for change in proposal.changes:
         path = _safe_path(ctx.cfg, change.filename)
         if path != change.path or not path.is_file() or path.read_bytes() != change.code.encode("utf-8"):
@@ -523,39 +695,74 @@ def undo_proposal(ctx):
         else:
             _replace_file(change.path, change.original)
     ctx.applied_code = None
+    from . import planner
+    planner.kv_set(ctx.memory, _UNDO_KEY, None)
     return "Restored the previous version of " + ", ".join(change.path.name for change in proposal.changes) + "."
 
 
-def _tests_preview(ctx, filename=""):
+COMMAND_TIMEOUT = 120
+
+
+def _project_for(ctx, filename):
     path = _safe_path(ctx.cfg, filename) if filename else code_dir(ctx.cfg)
-    root = project_root(ctx.cfg, path) if filename else path
+    return project_root(ctx.cfg, path) if filename else path
+
+
+def _tests_preview(ctx, filename=""):
+    root = _project_for(ctx, filename)
     command = test_command(root)
     if not command:
         raise ValueError("No test command was found for this project.")
-    return f"run the project tests in {root} with: {' '.join(command)} (code in this project runs on your PC, 120 second limit)"
+    return (f"run the project tests in {root} with: {' '.join(command)} "
+            f"(code in this project runs on your PC, {COMMAND_TIMEOUT} second limit)")
+
+
+def _build_preview(ctx, filename=""):
+    root = _project_for(ctx, filename)
+    command = project_commands(root).get("build")
+    if not command:
+        raise ValueError("No build command was found for this project.")
+    return f"build the project in {root} with: {' '.join(command)} ({COMMAND_TIMEOUT} second limit)"
+
+
+def _run_command(ctx, kind, root, command):
+    secure.audit(f"run_project_{kind}", {"root": root.name, "command": command[1:]})
+    try:
+        code, stdout, stderr = _run_in_job(command, cwd=root, timeout=COMMAND_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        ctx.last_test_output = f"The {kind} ran longer than {COMMAND_TIMEOUT} seconds and was stopped. No result."
+        ctx.last_test_root = str(root)
+        return ctx.last_test_output
+    output = (stdout[-3000:] + ("\n" + stderr[-2000:] if stderr.strip() else "")).strip()
+    ctx.last_test_output = output
+    ctx.last_test_root = str(root)
+    status = "passed" if code == 0 else f"failed with exit code {code}"
+    follow = "" if code == 0 else " Type /fix-tests file | what to fix to propose a fix using this output."
+    label = "Tests" if kind == "tests" else "Build"
+    return f"{label} {status}.{follow}\n{output or '(no output)'}"
+
+
+@skill("Build or byte-compile the coding project after the user approves the exact command.",
+       params={"filename": ("string", "A file in the project", False)}, risky=True, manual=True,
+       preview=_build_preview)
+def run_project_build(ctx, filename=""):
+    root = _project_for(ctx, filename)
+    command = project_commands(root).get("build")
+    if not command:
+        return "No build command was found for this project."
+    return _run_command(ctx, "build", root, command)
 
 
 @skill("Run the coding project's tests after the user approves the exact command.",
        params={"filename": ("string", "A file in the project", False)}, risky=True, manual=True,
        preview=_tests_preview)
 def run_project_tests(ctx, filename=""):
-    path = _safe_path(ctx.cfg, filename) if filename else code_dir(ctx.cfg)
-    root = project_root(ctx.cfg, path) if filename else path
+    root = _project_for(ctx, filename)
     command = test_command(root)
     if not command:
         return "No test command was found for this project."
-    secure.audit("run_project_tests", {"root": root.name, "command": command[1:]})
-    try:
-        code, stdout, stderr = _run_in_job(command, cwd=root, timeout=120)
-    except subprocess.TimeoutExpired:
-        ctx.last_test_output = "The tests ran longer than 120 seconds and were stopped."
-        return ctx.last_test_output
-    output = (stdout[-3000:] + ("\n" + stderr[-2000:] if stderr.strip() else "")).strip()
-    ctx.last_test_output = output
     ctx.last_test_file = filename
-    status = "passed" if code == 0 else f"failed with exit code {code}"
-    follow = "" if code == 0 else " Type /fix-tests file | what to fix to propose a fix using this output."
-    return f"Tests {status}.{follow}\n{output or '(no output)'}"
+    return _run_command(ctx, "tests", root, command)
 
 
 @skill("List files in the code folder.")

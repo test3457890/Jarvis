@@ -389,6 +389,30 @@ def audit(app, cfg, code, files, url):
                 page.locator("#p-no").click()
                 expect(last_reply(page)).to_contain_text("Cancelled")
                 runner.assert_not_called()
+
+        @check("Build project", "/build then Confirm", "exact compileall command shown, then build result")
+        def _():
+            page.get_by_role("button", name="Build project").click()
+            expect(page.locator("#q")).to_have_value("/build ")
+            page.locator("#q").fill("/build budget/budget.py")
+            page.locator("#q").press("Enter")
+            expect(page.locator("#pending-text")).to_contain_text("compileall")
+            page.locator("#p-yes").click()
+            expect(last_reply(page)).to_contain_text("Build passed")
+            assert list((code / "budget").rglob("*.pyc")), "nothing was compiled"
+
+        @check("Undo after restart", "apply, restart the brain, Undo", "edit restored from the saved journal")
+        def _():
+            from jarvis.brain import Brain
+            original = (code / "budget" / "budget.py").read_text()
+            send(page, "/fix budget/budget.py | handle empty input")
+            expect(last_reply(page)).to_contain_text("Preview only")
+            page.get_by_role("button", name="Apply proposal").click()
+            expect(last_reply(page)).to_contain_text("Updated budget.py")
+            restarted = Brain(app.cfg, app.memory)
+            restarted.raw_chat = app.brain.raw_chat
+            assert "Restored" in restarted.ask("/undo")
+            assert (code / "budget" / "budget.py").read_text() == original
             page.locator("#mode").select_option("everyday")
 
         # ---------------------------------------------------------------- planner

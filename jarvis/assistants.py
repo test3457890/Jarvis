@@ -56,7 +56,7 @@ def route(text, preference="auto", mode="everyday"):
     request = _WAKE_PREFIX.sub("", text)
     if preference in ("jarvis", "tuki"):
         return preference, request
-    if mode == "coding" or request.startswith(("/fix", "/test", "/search ", "/calc ", "/files", "/diff", "/apply", "/undo",
+    if mode == "coding" or request.startswith(("/fix", "/test", "/build", "/search ", "/calc ", "/files", "/diff", "/apply", "/undo",
                                                "/check ", "/read ")):
         return "tuki", request
     if mode != "talk" and not _EDITING.match(request) and (_TECHNICAL.search(request) or FACT_CHECK.search(request)):

@@ -295,6 +295,7 @@
         <button id="code-apply" type="button">Apply proposal</button>
         <button id="code-undo" type="button">Undo last edit</button>
         <button id="code-test" type="button">Run project tests</button>
+        <button id="code-build" type="button">Build project</button>
       </div>
     </div>
     <div id="log" role="log" aria-label="Conversation"></div>
@@ -704,6 +705,7 @@ function fillCommand(command, hint) {
 }
 $('code-fix').onclick = () => fillCommand('/fix', 'file | what to change');
 $('code-test').onclick = () => fillCommand('/test', 'a file in the project');
+$('code-build').onclick = () => fillCommand('/build', 'a file in the project');
 $('tuki-calculate').onclick = () => fillCommand('/calc', 'Arithmetic expression');
 $('file-copy').onclick = () => fillCommand('/copy', 'source | destination inside Jarvis Code');
 $('file-move').onclick = () => fillCommand('/move', 'source | destination inside Jarvis Code');

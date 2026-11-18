@@ -29,7 +29,7 @@ browser HUD (ui.html) <-> webui.py (127.0.0.1, session key) <-> App (__main__.py
 | `brain.py` | Ollama chat, streaming, `/commands`, tool loop, confirmations |
 | `assistants.py` | Jarvis vs TUKI routing, TUKI confidence labels |
 | `skills.py` | Tool registry, permissions, confirmation and audit; everyday tools |
-| `coder.py` | Coding workspace, patch proposals, apply/undo, syntax checks, approved runs and tests |
+| `coder.py` | Coding workspace, related-file context, patch proposals, apply/undo (persisted), syntax checks, approved runs, builds and tests |
 | `filejobs.py` | Workspace copy/move jobs and selected-folder file tasks with journal and undo |
 | `setupwizard.py` | First-run wizard, download plan, storage budget, resumable downloads |
 | `config.py` | Settings, defaults, profiles, themes |
@@ -89,7 +89,7 @@ See `docs/Capabilities.md` for what is working, optional, untested on hardware o
 - Windows Recycle Bin integration, OCR and persistent document indexing are not implemented.
 
 ## Next tasks
-- Collect 8 GB Windows benchmarks for both profiles.
+- Collect 8 GB Windows benchmarks for both profiles, including `--coding`.
 - Code-sign scripts and publish signed releases; consider an MSIX or MSI installer.
 - Optional Windows Recycle Bin emptying for `.Jarvis Recycle`.
 - More HUD accessibility review with a screen reader.
