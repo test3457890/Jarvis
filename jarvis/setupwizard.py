@@ -216,6 +216,10 @@ def apply_choices(cfg, choices):
     folders = _clean_folders(choices.get("document_folders"), "document folders")
     if folders is not None:
         updated["document_folders"] = folders
+    if choices.get("code_dir"):
+        code_dir = Path(str(choices["code_dir"])).expanduser().resolve()
+        code_dir.mkdir(parents=True, exist_ok=True)
+        updated["code_dir"] = str(code_dir)
     file_folders = _clean_folders(choices.get("file_folders"), "file folders")
     if file_folders is not None:
         code = Path(updated.get("code_dir") or "").expanduser().resolve()
@@ -224,10 +228,6 @@ def apply_choices(cfg, choices):
             if path == code or code in path.parents or path in code.parents:
                 raise ValueError("Keep file-task folders separate from the Jarvis Code workspace.")
         updated["file_folders"] = file_folders
-    if choices.get("code_dir"):
-        code_dir = Path(str(choices["code_dir"])).expanduser().resolve()
-        code_dir.mkdir(parents=True, exist_ok=True)
-        updated["code_dir"] = str(code_dir)
     if "voice" in choices:
         updated["voice_enabled"] = bool(choices["voice"])
     if "online_tools" in choices:
