@@ -340,32 +340,51 @@ def _ask_edits(cfg, task, target, editable, references, project):
         request["project"] = project
     messages = [{"role": "system", "content": system},
                 {"role": "user", "content": json.dumps(request, ensure_ascii=False)}]
+    def ask(turns):
+        try:
+            return _brain.raw_chat(turns, model=model)
+        except OllamaError as error:
+            reason = str(error).lower()
+            if model == cfg["model"] or "model" not in reason or "not found" not in reason:
+                raise
+            return _brain.raw_chat(turns, model=cfg["model"])
+
+    def parse(reply):
+        blocks = list(_BLOCK.finditer(reply))
+        if blocks:
+            results = {}
+            available = dict(editable)
+            for block in blocks:
+                name = block["file"].strip().strip("`").replace("\\", "/")
+                if name not in available:
+                    _safe_path(cfg, name)  # validates the location of a new file
+                    if _safe_path(cfg, name).exists():
+                        raise ValueError(f"The model tried to edit {name}, which was not selected. Nothing was saved.")
+                    available[name] = (None, "")
+                edits = [m.groupdict() for m in _EDIT.finditer(block["body"])]
+                results[name] = _apply_edits(results.get(name, available[name][1]), edits, name)
+            if len(results) > _MAX_FILES:
+                raise ValueError("The proposal changes too many files. Nothing was saved.")
+            editable.update(available)
+            return results
+        fences = list(_FENCE.finditer(reply))
+        if len(fences) != 1 or not fences[0][1].strip():
+            raise ValueError("The coding model did not return valid edits or one complete code block. Nothing was saved.")
+        return {target.filename: fences[0][1].rstrip("\r\n") + "\n"}
+
+    reply = ask(messages)
     try:
-        reply = _brain.raw_chat(messages, model=model)
-    except OllamaError as error:
-        reason = str(error).lower()
-        if model == cfg["model"] or "model" not in reason or "not found" not in reason:
+        return parse(reply)
+    except ValueError as error:
+        # A smaller model may quote the wrong lines. Give it one chance to repair
+        # the patch against the same source, without writing either attempt.
+        reason = str(error)
+        if not ("was not found" in reason or "matched " in reason or "did not return valid edits" in reason):
             raise
-        reply = _brain.raw_chat(messages, model=cfg["model"])
-    blocks = list(_BLOCK.finditer(reply))
-    if blocks:
-        results = {}
-        for block in blocks:
-            name = block["file"].strip().strip("`").replace("\\", "/")
-            if name not in editable:
-                _safe_path(cfg, name)  # validates the location of a new file
-                if _safe_path(cfg, name).exists():
-                    raise ValueError(f"The model tried to edit {name}, which was not selected. Nothing was saved.")
-                editable[name] = (None, "")
-            edits = [m.groupdict() for m in _EDIT.finditer(block["body"])]
-            results[name] = _apply_edits(results.get(name, editable[name][1]), edits, name)
-        if len(results) > _MAX_FILES:
-            raise ValueError("The proposal changes too many files. Nothing was saved.")
-        return results
-    fences = list(_FENCE.finditer(reply))
-    if len(fences) != 1 or not fences[0][1].strip():
-        raise ValueError("The coding model did not return valid edits or one complete code block. Nothing was saved.")
-    return {target.filename: fences[0][1].rstrip("\r\n") + "\n"}
+        repair = messages + [{"role": "assistant", "content": reply},
+                             {"role": "user", "content": "Your patch was rejected: " + reason +
+                              " Return corrected edits using exact lines from source. Do not run code."}]
+        return parse(ask(repair))
 
 
 def _build_proposal(ctx, filenames, change, related_files=()):
@@ -416,7 +435,9 @@ def propose_fix(ctx, filename, change, related_files=()):
     """Preview a focused change. filename may list several editable files separated by commas."""
     ctx.code_proposal = None
     ctx.proposal_seen = False
-    names = [name.strip() for name in str(filename).split(",") if name.strip()][:_MAX_FILES]
+    names = [name.strip() for name in str(filename).split(",") if name.strip()]
+    if not names or len(names) > _MAX_FILES:
+        raise ValueError(f"Select between 1 and {_MAX_FILES} editable files. Nothing was changed.")
     proposal = _build_proposal(ctx, names, change, related_files)
     if proposal is None:
         return f"No changes proposed for {Path(names[0]).name}."

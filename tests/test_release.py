@@ -19,6 +19,8 @@ def test_release_is_reproducible_and_contains_only_manifest_files(tmp_path):
         manifest=json.loads(bundle.read('Jarvis/release-manifest.json'))
         for name,digest in manifest['files'].items():
             assert hashlib.sha256(bundle.read('Jarvis/'+name)).hexdigest()==digest
+        assert 'Jarvis/docs/Coding Guide.md' in bundle.namelist()
+        assert 'Jarvis/docs/screenshots/setup-wizard.png' in bundle.namelist()
         assert all('/.venv/' not in name and 'memory.db' not in name and 'secrets.bin' not in name for name in bundle.namelist())
     assert (tmp_path/'SHA256SUMS.txt').read_text().strip() == hashlib.sha256(first).hexdigest() + '  ' + archive.name
 

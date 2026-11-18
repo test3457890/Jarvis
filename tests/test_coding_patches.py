@@ -77,10 +77,29 @@ def test_multi_file_preview_applies_together_and_undoes_together(project):
 def test_bad_patches_change_nothing(project, reply, message):
     cfg, brain, root, replies, _ = project
     before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
-    replies.append(reply)
+    replies.extend([reply, reply])
     assert message in brain.ask("/fix budget/budget.py | change it")
     assert {path: path.read_bytes() for path in root.rglob("*") if path.is_file()} == before
     assert brain.ctx.code_proposal is None
+
+
+def test_mismatched_patch_gets_one_model_repair_without_writing(project):
+    _, brain, root, replies, requests = project
+    replies.extend([
+        "FILE: budget/budget.py\n<<<<<<< SEARCH\n    return mean(values)\n=======\n    return 0\n>>>>>>> REPLACE\n",
+        PATCH,
+    ])
+    preview = brain.ask("/fix budget/budget.py | handle empty input")
+    assert "Preview only" in preview and "+    if not values:" in preview
+    assert len(requests) == 2
+    assert "if not values" not in (root / "budget.py").read_text()
+
+
+def test_too_many_selected_files_are_rejected_instead_of_ignored(project):
+    _, brain, _, replies, requests = project
+    names = ", ".join(f"budget/file{i}.py" for i in range(7))
+    assert "between 1 and 6" in brain.ask(f"/fix {names} | make a change")
+    assert not requests and not replies
 
 
 def test_failed_write_rolls_back_earlier_files(project, monkeypatch):

@@ -52,13 +52,15 @@ Screenshots use synthetic conversation, sample files and stubbed model replies, 
 **Codes**
 - Writes and fixes source files in `Documents\Jarvis Code` using a local Ollama coding model.
 - Asks the model for focused edits (exact search and replace blocks) instead of whole-file rewrites.
-  An edit that does not match exactly once is rejected and nothing is saved.
+  If its patch does not match, Jarvis asks for one repair; an invalid repair saves nothing.
 - Previews changes to several files together: `/fix budget.py, helpers.py | change | rules.txt`.
   The model also sees a read-only list of the project's files and its test command.
 - Checks Python, JSON and JavaScript syntax without running anything. Apply saves every file or none
   and keeps `.bak` copies. Undo restores all files from the last applied change if they are unchanged.
 - `/test` shows the exact test command and runs it only after you confirm. `/fix-tests file` sends the
   failure output back to TUKI for a new preview. Generated code never runs without your approval.
+- See the [Coding Guide](docs/Coding%20Guide.md) for a full example, checks, limitations and
+  reproducible failure cases.
 
 **Feels like the movies**
 - Boot sequence, arc-reactor HUD, live CPU/GPU/RAM gauges, today's schedule, deadlines.
