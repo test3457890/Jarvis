@@ -106,6 +106,8 @@ Use `/diff`, `/apply`, or `/undo`, or the corresponding HUD buttons.
 ## Images
 
 Open Images below the chat. It works in Everyday, Coding, and Briefing modes.
+For an existing Windows installation, install the updated dependency from the
+Jarvis folder with `.\.venv\Scripts\python.exe -m pip install -r requirements.txt`.
 
 | Tool | What it does | Setup |
 |---|---|---|

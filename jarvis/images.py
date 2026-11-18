@@ -7,8 +7,6 @@ import uuid
 from urllib.parse import urlencode, urlsplit
 from urllib.request import Request
 
-from PIL import Image, ImageOps, UnidentifiedImageError
-
 from . import config, net, online, secure
 from .skills import skill
 
@@ -28,6 +26,10 @@ def _base64(data):
 
 
 def _image(data, maximum, output="PNG"):
+    try:
+        from PIL import Image, ImageOps, UnidentifiedImageError
+    except ImportError as error:
+        raise ValueError("Image tools need Pillow. Install the updated requirements.txt first.") from error
     if not data or len(data) > MAX_IMAGE_BYTES:
         raise ValueError("Choose a PNG, JPEG or WebP image up to 8 MiB.")
     try:
