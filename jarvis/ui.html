@@ -235,6 +235,9 @@
       <label>Voice <select id="voice_choice"><option value="auto">Automatic</option>
         <option value="windows">Windows</option><option value="piper">Piper</option></select></label>
       <button id="voice-preview" type="button">Try voice</button>
+      <label>TUKI voice <select id="tuki_voice_choice"><option value="auto">Automatic, different from Jarvis</option>
+        <option value="windows">Windows voice</option><option value="piper">Local Piper voice</option></select></label>
+      <button id="tuki-voice-preview" type="button">Try TUKI voice</button>
       <small class="assistant-name">__JARVIS_TUKI_NAME__ · __JARVIS_TUKI_FULL_NAME__</small>
     </div>
     <div class="toggles">
@@ -278,6 +281,7 @@
         <button id="code-diff" type="button">Show diff</button>
         <button id="code-apply" type="button">Apply proposal</button>
         <button id="code-undo" type="button">Undo last edit</button>
+        <button id="code-test" type="button">Run project tests</button>
       </div>
     </div>
     <div id="log" role="log" aria-label="Conversation"></div>
@@ -485,9 +489,10 @@ function setPending(request) {
   $('pending-text').textContent = request ? 'Jarvis wants to ' + request.text + '.' : '';
 }
 function setToggles(st) {
-  for (const key of ['mode', 'theme', 'voice_choice', 'assistant']) {
+  for (const key of ['mode', 'theme', 'voice_choice', 'assistant', 'tuki_voice_choice']) {
     if (st[key]) $(key).value = st[key];
   }
+  $('tuki_voice_choice').querySelector('[value=piper]').disabled = !st.tuki_piper_available;
   if (st.mode) document.body.dataset.mode = st.mode;
   if (st.theme) document.body.dataset.theme = st.theme;
   $('voice_choice').querySelector('[value=piper]').disabled = !st.piper_available;
@@ -553,7 +558,7 @@ async function send(text) {
   } catch { add('system', 'Could not reach Jarvis. Check the HUD connection.'); }
   return false;
 }
-for (const key of ['mode', 'theme', 'voice_choice', 'assistant']) {
+for (const key of ['mode', 'theme', 'voice_choice', 'assistant', 'tuki_voice_choice']) {
   $(key).onchange = async () => {
     try {
       const state = await api('/api/preferences', {key, value: $(key).value});
@@ -564,9 +569,12 @@ for (const key of ['mode', 'theme', 'voice_choice', 'assistant']) {
     } catch { add('system', 'The setting could not be changed.'); }
   };
 }
-$('voice-preview').onclick = () => api('/api/voice-preview', {}).then(state => {
-  if (state.error) add('system', state.error);
-});
+for (const [id, assistant] of [['voice-preview', 'jarvis'], ['tuki-voice-preview', 'tuki']]) {
+  $(id).onclick = () => api('/api/voice-preview', {assistant}).then(state => {
+    if (state.error) add('system', state.error);
+    else if (state.voice) add('system', (assistant === 'tuki' ? 'TUKI' : 'Jarvis') + ' is using ' + state.voice + '.');
+  });
+}
 $('stop-reply').onclick = () => api('/api/stop', {}).catch(() => add('system', 'Could not reach Jarvis.'));
 document.addEventListener('keydown', event => { if (event.key === 'Escape') $('stop-reply').click(); });
 $('briefing').onclick = () => send('/briefing');
@@ -682,6 +690,7 @@ function fillCommand(command, hint) {
   $('q').value = command + ' '; $('q').placeholder = hint; $('q').focus();
 }
 $('code-fix').onclick = () => fillCommand('/fix', 'file | what to change');
+$('code-test').onclick = () => fillCommand('/test', 'a file in the project');
 $('tuki-calculate').onclick = () => fillCommand('/calc', 'Arithmetic expression');
 $('file-copy').onclick = () => fillCommand('/copy', 'source | destination inside Jarvis Code');
 $('file-move').onclick = () => fillCommand('/move', 'source | destination inside Jarvis Code');

@@ -8,7 +8,6 @@ import subprocess
 import tempfile
 import threading
 import time
-import winsound
 import wave
 
 import numpy as np
@@ -18,6 +17,40 @@ BLOCK = 480  # 30 ms
 
 
 # ============================================================ mouth
+JARVIS_VOICES = ("george", "ryan", "united kingdom", "great britain")
+# TUKI prefers a clearly different installed voice. Windows names include the language.
+TUKI_VOICES = ("zira", "aria", "jenny", "hazel", "susan", "david", "mark", "united states")
+
+
+def voice_profile(cfg, assistant="jarvis"):
+    """Describe which engine and voice preferences to use for an assistant."""
+    if assistant == "tuki":
+        choice = cfg.get("tuki_voice_choice", "auto")
+        piper = cfg.get("tuki_piper_model", "")
+        wanted = cfg.get("tuki_sapi_voice_contains", "").lower()
+        return {"assistant": "tuki", "piper_model": piper if choice in ("auto", "piper") else "",
+                "preferences": tuple(filter(None, (wanted,) + TUKI_VOICES)),
+                "rate": int(cfg.get("tuki_speech_rate", 200)), "avoid_jarvis": True}
+    choice = cfg.get("voice_choice", "auto")
+    use_piper = cfg.get("piper_model") and (choice == "piper" or (choice == "auto" and cfg.get("tts") == "piper"))
+    wanted = cfg.get("sapi_voice_contains", "").lower()
+    return {"assistant": "jarvis", "piper_model": cfg.get("piper_model", "") if use_piper else "",
+            "preferences": tuple(filter(None, (wanted,) + JARVIS_VOICES)),
+            "rate": int(cfg.get("speech_rate", 185)), "avoid_jarvis": False}
+
+
+def pick_voice(voices, preferences, avoid=None):
+    """Return (voice, matched) from installed voices. voices have .id and .name."""
+    for preference in preferences:
+        for voice in voices:
+            if preference in voice.name.lower() and voice.id != avoid:
+                return voice, True
+    for voice in voices:  # A distinct fallback voice is better than the same one.
+        if voice.id != avoid:
+            return voice, False
+    return (voices[0] if voices else None), False
+
+
 class Speaker:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -27,11 +60,11 @@ class Speaker:
         self._guard = threading.Lock()
         threading.Thread(target=self._worker, daemon=True, name="tts").start()
 
-    def say(self, text: str):
+    def say(self, text: str, assistant: str = "jarvis"):
         text = re.sub(r"[*#`_>|]", "", text).strip()
         if text:
             with self._guard:
-                self._q.put((self._generation, text))
+                self._q.put((self._generation, text, assistant if assistant in ("jarvis", "tuki") else "jarvis"))
 
     def stop(self):
         with self._guard:
@@ -52,24 +85,22 @@ class Speaker:
     def _worker(self):
         engine = None
         while True:
-            generation, text = self._q.get()
+            generation, text, assistant = self._q.get()
             if self._stopped(generation):
                 self._q.task_done()
                 continue
             self.speaking.set()
             try:
-                voice = self.cfg.get("voice_choice", "auto")
-                use_piper = self.cfg.get("piper_model") and (
-                    voice == "piper" or (voice == "auto" and self.cfg.get("tts") == "piper")
-                )
-                if use_piper:
+                profile = voice_profile(self.cfg, assistant)
+                if profile["piper_model"]:
                     try:
-                        self._piper(text, generation)
+                        self._piper(text, generation, profile["piper_model"])
                         continue
                     except (OSError, subprocess.SubprocessError) as error:
                         print(f"[voice] Piper unavailable, trying the Windows voice: {type(error).__name__}")
                 if engine is None:
                     engine = self._windows_voice()
+                self._apply_profile(engine, profile)
                 if self._stopped(generation):
                     continue
                 engine.say(text)
@@ -93,25 +124,42 @@ class Speaker:
     def _windows_voice(self):
         import pyttsx3
 
-        engine = pyttsx3.init()
-        engine.setProperty("rate", self.cfg.get("speech_rate", 185))
-        preferred = self.cfg.get("sapi_voice_contains", "").lower()
-        preferences = tuple(filter(None, (
-            preferred, "george", "ryan", "united kingdom", "great britain",
-        )))
-        voices = engine.getProperty("voices")
-        for preference in preferences:
-            voice = next((v for v in voices if preference in v.name.lower()), None)
-            if voice:
-                engine.setProperty("voice", voice.id)
-                break
-        return engine
+        return pyttsx3.init()
 
-    def _piper(self, text, generation):
+    def _apply_profile(self, engine, profile):
+        voices = engine.getProperty("voices")
+        jarvis, _ = pick_voice(voices, voice_profile(self.cfg, "jarvis")["preferences"])
+        if profile["avoid_jarvis"]:
+            voice, _ = pick_voice(voices, profile["preferences"], avoid=jarvis.id if jarvis else None)
+        else:
+            voice = jarvis
+        if voice is not None:
+            engine.setProperty("voice", voice.id)
+        engine.setProperty("rate", profile["rate"])
+
+    def describe(self, assistant="jarvis"):
+        """Name the voice an assistant will use, for the HUD preview."""
+        profile = voice_profile(self.cfg, assistant)
+        if profile["piper_model"]:
+            return f"Piper voice {os.path.basename(profile['piper_model'])}"
+        try:
+            import pyttsx3
+            voices = pyttsx3.init().getProperty("voices")
+        except Exception:
+            return "Windows voice"
+        jarvis, _ = pick_voice(voices, voice_profile(self.cfg, "jarvis")["preferences"])
+        if assistant != "tuki":
+            return f"Windows voice {jarvis.name}" if jarvis else "Windows voice"
+        voice, matched = pick_voice(voices, profile["preferences"], avoid=jarvis.id if jarvis else None)
+        if voice is None or (jarvis and voice.id == jarvis.id):
+            return "the Jarvis voice at a different speed, because only one Windows voice is installed"
+        return f"Windows voice {voice.name}" + ("" if matched else " (the closest available)")
+
+    def _piper(self, text, generation, model=None):
         fd, wav = tempfile.mkstemp(suffix=".wav")
         os.close(fd)
         try:
-            with subprocess.Popen([self.cfg.get("piper_exe", "piper"), "--model", self.cfg["piper_model"],
+            with subprocess.Popen([self.cfg.get("piper_exe", "piper"), "--model", model or self.cfg["piper_model"],
                                    "--output_file", wav], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   stderr=subprocess.PIPE, text=True,
                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)) as process:
@@ -133,6 +181,7 @@ class Speaker:
                 return
             with wave.open(wav, 'rb') as audio:
                 duration = audio.getnframes() / audio.getframerate()
+            import winsound
             winsound.PlaySound(wav, winsound.SND_FILENAME | winsound.SND_ASYNC)
             deadline = time.monotonic() + duration
             while time.monotonic() < deadline and not self._stopped(generation):

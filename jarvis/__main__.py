@@ -84,6 +84,8 @@ class App:
                 "mode": self.cfg.get("mode", "everyday"), "theme": self.cfg.get("theme", "hud"),
                 "assistant": self.cfg.get("assistant", "auto"),
                 "voice_choice": self.cfg.get("voice_choice", "auto"),
+                "tuki_voice_choice": self.cfg.get("tuki_voice_choice", "auto"),
+                "tuki_piper_available": bool(self.cfg.get("tuki_piper_model")),
                 "piper_available": bool(self.cfg.get("piper_model")),
                 "honorific": self.cfg.get("honorific", "sir"),
                 "first_run": not self.cfg.get("setup_complete")}
@@ -129,11 +131,13 @@ class App:
 
     def set_preference(self, key, value):
         choices = {"mode": config.MODES, "theme": config.THEMES, "assistant": assistants.CHOICES,
-                   "voice_choice": ("auto", "windows", "piper")}
+                   "voice_choice": config.VOICE_CHOICES, "tuki_voice_choice": config.VOICE_CHOICES}
         if key not in choices or value not in choices[key]:
             raise ValueError("Unknown setting.")
         if key == "voice_choice" and value == "piper" and not self.cfg.get("piper_model"):
             raise ValueError("Set your local Piper voice model in Jarvis setup first.")
+        if key == "tuki_voice_choice" and value == "piper" and not self.cfg.get("tuki_piper_model"):
+            raise ValueError("Set TUKI's Piper voice model in setup first.")
         with self.brain._lock, self._settings_lock:
             config.save({**self.cfg, key: value})
             self.cfg[key] = value
@@ -170,7 +174,7 @@ class App:
             # Speech starts early only in Talk mode, which has no action tools.
             tail = text[self._stream_spoken:]
             for sentence in re.finditer(r".+?[.!?](?:\s+|$)", tail, re.S):
-                self.speaker.say(sentence[0])
+                self.speaker.say(sentence[0], self.brain.assistant)
                 self._stream_spoken += len(sentence[0])
 
     def settings_operation(self, data=None):
@@ -301,12 +305,18 @@ class App:
         self.emit("toggles", self.state())
         return setupwizard.summary(self.cfg)
 
-    def preview_voice(self):
+    def preview_voice(self, assistant="jarvis"):
         if not self.speaker:
             return {"error": "Speech is unavailable."}
-        honorific = self.cfg.get("honorific") or "sir"
-        self.speaker.say(f"At your service, {honorific}. Shall we get started?")
-        return {"ok": True}
+        if assistant == "tuki":
+            text = f"{assistants.TUKI_NAME} here. I check sources, maths and code, and I say when I'm unsure."
+        else:
+            assistant = "jarvis"
+            honorific = self.cfg.get("honorific") or "sir"
+            text = f"At your service, {honorific}. Shall we get started?"
+        self.speaker.say(text, assistant)
+        describe = getattr(self.speaker, "describe", None)
+        return {"ok": True, "voice": describe(assistant) if describe else ""}
 
     def confirm(self, yes: bool, expected_id: str):
         result = self.brain.confirm_pending(yes, expected_id=expected_id)
@@ -476,7 +486,7 @@ class App:
                 label = assistants.display_name(self.brain.assistant)
                 model = self.brain.model_used
         if self._stream_spoken and self.speaker and not self.brain.cancelled.is_set():
-            self.speaker.say(answer[self._stream_spoken:])
+            self.speaker.say(answer[self._stream_spoken:], self.brain.assistant)
         self.reply(answer, speak=(not self._stream_spoken and not self.brain.cancelled.is_set() and
                                  (via == "voice" or self.cfg.get("speak_replies"))), assistant=label, model=model)
         if self.speaker:
@@ -496,7 +506,8 @@ class App:
                           "I've put the search results on screen.")
             elif self.cfg.get("mode") == "coding":
                 spoken = spoken.split("\n\n", 1)[0].split("```", 1)[0].strip()[:350]
-            self.speaker.say(spoken or "The details are on screen.")
+            voice = "tuki" if assistant == assistants.TUKI_NAME else "jarvis"
+            self.speaker.say(spoken or "The details are on screen.", voice)
 
 
 def _system_stats():
@@ -557,6 +568,8 @@ def setup(cfg):
     ask("Daily briefing time (HH:MM)", "briefing_time")
     ask("Windows voice name (try George if installed)", "sapi_voice_contains")
     ask("Optional local Piper voice model (.onnx path)", "piper_model")
+    ask("TUKI Windows voice name (try Zira or Aria; blank picks a different voice)", "tuki_sapi_voice_contains")
+    ask("Optional Piper voice model for TUKI (.onnx path)", "tuki_piper_model")
     ask("Local vision model (optional, pull it in Ollama first)", "vision_model")
     ask("Local image generation API URL (optional, loopback only)", "image_generation_url")
 
