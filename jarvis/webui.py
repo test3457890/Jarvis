@@ -170,6 +170,12 @@ def serve(app, port: int):
                 except OSError:
                     return self._json({"error": "The local image backend failed or is unavailable. Check the setup."}, 502)
                 self._json(output)
+            elif self.path == "/api/files":
+                try:
+                    result = app.files_operation(data)
+                except (ValueError, TypeError, OSError) as error:
+                    return self._json({"error": str(error)}, 400)
+                self._json(result)
             elif self.path == "/api/wizard":
                 try:
                     result = app.wizard_operation(data)

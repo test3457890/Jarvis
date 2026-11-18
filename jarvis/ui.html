@@ -204,6 +204,19 @@
   #wizard label { justify-content:flex-start; text-align:left; }
   #wizard input[type=radio], #wizard input[type=checkbox] { flex:0 0 auto; width:auto; margin:0; }
   #wizard-checks li.good::before { content:"Ready: "; color:var(--ok); font-weight:700; }
+  #file-tasks { border-top:1px solid var(--line); padding:8px 16px; max-height:52%; overflow:auto; }
+  body[data-mode=talk] #file-tasks { display:none; }
+  #file-tasks summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
+  .ft-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:8px 0; }
+  .ft-row input[type=text], .ft-row input[type=search] { flex:1 1 12rem; min-width:0; padding:6px; font-size:14px; }
+  #ft-items { width:100%; border-collapse:collapse; font-size:14px; }
+  #ft-items td, #ft-items th { text-align:left; padding:3px 6px; border-bottom:1px solid var(--line); }
+  #ft-items button.link { border:0; padding:0; text-transform:none; letter-spacing:0; text-decoration:underline; font-size:14px; }
+  #ft-preview { white-space:pre-wrap; font-family:Consolas,monospace; font-size:13px; border:1px solid var(--line2);
+    border-radius:6px; padding:8px; margin:6px 0; }
+  #ft-limits, #ft-status { color:var(--dim); font-size:13px; }
+  #ft-history li { margin:4px 0; }
+  #pending-text { white-space:pre-wrap; max-height:40vh; overflow:auto; }
 </style>
 </head>
 <body data-state="idle" data-theme="__JARVIS_THEME__" data-mode="__JARVIS_MODE__">
@@ -315,6 +328,33 @@
         <button>Save setup</button>
       </form>
       <p id="setup-status" role="status"></p>
+    </details>
+    <details id="file-tasks" name="assistant-tools">
+      <summary>File tasks</summary>
+      <p id="ft-limits"></p>
+      <div class="ft-row">
+        <label>Folder <select id="ft-root" aria-label="Selected folder"></select></label>
+        <button type="button" id="ft-up">Up one level</button>
+        <span id="ft-path" aria-live="polite"></span>
+      </div>
+      <form class="ft-row" id="ft-search-form">
+        <input type="search" id="ft-search" aria-label="Find files by name" placeholder="Find by name in this folder" maxlength="200">
+        <button>Find</button>
+      </form>
+      <table id="ft-items"><thead><tr><th scope="col">Select</th><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Size</th></tr></thead><tbody></tbody></table>
+      <div class="ft-row">
+        <label>Action <select id="ft-action">
+          <option value="mkdir">Create folder here</option><option value="rename">Rename selected item</option>
+          <option value="copy">Copy selected files to</option><option value="move">Move selected items to</option>
+          <option value="delete">Delete selected items (recoverable)</option><option value="organize">Organise this folder by file type</option>
+        </select></label>
+        <input type="text" id="ft-value" aria-label="Name or destination" placeholder="New folder name">
+        <button type="button" id="ft-prepare">Preview changes</button>
+      </div>
+      <pre id="ft-preview" hidden aria-label="Exact changes"></pre>
+      <p id="ft-status" role="status"></p>
+      <button type="button" id="ft-history-load">Show task history</button>
+      <ul id="ft-history"></ul>
     </details>
     <details id="images" name="assistant-tools">
       <summary>Images</summary>
@@ -487,6 +527,7 @@ es.onmessage = e => {
     if (typeof reply === 'string') add('jarvis', reply);
     else add('jarvis', reply.text, [reply.assistant, reply.model].filter(Boolean).join(' · '));
     refresh();
+    if ($('file-tasks').open && $('ft-root').options.length) ftBrowse(ft.path);
   }
   else if (ev.kind === 'stream') {
     $('stream-draft').textContent = ev.data;
@@ -895,6 +936,117 @@ api('/api/state').then(st => {
   try { closed = sessionStorage.getItem('jarvis-wizard-closed') === '1'; } catch {}
   if (st.first_run && !closed) openWizard();
 });
+// ---- selected-folder file tasks
+const ft = {path: '', items: []};
+function ftRoot() { return Number($('ft-root').value || 0); }
+function ftStatus(text) { $('ft-status').textContent = text; }
+function ftSize(bytes, type) {
+  if (type !== 'file') return '';
+  return bytes < 1024 ? bytes + ' B' : bytes < 1048576 ? (bytes / 1024).toFixed(1) + ' KB' : (bytes / 1048576).toFixed(1) + ' MB';
+}
+function ftRender(items) {
+  ft.items = items;
+  const body = $('ft-items').querySelector('tbody');
+  body.replaceChildren();
+  for (const item of items) {
+    const row = el('tr');
+    const box = el('input'); box.type = 'checkbox'; box.value = item.path;
+    box.setAttribute('aria-label', 'Select ' + item.name); box.disabled = item.type === 'link';
+    const pick = el('td'); pick.appendChild(box);
+    const name = el('td');
+    if (item.type === 'folder') {
+      const open = el('button', 'link', item.name); open.type = 'button';
+      open.onclick = () => ftBrowse(item.path); name.appendChild(open);
+    } else name.textContent = item.path.includes('/') && ft.searching ? item.path : item.name;
+    row.append(pick, name, el('td', '', item.type === 'link' ? 'link (not followed)' : item.type), el('td', '', ftSize(item.size, item.type)));
+    body.appendChild(row);
+  }
+  if (!items.length) { const row = el('tr'); const cell = el('td', '', 'Empty'); cell.colSpan = 4; row.appendChild(cell); body.appendChild(row); }
+}
+async function ftCall(data) {
+  const result = await api('/api/files', data);
+  if (result.error) throw new Error(result.error);
+  return result;
+}
+async function ftLoadRoots() {
+  try {
+    const result = await ftCall({action:'roots'});
+    $('ft-limits').textContent = result.limits;
+    const select = $('ft-root'); select.replaceChildren();
+    result.roots.forEach((root, index) => { const option = el('option', '', root); option.value = index; select.appendChild(option); });
+    if (!result.roots.length) { ftStatus('Select folders for file tasks in the setup wizard first.'); ftRender([]); return; }
+    ftBrowse('');
+  } catch (error) { ftStatus(error.message); }
+}
+async function ftBrowse(path) {
+  try {
+    const result = await ftCall({action:'browse', root:ftRoot(), path});
+    ft.path = result.path; ft.searching = false;
+    $('ft-path').textContent = 'Showing ' + (result.path || 'the top of this folder');
+    ftRender(result.items);
+    ftStatus(result.truncated ? 'Showing the first 500 items.' : '');
+  } catch (error) { ftStatus(error.message); }
+}
+function ftSelected() { return [...$('ft-items').querySelectorAll('tbody input:checked')].map(box => box.value); }
+function ftJoin(name) { return ft.path ? ft.path + '/' + name : name; }
+const ftHints = {mkdir:'New folder name', rename:'New name', copy:'Destination folder, relative to the selected folder',
+  move:'Destination folder, relative to the selected folder', delete:'', organize:''};
+$('ft-action').onchange = () => {
+  const hint = ftHints[$('ft-action').value];
+  $('ft-value').placeholder = hint; $('ft-value').hidden = !hint;
+};
+$('ft-root').onchange = () => ftBrowse('');
+$('ft-up').onclick = () => ftBrowse(ft.path.split('/').slice(0, -1).join('/'));
+$('ft-search-form').onsubmit = async event => {
+  event.preventDefault();
+  const query = $('ft-search').value.trim();
+  if (!query) return ftBrowse(ft.path);
+  try {
+    const result = await ftCall({action:'search', root:ftRoot(), path:ft.path, query});
+    ft.searching = true;
+    ftRender(result.results.map(item => ({...item, size:0})));
+    ftStatus(result.results.length + ' matches' + (result.truncated ? ', search limit reached.' : '.'));
+  } catch (error) { ftStatus(error.message); }
+};
+$('ft-prepare').onclick = async () => {
+  const task = $('ft-action').value, value = $('ft-value').value.trim(), paths = ftSelected();
+  const spec = task === 'mkdir' ? {path:ftJoin(value)} : task === 'rename' ? {path:paths[0], new_name:value} :
+    task === 'organize' ? {path:ft.path} : task === 'delete' ? {paths} : {paths, destination:value};
+  if (task === 'rename' && paths.length !== 1) return ftStatus('Select exactly one item to rename.');
+  if (['copy', 'move', 'delete'].includes(task) && !paths.length) return ftStatus('Select at least one item.');
+  try {
+    const result = await ftCall({action:'prepare', root:ftRoot(), task, spec});
+    $('ft-preview').textContent = result.preview; $('ft-preview').hidden = false;
+    ftStatus('Review every step, then use Confirm in the authorisation banner. Nothing has changed yet.');
+    if (result.pending) setPending(result.pending);
+  } catch (error) { $('ft-preview').hidden = true; ftStatus(error.message); }
+};
+async function ftJobAction(action, job_id) {
+  try {
+    const result = await ftCall({action, job_id});
+    if (result.pending) setPending(result.pending);
+    ftStatus(result.pending ? 'Review the steps in the authorisation banner.' : result.message);
+  } catch (error) { ftStatus(error.message); }
+}
+$('ft-history-load').onclick = async () => {
+  try {
+    const result = await ftCall({action:'jobs'});
+    const list = $('ft-history'); list.replaceChildren();
+    for (const job of result.jobs) {
+      const item = el('li', '', `${job.action}: ${job.state}, ${job.done} of ${job.steps} steps` + (job.error ? `. ${job.error}` : '') + ' ');
+      item.title = job.summary;
+      if (['failed', 'interrupted', 'preview'].includes(job.state)) {
+        const resume = el('button', '', 'Resume'); resume.type = 'button'; resume.onclick = () => ftJobAction('resume', job.id); item.appendChild(resume);
+      }
+      if (job.done && job.state !== 'undone') {
+        const undo = el('button', '', 'Undo'); undo.type = 'button'; undo.onclick = () => ftJobAction('undo', job.id); item.appendChild(undo);
+      }
+      list.appendChild(item);
+    }
+    if (!result.jobs.length) list.appendChild(el('li', '', 'No file tasks yet.'));
+  } catch (error) { ftStatus(error.message); }
+};
+$('file-tasks').addEventListener('toggle', () => { if ($('file-tasks').open) ftLoadRoots(); });
 </script>
 </body>
 </html>

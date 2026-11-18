@@ -26,6 +26,14 @@ _LANG_EXT = {"python": ".py", "javascript": ".js", "html": ".html", "css": ".css
 _brain = None  # set by the app so skills can ask the coding model
 
 
+def _reserved_name(part):
+    """True for Windows device names such as CON or NUL, on every platform."""
+    import ntpath
+    if hasattr(ntpath, "isreserved"):
+        return ntpath.isreserved(part)
+    return PureWindowsPath(part).is_reserved()
+
+
 def attach(brain):
     global _brain
     _brain = brain
@@ -42,7 +50,7 @@ def _safe_path(cfg, filename) -> Path:
     root = code_dir(cfg).resolve()
     relative = PureWindowsPath(filename)
     if relative.anchor or ".." in relative.parts or any(
-        ":" in part or PureWindowsPath(part).is_reserved() for part in relative.parts
+        ":" in part or _reserved_name(part) for part in relative.parts
     ):
         raise ValueError("Use a relative path inside the code folder.")
     path = root.joinpath(*relative.parts).resolve()
