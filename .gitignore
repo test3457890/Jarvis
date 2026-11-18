@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.db
+*.bak
+*.log
+secrets.bin
+actions.log
+canvas.ics
+*.ics
+config.json
+notes/
+HANDOFF.md
+.env
