@@ -173,12 +173,14 @@ your browser. The HUD's Project NOMAD panel shows which default service ports re
    With default ports, they use `:8080` and `:8090` respectively.
 3. If both are on the same machine and reachable over loopback, use the defaults.
    If NOMAD runs on another machine, set `nomad_url` in
-   `%APPDATA%\Jarvis\config.json` to its Command Center address. For example, merge
-   these entries into your settings for a host at the example address `192.168.1.50`:
+   `%APPDATA%\Jarvis\config.json` on your PC to the NOMAD server's own IP address
+   or hostname, followed by its Command Center port. Replace `NOMAD_HOST` below
+   with the address assigned to your NOMAD server. Keep the real address in your
+   local settings. The repository contains only this placeholder.
 
    ```json
    {
-     "nomad_url": "http://192.168.1.50:8080",
+     "nomad_url": "http://NOMAD_HOST:8080",
      "kiwix_url": ""
    }
    ```
