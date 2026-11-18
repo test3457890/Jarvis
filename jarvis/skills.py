@@ -354,8 +354,9 @@ def open_file(ctx, path):
     return f"Opened {p.name}."
 
 
-@skill("Open a website in the browser (needs internet to load the page).",
-       params={"site": ("string", "A URL or site name like youtube", True)})
+@skill("Open a website in the browser after approval (needs internet to load the page).",
+       params={"site": ("string", "A URL or site name like youtube", True)}, risky=True, internet=True,
+       preview=lambda ctx, site: "open this website in your browser: " + site)
 def open_website(ctx, site):
     s = site.strip()
     if not re.match(r"^https?://", s):

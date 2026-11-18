@@ -348,6 +348,19 @@ class App:
             return
         self.handle(command, room_context, "voice")
 
+    def submit_request(self, text):
+        if text.strip().casefold().rstrip('.!?') in ("stop", "/stop", "cancel reply"):
+            self.handle(text)
+            return True
+        if not self._turn_lock.acquire(blocking=False):
+            return False
+        try:
+            threading.Thread(target=self._run_handle, args=(text, "", "typed"), daemon=True).start()
+        except BaseException:
+            self._turn_lock.release()
+            raise
+        return True
+
     def handle(self, text, room_context="", via="typed"):
         if text.strip().casefold().rstrip('.!?') in ("stop", "/stop", "cancel reply"):
             self.stop()
@@ -356,6 +369,9 @@ class App:
         if not self._turn_lock.acquire(blocking=False):
             self.emit("system", "Jarvis is working. Use Stop before starting another request.")
             return "Jarvis is working."
+        return self._run_handle(text, room_context, via)
+
+    def _run_handle(self, text, room_context, via):
         try:
             self._stream_spoken = 0
             self._allow_stream_speech = bool(self.cfg.get("mode") == "talk" and self.cfg.get("speak_replies"))

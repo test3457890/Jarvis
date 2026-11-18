@@ -145,7 +145,8 @@ def serve(app, port: int):
                 text = str(data.get("text", "")).strip()[:4000]
                 if not text:
                     return self._json({"error": "empty"}, 400)
-                threading.Thread(target=app.handle, args=(text, "", "typed"), daemon=True).start()
+                if not app.submit_request(text):
+                    return self._json({"error": "Jarvis is working. Use Stop before starting another request."}, 409)
                 self._json({"ok": True})
             elif self.path == "/api/stop":
                 self._json(app.stop())

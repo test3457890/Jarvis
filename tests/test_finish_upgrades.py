@@ -185,3 +185,24 @@ def test_multiple_sources_are_read_only_after_approval(isolated_app):
         assert read.call_count==2
         assert 'https://one.example/source' in result and 'https://two.example/source' in result
         assert 'Disputed' in result
+
+
+def test_busy_submission_preserves_request_and_browser_needs_confirmation(isolated_app, monkeypatch):
+    cfg, _, ctx, _ = isolated_app
+    monkeypatch.setattr(App,'_watchdog',lambda _:None)
+    app=App(cfg,use_voice=False)
+    app._turn_lock.acquire()
+    try:
+        assert not app.submit_request('A request that should stay in the input')
+        assert app.submit_request('/stop')
+        assert app.brain.cancelled.is_set()
+    finally:
+        app._turn_lock.release()
+    cfg['allow_internet_tools']=True
+    with patch('jarvis.skills.webbrowser.open') as open_browser:
+        result=skills.run(ctx,'open_website',{'site':'example.org'})
+        assert 'NOT DONE YET' in result
+        open_browser.assert_not_called()
+        skills.run(ctx,'open_website',{'site':'example.org'},confirmed=True)
+        open_browser.assert_called_once_with('https://example.org')
+    app.memory.db.close()
