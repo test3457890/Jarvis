@@ -41,3 +41,36 @@ def test_windows_updater_and_restore(tmp_path):
     result=subprocess.run(['pwsh','-NoProfile','-File',str(home/'upgrade.ps1'),'-Restore',str(backup)],env=env,capture_output=True,text=True)
     assert result.returncode==0,result.stdout+result.stderr
     assert original.read_text()=='# previous version\n'
+
+
+@pytest.mark.skipif(os.name!='nt',reason='Windows updater failure recovery')
+def test_windows_updater_rolls_back_a_partial_copy(tmp_path):
+    import shutil
+    home=tmp_path/'installed'
+    (home/'jarvis').mkdir(parents=True)
+    updater=Path(__file__).parents[1]/'upgrade.ps1'
+    shutil.copy(updater,home/'upgrade.ps1')
+    (home/'jarvis'/'__main__.py').write_text('previous main')
+    (home/'README.md').write_text('previous readme')
+    content={'jarvis/__main__.py':b'new main','README.md':b'new readme'}
+    manifest={'version':'test','files':{name:hashlib.sha256(data).hexdigest() for name,data in content.items()}}
+    archive=tmp_path/'update.zip'
+    with zipfile.ZipFile(archive,'w') as bundle:
+        for name,data in content.items():
+            bundle.writestr('Jarvis/'+name,data)
+        bundle.writestr('Jarvis/release-manifest.json',json.dumps(manifest))
+    wrapper=tmp_path/'inject failure.ps1'
+    wrapper.write_text(r'''
+param([string] $Updater, [string] $Package, [string] $Checksum)
+function Copy-Item {
+    param([string] $LiteralPath, [string] $Destination, [switch] $Force)
+    if ($LiteralPath -like '*Jarvis Update*README.md') { throw 'Simulated failure during publication' }
+    Microsoft.PowerShell.Management\Copy-Item -LiteralPath $LiteralPath -Destination $Destination -Force:$Force
+}
+& $Updater -Package $Package -Checksum $Checksum
+''')
+    env={**os.environ,'APPDATA':str(tmp_path/'appdata')}
+    result=subprocess.run(['pwsh','-NoProfile','-File',str(wrapper),'-Updater',str(home/'upgrade.ps1'),'-Package',str(archive),'-Checksum',hashlib.sha256(archive.read_bytes()).hexdigest()],env=env,capture_output=True,text=True)
+    assert result.returncode!=0
+    assert (home/'jarvis'/'__main__.py').read_text()=='previous main'
+    assert (home/'README.md').read_text()=='previous readme'
