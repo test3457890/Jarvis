@@ -12,6 +12,7 @@ from jarvis.brain import Brain
 
 def load_voice(monkeypatch):
     monkeypatch.setitem(sys.modules, "winsound", MagicMock())
+    monkeypatch.setitem(sys.modules, "numpy", MagicMock())
     spec = importlib.util.spec_from_file_location("voice_profiles", Path(__file__).parents[1] / "jarvis" / "voice.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
