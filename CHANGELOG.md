@@ -2,7 +2,12 @@
 
 All notable changes to Jarvis. Each release adds a section here before it is tagged.
 
-## 1.2.0 (unreleased)
+## 1.2.1
+- Coding mode retries one patch with the model when its SEARCH text does not match or its edit format is invalid. Neither attempt writes files before preview and Apply.
+- Requests selecting more than six editable files now report the limit instead of silently ignoring files.
+- Added a coding guide with tested behavior and current limits. Release ZIPs now contain the screenshots referenced by the README.
+
+## 1.2.0
 
 ### Windows installation and first launch
 - `Jarvis.bat` is no longer shipped or required. `install.ps1` creates Start menu and folder shortcuts
