@@ -1,7 +1,7 @@
 """Central network allowlist tests (fail-closed)."""
 import pytest
 
-from jarvis import net, secure
+from jarvis import net
 
 
 def test_allowlist_permits_local_ollama_and_nomad(isolated_app):
@@ -32,12 +32,12 @@ def test_wikipedia_allowed_only_when_internet_tools_enabled(isolated_app):
         net.check_url("https://other-site.org/api", cfg)
 
 
-def test_canvas_host_allowed_only_when_configured(isolated_app):
+def test_canvas_host_allowed_only_when_configured(isolated_app, mock_canvas_secret):
     cfg, _, _, _ = isolated_app
     with pytest.raises(net.NetworkBlockedError):
         net.check_url("https://canvas.university.edu/feeds/calendars/user_123.ics", cfg)
 
-    secure.set_secret("canvas_feed_url", "https://canvas.university.edu/feeds/calendars/user_123.ics")
+    mock_canvas_secret("https://canvas.university.edu/feeds/calendars/user_123.ics")
     assert net.check_url("https://canvas.university.edu/feeds/calendars/user_123.ics", cfg)
     assert net.check_url("https://canvas.university.edu/api/v1/planner/items", cfg)
     with pytest.raises(net.NetworkBlockedError):

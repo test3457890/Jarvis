@@ -163,6 +163,15 @@ right), copy the link, and paste it into `Jarvis.bat setup`.
 `%APPDATA%\Jarvis\config.json` to that machine's address. In NOMAD's Command Center
 you can add a link tile pointing to `http://127.0.0.1:8765`.
 
+## Verify an installation
+
+Run `Jarvis.bat doctor` after setup to check the models and voice dependencies.
+On Windows, try both assistants from the HUD, use Try voice, and say a wake word.
+Verify any enabled online service with a public test query or a throwaway file.
+
+The GitHub test workflow runs `python -m pytest -q` on both Windows and Linux.
+It uses mock responses for online services and tests native DPAPI on Windows.
+
 ## Inspired by (ideas re-implemented, no code copied)
 [CS50 Jarvis](https://github.com/diegofcn/Jarvis-CS50-Final-Project) ·
 [OpenJarvis](https://github.com/open-jarvis/OpenJarvis) ·

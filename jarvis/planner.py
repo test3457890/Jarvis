@@ -518,7 +518,8 @@ def export_calendar(ctx):
                   f"DTEND:{stamp(due)}", f"SUMMARY:{esc('DUE: ' + title)}", "END:VEVENT"]
     lines.append("END:VCALENDAR")
     path = Path.home() / "Documents" / "Jarvis Calendar.ics"
-    path.write_text("\r\n".join(lines), encoding="utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(("\r\n".join(lines) + "\r\n").encode("utf-8"))
     return f"Exported {len(rows) + len(tasks)} items to {path}. Open it to add them to your calendar."
 
 
