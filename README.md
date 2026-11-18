@@ -2,7 +2,10 @@
 
 A movie-style AI assistant that runs entirely on your own PC. The brain (`qwen3:8b`),
 speech, voice, memory and planner are all local. It works with the internet unplugged,
-and it's built to pair with [Project NOMAD](https://www.projectnomad.us).
+and it can use [Project NOMAD](https://www.projectnomad.us) as an optional offline
+knowledge library.
+
+[Install Jarvis](#install-once) · [Set up Project NOMAD](#project-nomad-integration) · [Jarvis and Tuki](#jarvis-and-tuki)
 
 ## Screenshots
 
@@ -36,11 +39,6 @@ and it's built to pair with [Project NOMAD](https://www.projectnomad.us).
   last applied change if the file has stayed the same. You can include up to three other files
   from the code workspace as read-only context.
 - Runs supported files only after confirmation. The syntax check does not execute code.
-
-**Project NOMAD**
-- Searches NOMAD's offline library (Wikipedia, medical, repair guides).
-- Opens NOMAD's maps, Khan Academy, notes and other services.
-- Shows NOMAD's status on the HUD.
 
 **Feels like the movies**
 - Boot sequence, arc-reactor HUD, live CPU/GPU/RAM gauges, today's schedule, deadlines.
@@ -159,9 +157,42 @@ right), copy the link, and paste it into `Jarvis.bat setup`.
 
 **Phone calls and texts:** set up the **Phone Link** app with your phone once.
 
-**Project NOMAD on another machine:** set `nomad_url` in
-`%APPDATA%\Jarvis\config.json` to that machine's address. In NOMAD's Command Center
-you can add a link tile pointing to `http://127.0.0.1:8765`.
+## Project NOMAD integration
+
+[Project NOMAD](https://github.com/Crosstalk-Solutions/project-nomad) is a separate,
+optional server. It hosts the offline content you download. Jarvis can search its
+Kiwix library, read an excerpt from a matching article, and use that excerpt in a reply.
+Jarvis can also open installed NOMAD services such as maps, education, or notes in
+your browser. The HUD's Project NOMAD panel shows which default service ports respond.
+
+### Connect Jarvis to NOMAD
+
+1. Start NOMAD and install the Kiwix service and at least one searchable content
+   pack in the NOMAD Command Center.
+2. On the PC running Jarvis, open the NOMAD Command Center and Kiwix in your browser.
+   With default ports, they use `:8080` and `:8090` respectively.
+3. If both are on the same machine and reachable over loopback, use the defaults.
+   If NOMAD runs on another machine, set `nomad_url` in
+   `%APPDATA%\Jarvis\config.json` to its Command Center address. For example, merge
+   these entries into your settings for a host at the example address `192.168.1.50`:
+
+   ```json
+   {
+     "nomad_url": "http://192.168.1.50:8080",
+     "kiwix_url": ""
+   }
+   ```
+
+   Leave `kiwix_url` empty to search port `8090` on the same host. If your Kiwix
+   service uses a different URL, set `kiwix_url` to that service's base address.
+4. Restart Jarvis and run `Jarvis.bat doctor`. Try “Jarvis, search the offline library
+   for how a compass works” or “Jarvis, open NOMAD maps.”
+
+NOMAD library queries go directly to the configured Kiwix server and work with
+Jarvis's Internet toggle off. A NOMAD server on a second machine still needs a reachable
+local network connection. Search coverage and freshness depend on your downloaded
+content. Jarvis and Tuki continue to use the Ollama server set in `ollama_url`,
+which is separate from the NOMAD connection.
 
 ## Verify an installation
 
