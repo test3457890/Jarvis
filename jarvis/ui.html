@@ -148,7 +148,8 @@
   #boot { position:fixed; inset:0; background:var(--bg); z-index:10; display:flex; align-items:center; justify-content:center; transition:opacity .6s; }
   #boot pre { font:500 13px/1.8 var(--hud); color:var(--cyan); letter-spacing:.12em; min-width:min(520px,90vw); }
   #boot.done { opacity:0; pointer-events:none; }
-  body[data-theme=simple], body[data-theme=light] {
+  body[data-theme=simple], body[data-theme=light], body[data-theme=contrast],
+  body[data-theme=midnight], body[data-theme=paper] {
     --bg:#171a21; --panel:#21252e; --line:#414958; --line2:#63718a; --cyan:#a6c9ff;
     --cyan2:#c5dcff; --text:#f1f4fa; --dim:#acb5c7; --warn:#ffc77f;
     --hud:"Segoe UI",system-ui,sans-serif; --body:"Segoe UI",system-ui,sans-serif;
@@ -157,6 +158,17 @@
   body[data-theme=light] { --bg:#f1f3f8; --panel:#fff; --line:#bac6d9; --line2:#798aaa;
     --cyan:#2355a1; --cyan2:#153d7a; --text:#1d2b40; --dim:#52647f; --warn:#804600;
     --red:#a72636; --ok:#14784c; }
+  body[data-theme=contrast] { --bg:#000; --panel:#0b0b0b; --line:#9a9a9a; --line2:#fff; --cyan:#ffe14d;
+    --cyan2:#ffe14d; --text:#fff; --dim:#d6d6d6; --warn:#ffb000; --red:#ff7b7b; --ok:#7dffa8; }
+  body[data-theme=contrast] .msg.user { background:#1c1c1c; border:1px solid #fff; }
+  body[data-theme=contrast] button, body[data-theme=contrast] select { border-width:2px; }
+  body[data-theme=contrast] :focus-visible { outline:3px solid #ffe14d; }
+  body[data-theme=midnight] { --bg:#101327; --panel:#181c36; --line:#343b66; --line2:#5c66a3; --cyan:#b9b2ff;
+    --cyan2:#d8d4ff; --text:#eceefd; --dim:#aab0d6; --warn:#ffcf8a; --red:#ff9aa5; --ok:#8af0c0; }
+  body[data-theme=midnight] .msg.user { background:#262c52; }
+  body[data-theme=paper] { --bg:#f6f1e7; --panel:#fffdf8; --line:#d8ccb4; --line2:#8c7a5a; --cyan:#7a3d12;
+    --cyan2:#5c2b08; --text:#2c2218; --dim:#5f5140; --warn:#7a4a00; --red:#a12a2a; --ok:#256b3c; }
+  body[data-theme=paper] .msg.user { background:#efe5d2; }
   body[data-theme=simple] .msg.user { background:#303b50; }
   body[data-theme=light] .msg.user { background:#eaf1fc; }
   body:not([data-theme=hud]) .msg.jarvis, body:not([data-theme=hud]) input { background:var(--panel); }
@@ -231,7 +243,8 @@
       <label>Assistant <select id="assistant"><option value="auto">Auto</option>
         <option value="jarvis">Jarvis</option><option value="tuki">__JARVIS_TUKI_NAME__</option></select></label>
       <label>Theme <select id="theme"><option value="hud">Sci-fi HUD</option><option value="simple">Simple dark</option>
-        <option value="light">Simple light</option></select></label>
+        <option value="light">Simple light</option><option value="contrast">High contrast</option>
+        <option value="midnight">Midnight</option><option value="paper">Paper</option></select></label>
       <label>Voice <select id="voice_choice"><option value="auto">Automatic</option>
         <option value="windows">Windows</option><option value="piper">Piper</option></select></label>
       <button id="voice-preview" type="button">Try voice</button>

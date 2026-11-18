@@ -83,6 +83,7 @@ def test_release_has_no_batch_launcher_and_ships_diagnostics(tmp_path):
         names = bundle.namelist()
     assert not any(name.lower().endswith(('.bat', '.cmd', '.exe', '.vbs')) for name in names)
     assert 'Jarvis/scripts/check_defender.ps1' in names and 'Jarvis/jarvis/setupwizard.py' in names
+    assert 'Jarvis/CHANGELOG.md' in names and 'Jarvis/AGENTS.md' in names
 
 
 @pytest.mark.skipif(os.name != 'nt', reason='Windows installer integration')

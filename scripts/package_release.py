@@ -13,7 +13,7 @@ def build(output):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     names = ('README.md', 'LICENSE', 'requirements.txt', 'install.ps1', 'upgrade.ps1', 'CHANGELOG.md', 'AGENTS.md')
-    paths = [ROOT / name for name in names if (ROOT / name).exists()]
+    paths = [ROOT / name for name in names]
     paths += sorted((ROOT / 'jarvis').glob('*.py'))
     paths += [ROOT / 'jarvis' / 'ui.html', ROOT / 'scripts' / 'benchmark.py', ROOT / 'scripts' / 'check_defender.ps1']
     paths += sorted((ROOT / 'docs').glob('*.md'))
