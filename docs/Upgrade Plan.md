@@ -1,6 +1,8 @@
-# Jarvis upgrade status
+# Jarvis upgrade status (1.1.x, historical)
 
-The 1.1.0 release provides the following upgrades.
+This page records what 1.1.0 and 1.1.1 delivered. For 1.2.0 and later, see
+[CHANGELOG.md](../CHANGELOG.md) and the known limitations in [AGENTS.md](../AGENTS.md).
+Desktop file tasks in selected folders, the setup wizard and the direct launcher arrived in 1.2.0.
 
 | Area | Delivered behavior |
 |---|---|

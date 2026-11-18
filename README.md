@@ -5,7 +5,9 @@ speech, voice, memory and planner are all local. It works with the internet unpl
 and it can use [Project NOMAD](https://www.projectnomad.us) as an optional offline
 knowledge library.
 
-[Install Jarvis](#install-once) · [Set up Project NOMAD](#project-nomad-integration) · [Jarvis and TUKI](#jarvis-and-tuki) · [Images](#images)
+[Install Jarvis](#install-once) · [First launch](#first-launch-setup-wizard) · [File tasks](#file-tasks-in-selected-folders) · [Jarvis and TUKI](#jarvis-and-tuki) · [Project NOMAD](#project-nomad-integration) · [What is in this repository](#what-is-in-this-repository)
+
+Current version: 1.2.0. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Screenshots
 
@@ -17,7 +19,16 @@ knowledge library.
 |---|---|---|
 | ![Talk mode with the Simple Light theme](docs/screenshots/talk-light.png) | ![TUKI showing a proposed code fix](docs/screenshots/coding-diff.png) | ![Images panel with a demonstration PNG](docs/screenshots/image-tools.png) |
 
-The new screenshots use synthetic conversation and sample image data.
+| Setup wizard | File tasks | Multi-file coding preview |
+|---|---|---|
+| ![First-run setup wizard](docs/screenshots/setup-wizard.png) | ![File task preview with confirmation](docs/screenshots/file-tasks.png) | ![TUKI previewing a change to two files](docs/screenshots/coding-diff.png) |
+
+| TUKI voice and confidence | Themes: High contrast, Midnight, Paper | Phone-width layout |
+|---|---|---|
+| ![TUKI voice preview and a labelled answer](docs/screenshots/tuki-voice.png) | ![Three new themes](docs/screenshots/themes.png) | ![HUD at 390 px wide](docs/screenshots/mobile.png) |
+
+Screenshots use synthetic conversation, sample files and stubbed model replies, captured by
+`python -m scripts.capture_hud`.
 
 ## What it does
 
@@ -40,11 +51,14 @@ The new screenshots use synthetic conversation and sample image data.
 
 **Codes**
 - Writes and fixes source files in `Documents\Jarvis Code` using a local Ollama coding model.
-- Checks generated Python syntax before saving and keeps the previous version in a `.bak` file.
-- Coding mode previews edits before saving. Apply saves the exact preview and Undo restores the
-  last applied change if the file has stayed the same. You can include up to three other files
-  from the code workspace as read-only context.
-- Runs supported files only after confirmation. The syntax check does not execute code.
+- Asks the model for focused edits (exact search and replace blocks) instead of whole-file rewrites.
+  An edit that does not match exactly once is rejected and nothing is saved.
+- Previews changes to several files together: `/fix budget.py, helpers.py | change | rules.txt`.
+  The model also sees a read-only list of the project's files and its test command.
+- Checks Python, JSON and JavaScript syntax without running anything. Apply saves every file or none
+  and keeps `.bak` copies. Undo restores all files from the last applied change if they are unchanged.
+- `/test` shows the exact test command and runs it only after you confirm. `/fix-tests file` sends the
+  failure output back to TUKI for a new preview. Generated code never runs without your approval.
 
 **Feels like the movies**
 - Boot sequence, arc-reactor HUD, live CPU/GPU/RAM gauges, today's schedule, deadlines.
@@ -58,6 +72,13 @@ name in the assistant controls. Choose Auto, Jarvis, or TUKI in the Assistant me
 The mode and theme settings are separate.
 Both assistants share the conversation and voice settings. The HUD shows who answered
 and which local model handled the turn.
+
+TUKI speaks with its own voice. With TUKI voice on Automatic, it picks an installed Windows voice
+different from Jarvis's (for example Zira or Aria), or uses a Piper model set in
+`python -m jarvis setup`. With only one Windows voice installed it uses that voice at a different
+speed. Use **Try TUKI voice** to hear it and see which voice was chosen. TUKI's technical answers
+end with a confidence line and what was checked in that turn, or a note that the answer comes from
+the model's own knowledge.
 
 | Assistant | Best for | Default Ollama model |
 |---|---|---|
@@ -94,12 +115,14 @@ Use the Mode menu in the HUD or say “Jarvis, switch to Coding mode.”
 | Briefing | A shortcut to read your current briefing and a concise style for planning. |
 | Talk | A chat-only view with no action tools or spoken background reminders. |
 
-Choose Sci-fi HUD, Simple dark, or Simple light independently. Use the Voice toggle to mute
+Choose a theme independently of the mode: Sci-fi HUD, Simple dark, Simple light, High contrast,
+Midnight or Paper. The choice is saved. Every theme's text colours are checked automatically for at
+least 4.5:1 contrast (7:1 for body text in High contrast). Use the Voice toggle to mute
 responses, the Mic toggle to pause listening, and Try voice to hear a sample. Jarvis can use a
 Windows voice such as George if installed, or a local Piper voice such as `en_GB-alan-medium`.
-Set the local Piper model path in `Jarvis.bat setup` and select Piper in the HUD.
+Set the local Piper model path in `python -m jarvis setup` and select Piper in the HUD.
 
-`Jarvis.bat --mode talk --theme simple` opens a minimal talk view. For coding, type
+`python -m jarvis --mode talk --theme simple` opens a minimal talk view. For coding, type
 `/fix budget.py | handle empty input | rules.txt` to select a target and an optional related file.
 Use `/diff`, `/apply`, or `/undo`, or the corresponding HUD buttons.
 
@@ -115,7 +138,7 @@ including the last Canvas sync.
 An all-day event appears on each date it covers. A calendar entry marked as free
 stays visible and leaves that time available for study.
 
-You can do the same from the HUD message box or from `Jarvis.bat --text`.
+You can do the same from the HUD message box or from `python -m jarvis --text`.
 
 | Command | Example |
 |---|---|
@@ -145,7 +168,7 @@ Jarvis folder with `.\.venv\Scripts\python.exe -m pip install -r requirements.tx
 |---|---|---|
 | Web image search | Shows Brave image sources and thumbnails when Brave's image proxy provides them. Jarvis shows the search terms for approval before sending them. | Configure Brave Search, then turn Internet on. |
 | Local image lookup | Describe a PNG, JPEG or WebP or ask about its visible details. The selected image goes to Ollama on this PC. | Run `ollama pull gemma3:4b`, or configure another vision model in `vision_model`. |
-| Local generation | Sends a prompt to your local Stable Diffusion backend. Choose Draft, Balanced, or High and download the PNG from the HUD. | Run [Stable Diffusion WebUI](https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/API) with its API enabled, load a checkpoint, and enter `http://127.0.0.1:7860` as the generation API URL in `Jarvis.bat setup`. |
+| Local generation | Sends a prompt to your local Stable Diffusion backend. Choose Draft, Balanced, or High and download the PNG from the HUD. | Run [Stable Diffusion WebUI](https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/API) with its API enabled, load a checkpoint, and enter `http://127.0.0.1:7860` as the generation API URL in `python -m jarvis setup`. |
 
 Local lookup and generation work with Internet off after you install the model and
 backend. Image lookup describes a selected image. Web image search searches by
@@ -157,7 +180,7 @@ your hardware. Check the source and its usage terms before reusing a search resu
 
 ## Optional online tools
 
-Jarvis starts offline. Use `Jarvis.bat setup` on Windows to configure the services you want.
+Jarvis starts offline. Run `python -m jarvis setup` from the Jarvis folder to configure the services you want.
 Keys are entered through hidden prompts and stored with Windows DPAPI.
 
 - [Brave Search](https://api-dashboard.search.brave.com/) provides public web results.
@@ -201,11 +224,47 @@ Keys are entered through hidden prompts and stored with Windows DPAPI.
 Licensed under the [Apache License 2.0](LICENSE).
 
 ## Install (once)
-```
+
+1. Install [Python 3.12](https://www.python.org/downloads/) with "Add Python to PATH", and
+   [Ollama](https://ollama.com/download).
+2. Extract the release ZIP to a short path such as `Documents\Jarvis`. Windows can't load some of
+   the voice libraries from very long paths.
+3. In that folder run:
+
+```powershell
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
-Keep this folder at a short path such as `Documents\Jarvis`. Windows can't load
-some of the voice libraries from very long paths.
+
+This creates the Python environment, installs packages and adds a **Jarvis** Start menu shortcut and a
+**Start Jarvis** shortcut in the folder. The shortcuts start `.venv\Scripts\python.exe -m jarvis`
+directly. There is no batch file. If you prefer PowerShell, run this from the Jarvis folder:
+
+```powershell
+& .\.venv\Scripts\python.exe -m jarvis
+```
+
+Options: `-Profile low-memory` saves the 8 GB profile, `-DownloadModels` downloads models in the
+script instead of the wizard, `-DesktopShortcut` adds a desktop shortcut, `-NoShortcut` skips them.
+Running `install.ps1` again repairs the install and keeps your settings.
+
+The release is not code-signed. If Microsoft Defender or SmartScreen reacts to the download, see
+[docs/WindowsDefender.md](docs/WindowsDefender.md). Do not disable Defender or add exclusions.
+
+## First launch setup wizard
+
+The first time Jarvis starts, the HUD opens a setup wizard. Reopen it later from Setup.
+
+- **Prerequisites:** Python, Ollama installed and running, speech and microphone packages, microphone.
+- **Profile and models:** Standard or 8 GB low memory, an optional image model, each download's
+  approximate size, whether it is already installed, and free space on the model drive.
+- **Storage budget:** enter a limit in GB. Jarvis warns and asks before starting downloads above it.
+  Ollama and the speech model cache are shared by every app on the PC, so Windows cannot give Jarvis
+  a hard per-app limit there. Jarvis checks the budget before each download starts.
+- **Voice, folders, coding workspace and online tools.**
+
+Downloads run in the background. If one fails, select **Resume setup**. Completed models are kept and
+Ollama resumes partial downloads. The wizard merges your choices into existing settings. It never
+erases your configuration. Existing installs are not interrupted by the wizard after upgrading.
 
 ## Low-memory setup
 
@@ -219,22 +278,26 @@ This selects smaller chat and coding models, a shorter context, base.en speech r
 and keyword memory recall. Chat models unload after each reply. This can reduce retained
 memory and adds model loading time on the next reply. Performance depends on your PC.
 
-The installer saves the profile after the model downloads finish. Existing users can switch
-with `Jarvis.bat --text --profile low-memory` after downloading those models. Use
+Choose the profile in the setup wizard, or switch with
+`python -m jarvis --text --profile low-memory` after downloading those models. Use
 `--profile standard` to restore the larger defaults. Profiles preserve your personal settings
 and select their own model names. Restart Jarvis after changing a profile through setup.
 
-See the [upgrade plan](docs/Upgrade%20Plan.md) for the remaining voice, document,
-fact-checking, desktop, memory, and release work.
+See [AGENTS.md](AGENTS.md) for known limitations and next tasks, and
+[docs/Benchmarks.md](docs/Benchmarks.md) for benchmark status. No 8 GB Windows benchmark has been
+recorded yet, so no speed or quality improvement is claimed.
 
 ## Use
+Use the **Jarvis** Start menu shortcut for voice plus the HUD. From the Jarvis folder in PowerShell,
+`python` below means `.\.venv\Scripts\python.exe`.
+
 | Command | What it does |
 |---|---|
-| `Jarvis.bat` | Voice plus the HUD |
-| `Jarvis.bat setup` | Your name, Canvas link, email (encrypted) |
-| `Jarvis.bat --text` | Type in the terminal |
-| `Jarvis.bat doctor` | Check everything |
-| `Jarvis.bat briefing` | Hear today's briefing |
+| `python -m jarvis` | Voice plus the HUD (what the shortcut runs) |
+| `python -m jarvis setup` | Your name, Canvas link, email and API keys (encrypted), voices |
+| `python -m jarvis --text` | Type in the terminal |
+| `python -m jarvis doctor` | Check everything |
+| `python -m jarvis briefing` | Hear today's briefing |
 
 Try saying: "Jarvis, plan my week." "What's falling behind?" "Email Professor Lee
 asking to move our meeting to Thursday afternoon." "Text Mom I'll be home at 6."
@@ -242,7 +305,7 @@ asking to move our meeting to Thursday afternoon." "Text Mom I'll be home at 6."
 sprain in the library."
 
 **Connecting Canvas:** in Canvas open **Calendar**, click **Calendar Feed** (bottom
-right), copy the link, and paste it into `Jarvis.bat setup`.
+right), copy the link, and paste it into `python -m jarvis setup`.
 
 **Phone calls and texts:** set up the **Phone Link** app with your phone once.
 
@@ -276,7 +339,7 @@ your browser. The HUD's Project NOMAD panel shows which default service ports re
 
    Leave `kiwix_url` empty to search port `8090` on the same host. If your Kiwix
    service uses a different URL, set `kiwix_url` to that service's base address.
-4. Restart Jarvis and run `Jarvis.bat doctor`. Try “Jarvis, search the offline library
+4. Restart Jarvis and run `python -m jarvis doctor`. Try “Jarvis, search the offline library
    for how a compass works” or “Jarvis, open NOMAD maps.”
 
 NOMAD library queries go directly to the configured Kiwix server and work with
@@ -287,7 +350,7 @@ which is separate from the NOMAD connection.
 
 ## Verify an installation
 
-Run `Jarvis.bat doctor` after setup to check the models and voice dependencies.
+Run `python -m jarvis doctor` after setup to check the models and voice dependencies.
 On Windows, try both assistants from the HUD, use Try voice, and say a wake word.
 Verify any enabled online service with a public test query or a throwaway file.
 
@@ -305,7 +368,7 @@ It uses mock responses for online services and tests native DPAPI on Windows.
 
 ## Document search and remembered facts
 
-Run `Jarvis.bat setup` and enter the folders you want to search. Open Documents and memory
+Choose document folders in the setup wizard (or `python -m jarvis setup`). Open Documents and memory
 below the chat to search their contents, or type `/docs compass navigation`. Text and Markdown
 results cite line ranges, PDFs cite pages, and Word files cite paragraphs or tables. Word page
 numbers depend on layout, so paragraph references are used. Scanned PDFs require OCR before
@@ -321,7 +384,25 @@ Export remembered facts downloads a JSON copy to your browser's download folder.
 manage remembered facts. The saved conversation history is separate, and prior conversation
 can still contain a fact you deleted. Backup, restore, and conversation deletion are available in the same panel.
 
-## Streaming, source pages and file tasks
+## File tasks in selected folders
+
+Open **File tasks** below the chat. It works only inside folders you chose for file tasks in the
+setup wizard, and never inside the Jarvis Code workspace.
+
+- Browse folders, find files by name, then select items.
+- Create a folder, rename, copy files, move items, delete (recoverable), or organise a folder into
+  Images, Documents, Audio, Video, Archives, Code and Other.
+- **Preview changes** lists every step exactly. Nothing changes until you select Confirm.
+- Existing files are never overwritten. Paths with `..`, drive letters, device names, links or
+  junctions are refused.
+- Deleted items move to a `.Jarvis Recycle` folder inside the same selected folder. Remove that
+  folder yourself in Explorer when you no longer need it.
+- Each step is saved in a task journal. After a failure, a permission error, Stop or a restart,
+  use **Show task history** to resume or undo. Undo checks every result first and is refused if
+  anything changed since the task ran.
+- Limits: 500 steps per task, 512 MiB per copied file, 2 GiB copied per task, 500 items listed.
+
+## Streaming, source pages and workspace file tasks
 
 Reply drafts stream into the HUD. Stop or Escape cancels the active reply and clears pending
 approvals. Talk mode speaks completed sentences as they arrive. Action modes speak after
@@ -357,8 +438,12 @@ after the main-branch test workflow succeeds. Verify the ZIP using the SHA256SUM
 Close Jarvis and run the updater from your existing program folder.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File upgrade.ps1 -Package "C:\Downloads\Jarvis1.1.1.zip" -Checksum "PASTE_SHA256_VALUE"
+powershell -ExecutionPolicy Bypass -File upgrade.ps1 -Package "C:\Downloads\Jarvis1.2.0.zip" -Checksum "PASTE_SHA256_VALUE"
 ```
+
+The updater replaces only shipped program files. Settings, data, credentials, `.venv` and models are
+left alone. An old `Jarvis.bat` stays in place but is no longer needed. Run `install.ps1` afterwards
+to refresh packages and create the shortcut.
 
 The updater reports the program-backup folder. Restore those shipped files when needed.
 
@@ -367,10 +452,28 @@ powershell -ExecutionPolicy Bypass -File upgrade.ps1 -Restore "PASTE_PROGRAM_BAC
 ```
 
 Source recovery restores shipped program files. Python packages and Ollama models have their
-own installation state. Run install.ps1 with your profile after updating to refresh dependencies,
-then run `Jarvis.bat doctor`. The ZIP contains source. Python, Ollama, speech models and optional
+own installation state. Run install.ps1 after updating to refresh dependencies,
+then run `python -m jarvis doctor`. The ZIP contains source. Python, Ollama, speech models and optional
 image-generation backends require installation.
 
 Run `python -m scripts.benchmark` in the installed environment to record real model timings
 and the tested hardware configuration. `--audio recording.wav --expected "Jarvis read my briefing"`
 also measures transcription error rate for that labelled recording. Reports are saved locally.
+
+
+## What is in this repository
+
+Some people ask about Jarvis "containers". This repository has **no Docker or other containers**.
+Jarvis runs as one Python process on your PC. What exists:
+
+| Component | What it is | Where |
+|---|---|---|
+| HUD panels | Sections of the browser page: Planner, Documents and memory, Setup, File tasks, Images, the setup wizard and the confirmation banner | `jarvis/ui.html` |
+| Controls | Mode, Assistant, Theme, Voice, TUKI voice, Try voice, Voice, Mic, Internet and Lockdown toggles, Stop | `jarvis/ui.html`, `jarvis/__main__.py` |
+| Assistants | Jarvis (everyday) and TUKI (technical), routed per message | `jarvis/assistants.py`, `jarvis/brain.py` |
+| Tools | Planner, email, calls, texts, documents, files, coding, search, images, NOMAD | `jarvis/skills.py` and modules listed in [AGENTS.md](AGENTS.md) |
+| Coding workspace | The only folder coding tools may edit | `Documents\Jarvis Code` |
+| Project NOMAD | A separate, optional offline server you install yourself. Its own installer runs its services. Jarvis only checks its ports and searches its Kiwix library | `jarvis/nomad.py` |
+
+Planned, not implemented: code signing, an MSI or MSIX installer, Windows Recycle Bin integration,
+OCR and persistent document indexing.

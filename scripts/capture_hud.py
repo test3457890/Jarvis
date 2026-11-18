@@ -42,6 +42,32 @@ def capture(app, base_url):
         page.screenshot(path=OUT / "setup-wizard.png")
         page.get_by_role("button", name="Close", exact=True).click()
         expect(page.locator("#wizard")).to_be_hidden()
+        tiles = []
+        for theme in ("contrast", "midnight", "paper"):
+            page.locator("#theme").select_option(theme)
+            expect(page.locator("body")).to_have_attribute("data-theme", theme)
+            tiles.append(Image.open(io.BytesIO(page.screenshot())).resize((720, 450)))
+        sheet = Image.new("RGB", (720 * 3, 450), "white")
+        for number, tile in enumerate(tiles):
+            sheet.paste(tile, (720 * number, 0))
+        sheet.save(OUT / "themes.png")
+
+        page.set_viewport_size({"width": 390, "height": 844})
+        overflow = page.evaluate("document.documentElement.scrollWidth - window.innerWidth")
+        assert overflow <= 1, f"mobile layout scrolls sideways by {overflow}px"
+        page.screenshot(path=OUT / "mobile.png")
+        page.set_viewport_size({"width": 1440, "height": 900})
+
+        page.locator("#theme").select_option("midnight")
+        page.get_by_role("button", name="Try TUKI voice").click()
+        expect(page.locator("#log .system").last).to_contain_text("TUKI is using Windows voice Microsoft Zira")
+        page.locator("#assistant").select_option("tuki")
+        page.locator("#q").fill("What is the derivative of x squared?")
+        page.locator("#q").press("Enter")
+        expect(page.locator("#log .jarvis").last).to_contain_text("Checked with")
+        page.screenshot(path=OUT / "tuki-voice.png")
+        page.locator("#assistant").select_option("auto")
+
         page.locator("#theme").select_option("light")
         expect(page.locator("body")).to_have_attribute("data-theme", "light")
         page.locator("#mode").select_option("talk")
@@ -55,12 +81,12 @@ def capture(app, base_url):
         expect(page.locator("body")).to_have_attribute("data-mode", "coding")
         page.locator("#theme").select_option("simple")
         expect(page.locator("body")).to_have_attribute("data-theme", "simple")
-        page.locator("#q").fill("/fix budget.py | handle empty input")
+        page.locator("#q").fill("/fix budget.py | handle empty input and add a test")
         page.locator("#q").press("Enter")
         expect(page.get_by_text("Preview only.", exact=False)).to_be_visible()
         page.screenshot(path=OUT / "coding-diff.png")
         page.get_by_role("button", name="Apply proposal").click()
-        expect(page.get_by_text("Updated budget.py.", exact=False)).to_be_visible()
+        expect(page.get_by_text("Updated budget.py, test_budget.py.", exact=False)).to_be_visible()
 
         page.locator("#mode").select_option("everyday")
         page.locator("#file-tasks summary").click()
@@ -163,11 +189,18 @@ def main():
                 patch.object(memory, "APP_DIR", home), patch.object(memory, "DB_PATH", home / "memory.db"):
             app = App(cfg, use_voice=False)
             app.brain.embed = lambda text: None
-            app.brain._chat = lambda messages, use_tools: {"content": "Of course."}
             app.brain.raw_chat = lambda messages, model: (
-                "```python\ndef total(values):\n    if not values:\n        return 0\n"
-                "    return sum(values) / len(values)\n```"
+                "FILE: budget.py\n<<<<<<< SEARCH\n    return sum(values) / len(values)\n=======\n"
+                "    if not values:\n        return 0\n    return sum(values) / len(values)\n>>>>>>> REPLACE\n"
+                "FILE: test_budget.py\n<<<<<<< SEARCH\n=======\nfrom budget import total\n\n\n"
+                "def test_empty():\n    assert total([]) == 0\n>>>>>>> REPLACE\n"
             )
+            from unittest.mock import MagicMock
+            app.speaker = MagicMock()
+            app.speaker.describe.return_value = "Windows voice Microsoft Zira"
+            app.brain._chat = lambda messages, use_tools: {"content": (
+                "The derivative of x squared is 2x, by the power rule.\nConfidence: high, standard calculus rule."
+                if "TUKI" in messages[0]["content"] else "Of course.")}
             app.image_operation = lambda kind, data: {"name": "sample-landscape.png", "image": artwork()}
             with socket.socket() as listener:
                 listener.bind(("127.0.0.1", 0))
