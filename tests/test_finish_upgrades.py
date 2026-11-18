@@ -34,6 +34,9 @@ def test_stream_requires_completion_before_tools_and_reports_timing(isolated_app
     assert metrics[0]['output_tokens'] == 3
     with pytest.raises(OllamaError, match='before completion'):
         brain._read_stream(stream({'message':{'tool_calls':[{'function':{'name':'tell_joke'}}]}}), {'model':'test'})
+    with pytest.raises(OllamaError, match='output limit'):
+        brain._read_stream(stream({'message':{'tool_calls':[{'function':{'name':'tell_joke'}}]},
+                                   'done':True, 'done_reason':'length'}), {'model':'test'})
     brain.cancelled.set()
     with pytest.raises(OllamaError, match='Stopped'):
         brain._read_stream(stream({'done':True}), {'model':'test'})

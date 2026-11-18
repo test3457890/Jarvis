@@ -27,7 +27,9 @@ def test_stop_drains_speech_queue_and_interrupts_worker(monkeypatch):
     speaker._windows_voice=lambda:engine
     original=speaker._q.get
     count=0
-    def get():
+    def get(*args, **kwargs):
+        if kwargs.get("block") is False:
+            return original(*args, **kwargs)
         nonlocal count
         count+=1
         if count>1:

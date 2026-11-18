@@ -2,6 +2,7 @@
 import json
 import sqlite3
 import uuid
+from contextlib import closing
 from pathlib import Path
 
 from . import config
@@ -14,7 +15,7 @@ def backup(memory):
     path = folder / name
     temporary = path.with_suffix('.partial')
     try:
-        with memory._lock, sqlite3.connect(temporary) as destination:
+        with memory._lock, closing(sqlite3.connect(temporary)) as destination:
             memory.db.backup(destination)
         temporary.replace(path)
     finally:

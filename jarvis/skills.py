@@ -137,6 +137,8 @@ def run(ctx: Context, name: str, args: dict, confirmed=False) -> str:
             what = s["preview"](ctx, **clean) if s["preview"] else f"{name} {clean}"
         except Exception as e:
             return f"Can't prepare {name}: {e}"
+        if ctx.cancelled is not None and ctx.cancelled.is_set():
+            return "Stopped by the user."
         ctx.pending = {"name": name, "args": clean, "preview": what, "id": secrets.token_urlsafe(12)}
         ctx.on_pending(ctx.pending)
         return (f"NOT DONE YET. Waiting for the user's confirmation. Tell the user exactly what "
@@ -147,6 +149,8 @@ def run(ctx: Context, name: str, args: dict, confirmed=False) -> str:
         if not ctx.rate_limiter.allow("comms", limit, window):
             secure.audit("rate_limited", {"skill": name, "limit": limit, "window": window})
             return f"Rate limit reached: at most {limit} calls, texts, or emails are allowed per {int(window)} seconds."
+    if ctx.cancelled is not None and ctx.cancelled.is_set():
+        return "Stopped by the user."
     try:
         result = str(s["fn"](ctx, **clean))
     except TypeError as e:

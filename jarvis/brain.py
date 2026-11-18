@@ -46,10 +46,11 @@ class Brain:
         req = urllib.request.Request(self.cfg["ollama_url"].rstrip("/") + path,
                                      data=json.dumps(payload).encode(),
                                      headers={"Content-Type": "application/json"})
+        started = time.perf_counter()
         try:
             with net.urlopen(req, self.cfg, timeout=timeout, purpose="ollama") as r:
                 if payload.get("stream"):
-                    return self._read_stream(r, payload)
+                    return self._read_stream(r, payload, started=started)
                 return json.loads(r.read().decode())
         except urllib.error.HTTPError as e:
             body = e.read().decode(errors="replace")
@@ -64,8 +65,8 @@ class Brain:
         except (OSError, ValueError) as error:
             raise OllamaError("The local model connection failed or returned invalid data.") from error
 
-    def _read_stream(self, response, payload):
-        started = time.perf_counter()
+    def _read_stream(self, response, payload, started=None):
+        started = time.perf_counter() if started is None else started
         first = None
         content = ""
         thinking = ""
@@ -102,6 +103,8 @@ class Brain:
             raise OllamaError("The model stream ended before completion. No tools were run.")
         if self.cancelled.is_set():
             raise OllamaError("Stopped by the user.")
+        if final.get("done_reason") == "length" and calls:
+            raise OllamaError("The model reached its output limit during a tool call. No tools were run.")
         self.on_metrics({"model": payload["model"], "first_token_seconds": first,
                          "response_seconds": round(time.perf_counter() - started, 3),
                          "output_tokens": final.get("eval_count")})
