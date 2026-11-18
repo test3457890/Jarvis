@@ -36,9 +36,15 @@
   body[data-mode=briefing] #briefing { display:inline-block; }
   .chat-tools { display:flex; flex-wrap:wrap; gap:8px; padding:8px 16px; align-items:center; }
   .chat-tools button { font-size:12px; }
-  #images { border-top:1px solid var(--line); padding:8px 16px; max-height:46%; overflow:auto; }
-  body[data-mode=talk] #images { display:none; }
-  #images summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
+  #planner, #images { border-top:1px solid var(--line); padding:8px 16px; max-height:46%; overflow:auto; }
+  body[data-mode=talk] #planner, body[data-mode=talk] #images { display:none; }
+  #planner summary, #images summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
+  #planner .planner-actions { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
+  #planner form { display:flex; flex-wrap:wrap; align-items:end; padding:8px 0 2px; }
+  #planner label { display:grid; gap:4px; font-size:13px; }
+  #planner label:first-child { flex:1 1 12rem; }
+  #planner input { width:100%; min-width:0; padding:6px; font-size:14px; box-sizing:border-box; }
+  #task-minutes { max-width:8rem; }
   #images .image-controls { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:10px 0; }
   #images form { display:grid; align-content:start; border:1px solid var(--line); padding:8px; border-radius:6px; gap:6px; }
   #images input { width:100%; min-width:0; font-size:13px; padding:5px; }
@@ -220,7 +226,21 @@
     <div id="log" role="log" aria-label="Conversation"></div>
     <div id="pending"><b>AWAITING YOUR AUTHORISATION</b><p id="pending-text"></p>
       <button class="yes" id="p-yes">Confirm</button><button class="no" id="p-no">Cancel</button></div>
-    <details id="images">
+    <details id="planner" name="assistant-tools">
+      <summary>Planner</summary>
+      <div class="planner-actions">
+        <button id="list-tasks" type="button">Open tasks</button>
+        <button id="plan-week" type="button">Plan my week</button>
+        <button id="view-week" type="button">View week</button>
+      </div>
+      <form id="new-task">
+        <label>Task<input id="task-title" required maxlength="1000" placeholder="Finish lab report"></label>
+        <label>Due date (optional)<input id="task-due" type="date"></label>
+        <label>Minutes (optional)<input id="task-minutes" type="number" min="1" step="1"></label>
+        <button>Add task</button>
+      </form>
+    </details>
+    <details id="images" name="assistant-tools">
       <summary>Images</summary>
       <div class="image-controls">
         <form id="image-search">
@@ -355,7 +375,14 @@ es.onmessage = e => {
 };
 es.onerror = () => setState('offline');
 es.onopen = () => { if (document.body.dataset.state === 'offline') setState('idle'); };
-function send(text) { return api('/api/chat', {text}); }
+async function send(text) {
+  try {
+    const response = await api('/api/chat', {text});
+    if (response.ok) return true;
+    add('system', response.error || 'Jarvis could not accept this message.');
+  } catch { add('system', 'Could not reach Jarvis. Check the HUD connection.'); }
+  return false;
+}
 for (const key of ['mode', 'theme', 'voice_choice', 'assistant']) {
   $(key).onchange = async () => {
     try {
@@ -371,6 +398,21 @@ $('voice-preview').onclick = () => api('/api/voice-preview', {}).then(state => {
   if (state.error) add('system', state.error);
 });
 $('briefing').onclick = () => send('/briefing');
+$('list-tasks').onclick = () => send('/tasks');
+$('plan-week').onclick = () => send('/plan');
+$('view-week').onclick = () => send('/schedule week');
+$('new-task').onsubmit = async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const title = $('task-title').value.trim();
+  if (!title) { $('task-title').focus(); return; }
+  const button = form.querySelector('button');
+  button.disabled = true;
+  try {
+    const command = ['/task ' + title, $('task-due').value, $('task-minutes').value].join(' | ');
+    if (await send(command)) form.reset();
+  } finally { button.disabled = false; }
+};
 $('code-diff').onclick = () => send('/diff');
 $('code-apply').onclick = () => send('/apply');
 $('code-undo').onclick = () => send('/undo');
@@ -444,7 +486,17 @@ $('image-generate').onsubmit = e => {
     prompt: $('image-prompt').value, quality: $('image-quality').value
   });
 };
-$('f').onsubmit = e => { e.preventDefault(); const t = $('q').value.trim(); if (!t) return; $('q').value = ''; api('/api/chat', {text:t}); };
+$('f').onsubmit = async event => {
+  event.preventDefault();
+  const input = $('q');
+  const draft = input.value;
+  const button = event.currentTarget.querySelector('button');
+  if (!draft.trim() || button.disabled) return;
+  button.disabled = true;
+  try {
+    if (await send(draft.trim()) && input.value === draft) input.value = '';
+  } finally { button.disabled = false; }
+};
 $('t-speak').onclick = () => api('/api/toggle', {what:'speak'}).then(setToggles);
 $('t-mic').onclick = () => api('/api/toggle', {what:'mic'}).then(setToggles);
 $('t-lock').onclick = () => api('/api/toggle', {what:'lockdown'}).then(setToggles);

@@ -6,10 +6,13 @@ Optionally, a Canvas access token lets Jarvis also see what you've already submi
 """
 import datetime as dt
 import json
+import math
 import re
 import time
 import urllib.parse
 import urllib.request
+import uuid
+from collections import defaultdict, deque
 from pathlib import Path
 
 from . import net, secure
@@ -154,9 +157,9 @@ def _unescape(v):
 def _ics_time(value: str, params: str):
     """Returns (timestamp, all_day)."""
     v = value.strip()
-    if "VALUE=DATE" in params.upper() or re.fullmatch(r"\d{8}", v):
-        d = dt.datetime.strptime(v[:8], "%Y%m%d")
-        return d.replace(hour=23, minute=59).timestamp(), True
+    if "VALUE=DATE" in params.upper().split(";") or re.fullmatch(r"\d{8}", v):
+        d = dt.datetime.strptime(v, "%Y%m%d")
+        return d.timestamp(), True
     if v.endswith("Z"):
         d = dt.datetime.strptime(v, "%Y%m%dT%H%M%SZ").replace(tzinfo=dt.timezone.utc)
         return d.timestamp(), False
@@ -186,9 +189,20 @@ def parse_ics(text: str) -> list:
     for e in items:
         try:
             start, all_day = _ics_time(*e["DTSTART"])
-        except (KeyError, ValueError):
+            if "DTEND" in e:
+                end = _ics_time(*e["DTEND"])[0]
+            elif all_day:
+                # DATE ranges end at local midnight, including across clock changes.
+                duration = e.get("DURATION", ("P1D", ""))[0]
+                match = re.fullmatch(r"\+?P(\d+)([DW])", duration, re.I)
+                if not match:
+                    continue
+                days = int(match[1]) * (7 if match[2].upper() == "W" else 1)
+                end = at(dt.datetime.fromtimestamp(start).date() + dt.timedelta(days=days), dt.time.min)
+            else:
+                end = start
+        except (KeyError, ValueError, OverflowError):
             continue
-        end = _ics_time(*e["DTEND"])[0] if "DTEND" in e else start
         out.append({
             "uid": e.get("UID", ("", ""))[0],
             "title": _unescape(e.get("SUMMARY", ("(untitled)", ""))[0]),
@@ -232,14 +246,17 @@ def sync_canvas_now(memory, cfg, force=False) -> str:
         course = m.group(1) if m else ""
         title = it["title"][:m.start()].strip() if m else it["title"]
         if "assignment" in it["uid"].lower() or "assignment" in it["url"].lower():
+            due = it["start"]
+            if it["all_day"]:
+                due = at(dt.datetime.fromtimestamp(due).date(), dt.time(23, 59))
             existed = _q(memory, "SELECT id FROM tasks WHERE uid=?", (it["uid"],))
             if existed:
                 _q(memory, "UPDATE tasks SET title=?, course=?, due=?, url=? WHERE uid=?",
-                   (title, course, it["start"], it["url"], it["uid"]))
+                   (title, course, due, it["url"], it["uid"]))
             else:
                 _q(memory, "INSERT INTO tasks(uid,title,course,due,est_min,priority,source,url,notes,created) "
                            "VALUES (?,?,?,?,?,?,?,?,?,?)",
-                   (it["uid"], title, course, it["start"], _guess_minutes(title, default_min), 2,
+                   (it["uid"], title, course, due, _guess_minutes(title, default_min), 2,
                     "canvas", it["url"], it["description"], time.time()))
                 new_tasks += 1
         else:
@@ -286,72 +303,121 @@ def _sync_canvas_api(memory, cfg) -> str:
 
 
 # ================================================================ weekly planning
-def _busy(memory, start, end):
-    rows = _q(memory, "SELECT start, end FROM events WHERE end>? AND start<?", (start, end))
-    return sorted((max(s, start), max(e, s + 900)) for s, e in rows)
+BREAK_SECONDS = 5 * 60
+
+
+def _busy(db, start, end):
+    # Feeds sometimes supply only a start time. Reserve 15 minutes for those entries.
+    return db.execute(
+        "WITH busy AS (SELECT start, CASE WHEN end > start THEN end ELSE start + 900 END AS finish FROM events) "
+        "SELECT start, finish FROM busy WHERE start < ? AND finish + ? > ? ORDER BY start",
+        (end, BREAK_SECONDS, start),
+    ).fetchall()
+
+
+def _day_slots(cfg, day, busy, now, min_minutes):
+    ws, we = map(int, cfg.get("work_hours", [8, 22]))
+    end = at(day + dt.timedelta(days=1), dt.time.min) if we == 24 else at(day, dt.time(we))
+    cursor = max(at(day, dt.time(ws)), math.ceil((now + 600) / 60) * 60)
+    slots = []
+    for s, e in busy:
+        if s >= end or cursor >= end:
+            break
+        if s - cursor >= min_minutes * 60:
+            slots.append((cursor, s))
+        cursor = max(cursor, math.ceil((e + BREAK_SECONDS) / 60) * 60)
+    if end - cursor >= min_minutes * 60:
+        slots.append((cursor, end))
+    return slots
 
 
 def free_slots(memory, cfg, day: dt.date, extra_busy=(), min_minutes=25):
-    ws, we = cfg.get("work_hours", [8, 22])
-    lo = at(day, dt.time(int(ws)))
-    hi = at(day, dt.time(min(int(we), 23), 59 if int(we) >= 24 else 0))
-    lo = max(lo, time.time() + 600)
-    if lo >= hi:
-        return []
-    busy = _busy(memory, lo, hi) + sorted((s, e) for s, e in extra_busy if e > lo and s < hi)
-    busy.sort()
-    slots, cursor = [], lo
-    for s, e in busy:
-        if s - cursor >= min_minutes * 60:
-            slots.append((cursor, min(s, hi)))
-        cursor = max(cursor, e + 300)  # 5 min breathing room after each thing
-    if hi - cursor >= min_minutes * 60:
-        slots.append((cursor, hi))
-    return slots
+    midnight = at(day, dt.time.min)
+    next_midnight = at(day + dt.timedelta(days=1), dt.time.min)
+    with memory._lock:
+        busy = _busy(memory.db, midnight, next_midnight)
+    return _day_slots(cfg, day, sorted([*busy, *extra_busy]), time.time(), max(1, min_minutes))
 
 
 def make_week_plan(memory, cfg) -> str:
     now = time.time()
-    horizon = now + 7 * DAY
-    _q(memory, "DELETE FROM events WHERE source='plan' AND start>?", (now,))
-    tasks = _q(memory, "SELECT id, title, course, due, est_min, priority FROM tasks "
-                       "WHERE status='open' AND (due IS NULL OR due>?) ORDER BY due IS NULL, due, priority DESC",
-               (now - DAY,))
+    today = dt.datetime.fromtimestamp(now).date()
+    days = [today + dt.timedelta(days=i) for i in range(7)]
+    horizon = at(today + dt.timedelta(days=7), dt.time.min)
     block = int(cfg.get("study_block_minutes", 50))
-    cap = int(cfg.get("max_planned_minutes_per_day", 240)) * 60
-    planned, per_day, at_risk, lines = [], {}, [], []
-    for tid, title, course, due, est, prio in tasks:
-        remaining = (est or 60) * 60
-        # Already planned or done earlier counts toward the estimate.
-        latest = min((due or horizon) - 2 * 3600, horizon)
-        day = dt.date.today()
-        while remaining > 0 and at(day, dt.time(0)) < latest:
-            for s, e in free_slots(memory, cfg, day, planned):
-                if remaining <= 0 or per_day.get(day, 0) >= cap:
-                    break
-                e = min(e, latest)
-                length = min(block * 60, remaining, e - s, cap - per_day.get(day, 0))
-                if length < 25 * 60:
+    if block < 1:
+        raise ValueError("Study blocks must be at least one minute.")
+    cap = max(0, int(cfg.get("max_planned_minutes_per_day", 240)))
+    lead_hours = max(0, int(cfg.get("study_lead_hours", 24)))
+    slots = deque()
+    budget = {}
+    schedule = defaultdict(list)
+    inserts, shortages, later, inside_buffer = [], [], [], []
+
+    # A retry replaces only future study blocks in this week. Readers see a complete plan.
+    with memory._lock, memory.db as db:
+        db.execute("DELETE FROM events WHERE source='plan' AND start>? AND start<?", (now, horizon))
+        busy = _busy(db, at(today, dt.time.min), horizon)
+        booked = dict(db.execute(
+            "SELECT e.task_id, ROUND(SUM(e.end-e.start)/60) FROM events e JOIN tasks t ON t.id=e.task_id "
+            "WHERE e.source='plan' AND (e.start<=? OR t.due IS NULL OR e.end<=t.due) GROUP BY e.task_id", (now,)
+        ))
+        for day in days:
+            midnight = at(day, dt.time.min)
+            next_midnight = at(day + dt.timedelta(days=1), dt.time.min)
+            used, = db.execute(
+                "SELECT COALESCE(SUM(MIN(end, ?)-MAX(start, ?)), 0) FROM events "
+                "WHERE source='plan' AND start<? AND end>?",
+                (next_midnight, midnight, next_midnight, midnight),
+            ).fetchone()
+            budget[day] = cap - round(used / 60)
+            slots.extend((day, s, e) for s, e in _day_slots(cfg, day, busy, now, 1))
+
+        tasks = db.execute(
+            "SELECT id, title, course, due, est_min FROM tasks WHERE status='open' "
+            "AND (due IS NULL OR due>?) ORDER BY due IS NULL, due, priority DESC, id", (now - DAY,)
+        )
+        for tid, title, course, due, estimate in tasks:
+            remaining = (estimate or 60) - int(booked.get(tid, 0))
+            deadline = min(due or horizon, horizon)
+            label = f"Work on: {title}" + (f" ({course})" if course else "")
+            finish = None
+            while remaining > 0 and slots:
+                day, start, end = slots[0]
+                if budget[day] <= 0 or end - start < 60:
+                    slots.popleft()
                     continue
-                planned.append((s, s + length))
-                per_day[day] = per_day.get(day, 0) + length
-                remaining -= length
-                label = f"Work on: {title}" + (f" ({course})" if course else "")
-                _q(memory, "INSERT INTO events(uid,title,start,end,source,task_id) VALUES (?,?,?,?,?,?)",
-                   (f"plan-{tid}-{int(s)}", label, s, s + length, "plan", tid))
-            day += dt.timedelta(days=1)
-        if remaining > 0 and due:
-            at_risk.append(f"{title} (due {fmt_ts(due)}, about {remaining // 60} minutes short)")
-    for i in range(7):
-        d = dt.date.today() + dt.timedelta(days=i)
-        rows = _q(memory, "SELECT start, title FROM events WHERE source='plan' AND start>=? AND start<? ORDER BY start",
-                  (at(d, dt.time(0)), at(d, dt.time(23, 59))))
-        if rows:
-            lines.append(d.strftime("%A") + ": " + "; ".join(f"{fmt_ts(s, False)} {t}" for s, t in rows))
-    summary = f"Planned {len(planned)} work blocks across the week."
-    if at_risk:
-        summary += " At risk, not enough free time before the deadline: " + "; ".join(at_risk) + "."
-    return summary + ("\n" + "\n".join(lines) if lines else " Nothing needed planning.")
+                if deadline - start < 60:
+                    break  # A later task can still use this gap.
+                minutes = min(block, remaining, budget[day], int((min(end, deadline) - start) // 60))
+                finish = start + minutes * 60
+                inserts.append((f"plan-{tid}-{int(start)}", label, start, finish, tid))
+                schedule[day].append(f"{fmt_ts(start, False)} to {fmt_ts(finish, False)}  {label}")
+                budget[day] -= minutes
+                remaining -= minutes
+                slots[0] = (day, finish + BREAK_SECONDS, end)
+            if remaining > 0:
+                if due is not None and due <= horizon:
+                    shortages.append(f"{title} (due {fmt_ts(due)}, {remaining} min short)")
+                else:
+                    later.append(f"{title} ({remaining} min left)")
+            elif finish is not None and due and finish > due - lead_hours * 3600:
+                inside_buffer.append(title)
+        db.executemany(
+            "INSERT INTO events(uid,title,start,end,source,task_id) VALUES (?,?,?,?,'plan',?)", inserts
+        )
+
+    count = len(inserts)
+    lines = [f"Planned {count} work block{'s' if count != 1 else ''} for the next seven days."]
+    if shortages:
+        lines.append("Time missing before the deadline: " + ", ".join(shortages))
+    if inside_buffer:
+        lines.append(f"Scheduled within {lead_hours}h of the deadline: " + ", ".join(inside_buffer))
+    if later:
+        lines.append("Work beyond this week's capacity: " + ", ".join(later))
+    for day, blocks in schedule.items():
+        lines.append(day.strftime("%A") + "\n" + "\n".join(blocks))
+    return "\n\n".join(lines)
 
 
 def behind_report(memory) -> dict:
@@ -366,6 +432,25 @@ def behind_report(memory) -> dict:
 
 
 # ================================================================ skills
+def task_command_args(value):
+    fields = [part.strip() for part in value.rsplit("|", 2)]
+    if not fields[0]:
+        raise ValueError("Use /task title | optional due date | optional minutes.")
+    args = {"title": fields[0]}
+    if len(fields) > 1 and fields[1]:
+        date, separator, clock = fields[1].partition("@")
+        if not date.strip() or (separator and not clock.strip()):
+            raise ValueError("Enter a date such as Friday or a date and time such as Friday @ 5 pm.")
+        args["due_date"] = date.strip()
+        if clock:
+            args["due_time"] = clock.strip()
+    if len(fields) == 3 and fields[2]:
+        if not fields[2].isascii() or not fields[2].isdigit() or int(fields[2]) < 1:
+            raise ValueError("Enter a positive whole number of minutes.")
+        args["minutes"] = int(fields[2])
+    return args
+
+
 @skill("Sync assignments and events from Canvas (uses the saved copy when offline).",
        available=canvas_configured)
 def sync_canvas(ctx):
@@ -382,7 +467,7 @@ def add_task(ctx, title, due_date=None, due_time=None, minutes=None, priority=No
     due = at(parse_date(due_date), parse_time(due_time, dt.time(23, 59))) if due_date else None
     est = int(minutes or _guess_minutes(title, ctx.cfg.get("default_task_minutes", 60)))
     _q(ctx.memory, "INSERT INTO tasks(uid,title,due,est_min,priority,source,created) VALUES (?,?,?,?,?,?,?)",
-       (f"manual-{time.time()}", title, due, est, int(priority or 2), "manual", time.time()))
+       (f"manual-{uuid.uuid4().hex}", title, due, est, int(priority or 2), "manual", time.time()))
     return f"Task added: {title}" + (f", due {fmt_ts(due)}" if due else "") + f", about {est} minutes."
 
 
@@ -484,7 +569,7 @@ def find_free_time(ctx, date="today", minutes=None):
 
 
 @skill("Plan the week: schedule work blocks for every open task and assignment around the "
-       "calendar, before each deadline. Call sync_canvas first if Canvas is connected.")
+       "calendar, before each deadline. Call sync_canvas first if Canvas is connected.", untrusted=True)
 def plan_week(ctx):
     return make_week_plan(ctx.memory, ctx.cfg)
 

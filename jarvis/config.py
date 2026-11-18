@@ -75,6 +75,7 @@ DEFAULTS = {
     # Planning
     "work_hours": [8, 22],
     "study_block_minutes": 50,
+    "study_lead_hours": 24,  # flag work scheduled inside this deadline buffer
     "max_planned_minutes_per_day": 240,
     "default_task_minutes": 60,
     "briefing_time": "08:00",

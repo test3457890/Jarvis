@@ -1,5 +1,6 @@
 """Capture the real HUD with synthetic data and stubbed model services."""
 import base64
+import datetime as dt
 import io
 import socket
 import tempfile
@@ -59,6 +60,24 @@ def capture(app, base_url):
         page.get_by_role("button", name="Generate locally").click()
         expect(page.get_by_role("link", name="Download PNG")).to_be_visible()
         page.screenshot(path=OUT / "image-tools.png")
+
+        page.locator("#mode").select_option("briefing")
+        page.locator("#theme").select_option("hud")
+        expect(page.locator("body")).to_have_attribute("data-theme", "hud")
+        page.reload()
+        page.wait_for_function("es.readyState === EventSource.OPEN")
+        page.locator("#planner summary").click()
+        page.get_by_label("Task", exact=True).fill("Draft lab report")
+        page.get_by_label("Due date (optional)").fill((dt.date.today() + dt.timedelta(days=2)).isoformat())
+        page.get_by_label("Minutes (optional)").fill("60")
+        page.get_by_role("button", name="Add task").click()
+        expect(page.locator("#log .jarvis").last).to_contain_text("Task added: Draft lab report")
+        page.get_by_role("button", name="Plan my week").click()
+        expect(page.locator("#log .jarvis").last).to_contain_text("for the next seven days")
+        expect(page.locator("#deadlines")).to_contain_text("Draft lab report")
+        page.screenshot(path=OUT / "planner.png")
+        page.get_by_role("button", name="View week").click()
+        expect(page.locator("#log .jarvis").last).to_contain_text("DUE")
         assert not errors, errors
 
 
