@@ -12,6 +12,7 @@ from scripts.package_release import build
 
 def test_release_is_reproducible_and_contains_only_manifest_files(tmp_path):
     archive=build(tmp_path)
+    assert ' ' not in archive.name
     first=archive.read_bytes()
     assert build(tmp_path).read_bytes()==first
     with zipfile.ZipFile(archive) as bundle:
@@ -19,7 +20,7 @@ def test_release_is_reproducible_and_contains_only_manifest_files(tmp_path):
         for name,digest in manifest['files'].items():
             assert hashlib.sha256(bundle.read('Jarvis/'+name)).hexdigest()==digest
         assert all('/.venv/' not in name and 'memory.db' not in name and 'secrets.bin' not in name for name in bundle.namelist())
-    assert hashlib.sha256(first).hexdigest() in (tmp_path/'SHA256SUMS.txt').read_text()
+    assert (tmp_path/'SHA256SUMS.txt').read_text().strip() == hashlib.sha256(first).hexdigest() + '  ' + archive.name
 
 
 @pytest.mark.skipif(os.name!='nt',reason='Windows source updater integration')

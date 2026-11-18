@@ -19,7 +19,7 @@ def build(output):
     files = {str(path.relative_to(ROOT)).replace('\\','/'): path.read_bytes() for path in paths}
     manifest = {'version':__version__, 'files':{name:hashlib.sha256(data).hexdigest() for name,data in files.items()}}
     files['release-manifest.json'] = json.dumps(manifest, indent=2).encode()
-    archive = output / f'Jarvis {__version__}.zip'
+    archive = output / f'Jarvis{__version__}.zip'
     with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as bundle:
         for name, data in sorted(files.items()):
             entry = zipfile.ZipInfo('Jarvis/' + name, date_time=(2026,1,1,0,0,0))

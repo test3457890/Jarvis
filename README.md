@@ -357,7 +357,7 @@ after the main-branch test workflow succeeds. Verify the ZIP using the SHA256SUM
 Close Jarvis and run the updater from your existing program folder.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File upgrade.ps1 -Package "C:\Downloads\Jarvis 1.1.0.zip" -Checksum "PASTE_SHA256_VALUE"
+powershell -ExecutionPolicy Bypass -File upgrade.ps1 -Package "C:\Downloads\Jarvis1.1.1.zip" -Checksum "PASTE_SHA256_VALUE"
 ```
 
 The updater reports the program-backup folder. Restore those shipped files when needed.
