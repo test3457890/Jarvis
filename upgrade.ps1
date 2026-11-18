@@ -1,4 +1,6 @@
 # Close Jarvis first. Supply the checksum published alongside the release ZIP.
+# Only shipped program files are replaced. Settings, data and credentials in %APPDATA%\Jarvis,
+# the .venv folder, models and files that are not in the release manifest are left alone.
 param(
     [string] $Package,
     [string] $Checksum,
@@ -38,7 +40,7 @@ if ($Restore) {
     $allowed = [IO.Path]::GetFullPath($backupRoot) + [IO.Path]::DirectorySeparatorChar
     if (-not $selected.StartsWith($allowed, [StringComparison]::OrdinalIgnoreCase)) { throw 'Select a backup from Jarvis Program Backups.' }
     Restore-Source $selected
-    Write-Host 'Previous program files restored. Run Jarvis.bat doctor before continuing.'
+    Write-Host 'Previous program files restored. Run .\.venv\Scripts\python.exe -m jarvis doctor before continuing.'
     exit 0
 }
 if (-not $Package -or $Checksum -notmatch '^[0-9a-fA-F]{64}$') { throw 'Provide -Package and its published -Checksum SHA256 value.' }
@@ -94,5 +96,9 @@ try {
         throw
     }
     Write-Host "Updated source to $($manifest.version). Program backup saved at $backup"
-    Write-Host 'Run install.ps1 with your selected profile to refresh dependencies, then Jarvis.bat doctor.'
+    Write-Host 'Your settings and data were not changed.'
+    Write-Host 'Run install.ps1 to refresh Python packages and the Start menu shortcut, then .\.venv\Scripts\python.exe -m jarvis doctor.'
+    if (Test-Path -LiteralPath (Join-Path $root 'Jarvis.bat')) {
+        Write-Host 'Jarvis.bat from an earlier version was left in place. It is no longer needed. Use the Start menu shortcut instead.'
+    }
 } finally { Remove-Item -LiteralPath $stage -Recurse -Force }

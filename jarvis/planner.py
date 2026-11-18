@@ -225,7 +225,7 @@ def canvas_configured(cfg=None) -> bool:
 def sync_canvas_now(memory, cfg, force=False) -> str:
     url = secure.get_secret("canvas_feed_url")
     if not url:
-        return "Canvas isn't connected. Run 'Jarvis.bat setup' and paste your Canvas calendar feed link."
+        return "Canvas isn't connected. Run 'python -m jarvis setup' and paste your Canvas calendar feed link."
     last = kv_get(memory, "canvas_last_sync", 0)
     note = ""
     if force or time.time() - last > 3 * 3600 or not CANVAS_CACHE.exists():

@@ -1,7 +1,9 @@
 """Settings for Jarvis. Stored as JSON in %APPDATA%\\Jarvis\\config.json."""
 import json
 import os
+import shutil
 import tempfile
+import time
 from pathlib import Path
 
 from .assistants import CHOICES
@@ -10,7 +12,8 @@ APP_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / "Jarvis"
 CONFIG_PATH = APP_DIR / "config.json"
 
 MODES = ("everyday", "coding", "briefing", "talk")
-THEMES = ("hud", "simple", "light")
+THEMES = ("hud", "simple", "light", "contrast", "midnight", "paper")
+VOICE_CHOICES = ("auto", "windows", "piper")
 
 DEFAULTS = {
     "mode": "everyday",
@@ -24,6 +27,17 @@ DEFAULTS = {
     "performance_profile": "standard",
     "theme": "hud",
     "voice_choice": "auto",
+    # TUKI speaks with its own voice. "auto" picks a different installed voice from Jarvis.
+    "tuki_voice_choice": "auto",
+    "tuki_sapi_voice_contains": "",
+    "tuki_piper_model": "",
+    "tuki_speech_rate": 200,
+    # First-run wizard. Existing installs are marked complete when their config loads.
+    "setup_complete": False,
+    "voice_enabled": True,
+    "storage_budget_gb": None,
+    # Folders the user explicitly selected for general file tasks. Separate from code_dir.
+    "file_folders": [],
     "name": "Jarvis",
     "user_name": "",
     # Local language model served by Ollama (must support tool calling).
@@ -106,15 +120,26 @@ def load() -> dict:
     cfg = dict(DEFAULTS)
     if CONFIG_PATH.exists():
         try:
-            cfg.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
+            saved = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as e:
-            print(f"[config] Could not read {CONFIG_PATH}: {e}. Using defaults.")
+            # Keep the unreadable file for the user instead of overwriting it with defaults.
+            backup = CONFIG_PATH.with_name(f"config.unreadable-{int(time.time())}.json")
+            try:
+                shutil.copy2(CONFIG_PATH, backup)
+            except OSError:
+                pass
+            print(f"[config] Could not read {CONFIG_PATH}: {e}. A copy was kept at {backup}. Using defaults.")
+            saved = {"setup_complete": True}
+        if isinstance(saved, dict):
+            # Configurations written before the setup wizard existed belong to working installs.
+            saved.setdefault("setup_complete", True)
+            cfg.update(saved)
     # The built-in personality always comes from the code (so upgrades apply);
     # put your own text in "custom_personality" to replace it.
     cfg["personality"] = cfg.get("custom_personality") or DEFAULTS["personality"]
     cfg.setdefault("custom_personality", "")
     for key, choices in (("mode", MODES), ("theme", THEMES), ("assistant", CHOICES),
-                         ("voice_choice", ("auto", "windows", "piper"))):
+                         ("voice_choice", VOICE_CHOICES), ("tuki_voice_choice", VOICE_CHOICES)):
         if cfg.get(key) not in choices:
             cfg[key] = choices[0]
     save(cfg)  # writes any new default keys

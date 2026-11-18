@@ -2,6 +2,7 @@
 import base64
 import datetime as dt
 import io
+import os
 import socket
 import tempfile
 from pathlib import Path
@@ -30,11 +31,17 @@ def artwork():
 def capture(app, base_url):
     OUT.mkdir(exist_ok=True)
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
+        browser = playwright.chromium.launch(executable_path=os.environ.get("JARVIS_CHROME") or None)
         page = browser.new_page(viewport={"width": 1440, "height": 900}, reduced_motion="reduce", device_scale_factor=1)
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.goto(base_url)
+        # A new install opens the first-run setup wizard.
+        expect(page.locator("#wizard")).to_be_visible()
+        expect(page.locator("#wizard-plan tr").first).to_be_visible()
+        page.screenshot(path=OUT / "setup-wizard.png")
+        page.get_by_role("button", name="Close", exact=True).click()
+        expect(page.locator("#wizard")).to_be_hidden()
         page.locator("#theme").select_option("light")
         expect(page.locator("body")).to_have_attribute("data-theme", "light")
         page.locator("#mode").select_option("talk")
