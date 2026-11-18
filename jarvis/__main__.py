@@ -148,6 +148,24 @@ class App:
         finally:
             self._image_job.release()
 
+    def memory_operation(self, data=None):
+        with self.brain._lock:
+            if data is not None:
+                if self.cfg.get("lockdown"):
+                    raise ValueError("Turn off Lockdown to change remembered facts.")
+                fact_id = data.get("id")
+                if type(fact_id) is not int or fact_id < 1:
+                    raise ValueError("Choose a remembered fact.")
+                if data.get("action") == "edit":
+                    changed = self.memory.edit_fact(fact_id, data.get("text"))
+                elif data.get("action") == "delete" and data.get("confirmed") is True:
+                    changed = self.memory.delete_fact(fact_id)
+                else:
+                    raise ValueError("Choose Edit or confirm deletion.")
+                if not changed:
+                    raise ValueError("This remembered fact has already been removed. Refresh the list.")
+            return {"facts": [{"id": key, "text": text} for key, text in self.memory.all_facts()]}
+
     def preview_voice(self):
         if not self.speaker:
             return {"error": "Speech is unavailable."}
@@ -350,6 +368,17 @@ def setup(cfg):
         config.save(updated)
         cfg.update(updated)
         print("Profile saved. Run install.ps1 -Profile " + profile + " to download its models.")
+
+    folders = input("Document search folders (separate paths with |, Enter to keep, 'clear' to remove): ").strip()
+    if folders:
+        from pathlib import Path
+        selected = [] if folders.casefold() == "clear" else [
+            str(Path(value.strip()).expanduser().resolve()) for value in folders.split("|") if value.strip()
+        ]
+        if all(Path(value).is_dir() for value in selected):
+            cfg["document_folders"] = selected
+        else:
+            print("One or more document folders do not exist. Current selection kept.")
 
     ask("Your name (used to sign emails)", "user_name")
     ask("What should Jarvis call you (sir, ma'am, boss, your name)", "honorific")

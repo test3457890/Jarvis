@@ -78,16 +78,39 @@ def capture(app, base_url):
         page.screenshot(path=OUT / "planner.png")
         page.get_by_role("button", name="View week").click()
         expect(page.locator("#log .jarvis").last).to_contain_text("DUE")
+        page.locator("#knowledge summary").click()
+        page.locator("#document-query").fill("compass")
+        page.get_by_role("button", name="Search documents").click()
+        expect(page.locator("#log .jarvis").last).to_contain_text("navigation.txt")
+        app.memory.remember("I prefer morning study blocks")
+        page.get_by_role("button", name="Review remembered facts").click()
+        field = page.locator("#memory-list textarea").first
+        expect(field).to_have_value("I prefer morning study blocks")
+        field.fill("I prefer afternoon study blocks")
+        page.get_by_role("button", name="Save memory").click()
+        expect(page.locator("#memory-status")).to_contain_text("Remembered facts")
+        expect(field).to_have_value("I prefer afternoon study blocks")
+        with page.expect_download() as download:
+            page.get_by_role("button", name="Export remembered facts").click()
+        assert download.value.suggested_filename == "Jarvis Memories.json"
+        page.screenshot(path=OUT / "documents-memory.png")
+        page.once("dialog", lambda dialog: dialog.accept())
+        page.get_by_role("button", name="Delete memory").click()
+        expect(page.locator("#memory-status")).to_have_text("No remembered facts.")
+        assert not app.memory.all_facts()
         assert not errors, errors
 
 
 def main():
     with tempfile.TemporaryDirectory() as tmp, patch.object(App, "_watchdog"), patch.object(nomad, "status", return_value={}):
         home = Path(tmp)
+        reading = home / "reading"
+        reading.mkdir()
+        (reading / "navigation.txt").write_text("Check the compass before departure.", encoding="utf-8")
         code = home / "code"
         code.mkdir()
         (code / "budget.py").write_text("def total(values):\n    return sum(values) / len(values)\n", encoding="utf-8")
-        cfg = dict(config.DEFAULTS, code_dir=str(code), speak_replies=False,
+        cfg = dict(config.DEFAULTS, code_dir=str(code), speak_replies=False, document_folders=[str(reading)],
                    image_generation_url="http://127.0.0.1:7860")
         with patch.object(config, "APP_DIR", home), patch.object(config, "CONFIG_PATH", home / "config.json"), \
                 patch.object(memory, "APP_DIR", home), patch.object(memory, "DB_PATH", home / "memory.db"):

@@ -36,6 +36,14 @@
   body[data-mode=briefing] #briefing { display:inline-block; }
   .chat-tools { display:flex; flex-wrap:wrap; gap:8px; padding:8px 16px; align-items:center; }
   .chat-tools button { font-size:12px; }
+  #knowledge { border-top:1px solid var(--line); padding:8px 16px; max-height:46%; overflow:auto; }
+  #knowledge summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
+  body[data-mode=talk] #knowledge { display:none; }
+  .memory-actions { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0; }
+  .memory-row { display:grid; gap:8px; padding:8px 0; border-top:1px solid var(--line); }
+  .memory-row textarea { width:100%; box-sizing:border-box; min-height:70px; padding:8px; font:inherit;
+    background:var(--panel); color:var(--text); border:1px solid var(--line2); }
+  #memory-status { color:var(--dim); font-size:13px; }
   #planner, #images { border-top:1px solid var(--line); padding:8px 16px; max-height:46%; overflow:auto; }
   body[data-mode=talk] #planner, body[data-mode=talk] #images { display:none; }
   #planner summary, #images summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
@@ -240,6 +248,20 @@
         <button>Add task</button>
       </form>
     </details>
+    <details id="knowledge" name="assistant-tools">
+      <summary>Documents and memory</summary>
+      <form id="document-search">
+        <input id="document-query" aria-label="Search inside documents" placeholder="Words to find in selected document folders" maxlength="500" required>
+        <button>Search documents</button>
+      </form>
+      <div class="memory-actions">
+        <button id="memory-refresh" type="button">Review remembered facts</button>
+        <button id="memory-export" type="button">Export remembered facts</button>
+      </div>
+      <p>These controls manage remembered facts. Saved conversations have their own history.</p>
+      <p id="memory-status" role="status"></p>
+      <div id="memory-list"></div>
+    </details>
     <details id="images" name="assistant-tools">
       <summary>Images</summary>
       <div class="image-controls">
@@ -398,6 +420,55 @@ $('voice-preview').onclick = () => api('/api/voice-preview', {}).then(state => {
   if (state.error) add('system', state.error);
 });
 $('briefing').onclick = () => send('/briefing');
+$('document-search').onsubmit = event => {
+  event.preventDefault();
+  const query = $('document-query').value.trim();
+  if (query) send('/docs ' + query);
+};
+function renderMemories(facts) {
+  $('memory-list').replaceChildren();
+  $('memory-status').textContent = facts.length ? 'Remembered facts. Edits apply to future recall.' : 'No remembered facts.';
+  for (const fact of facts) {
+    const row = el('div', 'memory-row');
+    const input = el('textarea'); input.value = fact.text; input.maxLength = 4000;
+    input.setAttribute('aria-label', 'Remembered fact ' + fact.id);
+    const actions = el('div', 'memory-actions');
+    const save = el('button', '', 'Save memory'); save.type = 'button';
+    const remove = el('button', '', 'Delete memory'); remove.type = 'button';
+    const update = async data => {
+      save.disabled = remove.disabled = true;
+      try {
+        const result = await api('/api/memory', data);
+        if (result.error) throw new Error(result.error);
+        renderMemories(result.facts);
+      } catch (error) { $('memory-status').textContent = error.message || 'Could not update memory.'; }
+      finally { save.disabled = remove.disabled = false; }
+    };
+    save.onclick = () => update({action:'edit', id:fact.id, text:input.value});
+    remove.onclick = () => {
+      if (window.confirm('Delete this remembered fact? ' + input.value.slice(0, 180))) {
+        update({action:'delete', id:fact.id, confirmed:true});
+      }
+    };
+    actions.append(save, remove); row.append(input, actions); $('memory-list').append(row);
+  }
+}
+$('memory-refresh').onclick = async () => {
+  try {
+    const result = await api('/api/memory');
+    if (result.error) throw new Error(result.error);
+    renderMemories(result.facts);
+  } catch { $('memory-status').textContent = 'Could not load remembered facts.'; }
+};
+$('memory-export').onclick = async () => {
+  try {
+    const result = await api('/api/memory');
+    if (result.error) throw new Error(result.error);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(result, null, 2)], {type:'application/json'}));
+    const link = el('a'); link.href = url; link.download = 'Jarvis Memories.json'; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch { $('memory-status').textContent = 'Could not export remembered facts.'; }
+};
 $('list-tasks').onclick = () => send('/tasks');
 $('plan-week').onclick = () => send('/plan');
 $('view-week').onclick = () => send('/schedule week');

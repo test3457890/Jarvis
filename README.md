@@ -301,3 +301,22 @@ It uses mock responses for online services and tests native DPAPI on Windows.
 [PersonalJarvis](https://github.com/tbckdev/PersonalJarvis) ·
 [OpenDex](https://github.com/wassgha/opendex) ·
 [Project NOMAD](https://github.com/Crosstalk-Solutions/project-nomad)
+
+
+## Document search and remembered facts
+
+Run `Jarvis.bat setup` and enter the folders you want to search. Open Documents and memory
+below the chat to search their contents, or type `/docs compass navigation`. Text and Markdown
+results cite line ranges, PDFs cite pages, and Word files cite paragraphs or tables. Word page
+numbers depend on layout, so paragraph references are used. Scanned PDFs require OCR before
+text search. Install the updated requirements to add the PDF and Word readers.
+
+Search reads current files on each request and returns up to six excerpts. Each request covers
+up to 200 documents, 3,000 directory entries, 200 PDF pages per document, and 500,000 extracted
+characters per document. Files larger than 10 MiB and unreadable files are skipped. Narrow the
+selected folders if the search limit is reached. Document search works locally with Internet off.
+
+Use Review remembered facts to edit or delete individual facts. Deletion requires confirmation.
+Export remembered facts downloads a JSON copy to your browser's download folder. These controls
+manage remembered facts. The saved conversation history is separate, and prior conversation
+can still contain a fact you deleted. Backup, restore, and conversation deletion remain planned.
