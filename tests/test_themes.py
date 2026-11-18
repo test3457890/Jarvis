@@ -59,3 +59,10 @@ def test_theme_preference_is_saved(isolated_app):
     cfg["theme"] = "neon"
     config.save(cfg)
     assert config.load()["theme"] == "hud"
+
+
+def test_hud_does_not_replace_browser_dialogs():
+    # A global function named confirm made every "Are you sure?" prompt answer yes silently.
+    for name in ("confirm", "alert", "prompt", "open", "close", "print", "stop", "find"):
+        assert not re.search(rf"^\s*(?:async\s+)?function\s+{name}\s*\(", UI, re.M), name
+        assert not re.search(rf"^(?:const|let|var)\s+{name}\s*=", UI, re.M), name

@@ -789,7 +789,7 @@ $('t-speak').onclick = () => api('/api/toggle', {what:'speak'}).then(setToggles)
 $('t-mic').onclick = () => api('/api/toggle', {what:'mic'}).then(setToggles);
 $('t-lock').onclick = () => api('/api/toggle', {what:'lockdown'}).then(setToggles);
 $('t-internet').onclick = () => api('/api/toggle', {what:'internet'}).then(setToggles);
-async function confirm(yes) {
+async function answerPending(yes) {
   if (!pendingId) return;
   const id = pendingId;
   setPending(null);
@@ -799,8 +799,8 @@ async function confirm(yes) {
     setToggles(await api('/api/state'));
   } catch { add('system', 'Could not confirm this request. Check its status before retrying.'); }
 }
-$('p-yes').onclick = () => confirm(true);
-$('p-no').onclick = () => confirm(false);
+$('p-yes').onclick = () => answerPending(true);
+$('p-no').onclick = () => answerPending(false);
 
 // ---- HUD panels
 function gauge(name, v) {

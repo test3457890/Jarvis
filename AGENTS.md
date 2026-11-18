@@ -25,7 +25,7 @@ browser HUD (ui.html) <-> webui.py (127.0.0.1, session key) <-> App (__main__.py
 |---|---|
 | `__main__.py` | `App`, CLI (`run`, `setup`, `doctor`, `briefing`, `--text`), HUD operations, watchdog |
 | `webui.py` | Loopback server, Host/Origin/session-key checks, `/api/*` routes |
-| `ui.html` | The whole HUD: panels, themes, setup wizard, file tasks, coding tools |
+| `ui.html` | The whole HUD: panels, themes, setup wizard, file tasks, coding tools. Never declare globals named after browser APIs (`confirm`, `alert`, `open`) |
 | `brain.py` | Ollama chat, streaming, `/commands`, tool loop, confirmations |
 | `assistants.py` | Jarvis vs TUKI routing, TUKI confidence labels |
 | `skills.py` | Tool registry, permissions, confirmation and audit; everyday tools |
@@ -68,7 +68,8 @@ browser HUD (ui.html) <-> webui.py (127.0.0.1, session key) <-> App (__main__.py
 python -m pip install "pytest>=8,<10" "Pillow>=10.4" "pypdf>=5,<7" "python-docx>=1.1,<2"
 python -m pytest -q
 python -m pip install playwright && python -m playwright install chromium
-python -m scripts.capture_hud      # live HUD checks and screenshots in hud-captures/
+python -m scripts.capture_hud      # live HUD walkthrough and screenshots in hud-captures/
+python -m scripts.hud_control_audit  # every control, verified results, hud-captures/control-report.md
 ```
 Windows-only tests (installer, updater, rollback, DPAPI) run in GitHub Actions on `windows-latest`.
 
@@ -77,6 +78,8 @@ Windows-only tests (installer, updater, rollback, DPAPI) run in GitHub Actions o
 2. Merge through a reviewed PR with passing Tests.
 3. The Release workflow builds `Jarvis<version>.zip` and `SHA256SUMS.txt` and publishes them.
 4. Verify the archive with `python -m scripts.package_release` locally and compare checksums.
+
+See `docs/Capabilities.md` for what is working, optional, untested on hardware or not implemented.
 
 ## Known limitations
 - Not code-signed. Defender behaviour is documented, not solved (`docs/WindowsDefender.md`).
