@@ -13,6 +13,12 @@ knowledge library.
 |---|---|---|
 | ![Boot sequence](docs/screenshots/boot.png) | ![Jarvis HUD](docs/screenshots/hud.png) | ![Confirmation banner](docs/screenshots/confirm.png) |
 
+| Talk mode in Simple Light | Coding diff preview | Images panel |
+|---|---|---|
+| ![Talk mode with the Simple Light theme](docs/screenshots/talk-light.png) | ![TUKI showing a proposed code fix](docs/screenshots/coding-diff.png) | ![Images panel with a demonstration PNG](docs/screenshots/image-tools.png) |
+
+The new screenshots use synthetic conversation and sample image data.
+
 ## What it does
 
 **Keeps your week on track**
