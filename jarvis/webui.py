@@ -196,7 +196,7 @@ def serve(app, port: int):
                     return self._json({"error": str(error)}, 400)
                 self._json(result)
             elif self.path == "/api/voice-preview":
-                self._json(app.preview_voice())
+                self._json(app.preview_voice(str(data.get("assistant", "jarvis"))))
             elif self.path == "/api/confirm":
                 if not isinstance(data.get("yes"), bool):
                     return self._json({"error": "expected a boolean confirmation"}, 400)

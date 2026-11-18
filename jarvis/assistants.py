@@ -37,7 +37,10 @@ _TECHNICAL = re.compile(
     r"look (?:this|that) up|web search|search (?:the )?(?:web|internet)|research|"
     r"debug|stack trace|traceback|unit tests?|refactor|compile|source code|"
     r"script|programming|write (?:some |the |a )?code|"
-    r"maths?|calculate|solve|equation|derivative|integral|matrix|"
+    r"maths?|calculate|solve|equation|derivative|integral|matrix|probability|statistics|"
+    r"percent(?:age)?|convert \d|unit conversion|algorithm|big[- ]o|complexity|regex|regular expression|"
+    r"sql|api|json|yaml|git|merge conflict|compiler|runtime|dependency|install(?:ing|ation)? error|"
+    r"error (?:code|message)|exception|segfault|\w+(?:Error|Exception)\b|"
     r"(?:list|find|read|manage|sort|rename|move|copy|organi[sz]e) (?:my |the |these |local )?"
     r"(?:files?|folders?|documents?)|compare (?:these|the) sources)\b", re.I
 )
@@ -53,8 +56,28 @@ def route(text, preference="auto", mode="everyday"):
     request = _WAKE_PREFIX.sub("", text)
     if preference in ("jarvis", "tuki"):
         return preference, request
-    if mode == "coding" or request.startswith(("/fix ", "/search ", "/calc ", "/files", "/diff", "/apply", "/undo")):
+    if mode == "coding" or request.startswith(("/fix", "/test", "/search ", "/calc ", "/files", "/diff", "/apply", "/undo",
+                                               "/check ", "/read ")):
         return "tuki", request
     if mode != "talk" and not _EDITING.match(request) and (_TECHNICAL.search(request) or FACT_CHECK.search(request)):
         return "tuki", request
     return "jarvis", request
+
+
+_CONFIDENCE = re.compile(r"^\s*confidence\s*:", re.I | re.M)
+_EVIDENCE_TOOLS = {"web_search", "search_library", "read_source", "check_sources", "search_documents",
+                   "calculate", "read_code", "search_files"}
+
+
+def label_uncertainty(reply, tools_used=()):
+    """Make TUKI's answers say what they rest on. Adds a note when the model gave no confidence
+    line, and says when no source or tool was checked in this turn."""
+    if not reply or reply.startswith(("Preview only.", "Proposed edit for", "Stopped", "Couldn't", "My brain")):
+        return reply
+    used = sorted(set(tools_used) & _EVIDENCE_TOOLS)
+    notes = []
+    if not _CONFIDENCE.search(reply):
+        notes.append("Confidence: not stated by the model.")
+    notes.append("Checked with: " + ", ".join(used) + "." if used else
+                 "Checked with: nothing in this turn. This answer comes from the model's own knowledge.")
+    return reply.rstrip() + "\n\n" + " ".join(notes)
