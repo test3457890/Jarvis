@@ -28,6 +28,7 @@
   select { color:var(--text); background:var(--bg); border:1px solid var(--line2); border-radius:4px;
            padding:5px 7px; font:inherit; }
   :focus-visible { outline:2px solid var(--cyan); outline-offset:3px; }
+  .assistant-name { flex-basis:100%; color:var(--dim); font-size:12px; }
   #activity { color:var(--dim); font-size:13px; }
   #code-tools { display:none; }
   body[data-mode=coding] #code-tools { display:flex; }
@@ -158,12 +159,13 @@
       <label>Mode <select id="mode"><option value="everyday">Everyday</option><option value="coding">Coding</option>
         <option value="briefing">Briefing</option><option value="talk">Talk</option></select></label>
       <label>Assistant <select id="assistant"><option value="auto">Auto</option>
-        <option value="jarvis">Jarvis</option><option value="tuki">Tuki</option></select></label>
+        <option value="jarvis">Jarvis</option><option value="tuki">__JARVIS_TUKI_NAME__</option></select></label>
       <label>Theme <select id="theme"><option value="hud">Sci-fi HUD</option><option value="simple">Simple dark</option>
         <option value="light">Simple light</option></select></label>
       <label>Voice <select id="voice_choice"><option value="auto">Automatic</option>
         <option value="windows">Windows</option><option value="piper">Piper</option></select></label>
       <button id="voice-preview" type="button">Try voice</button>
+      <small class="assistant-name">__JARVIS_TUKI_NAME__ · __JARVIS_TUKI_FULL_NAME__</small>
     </div>
     <div class="toggles">
       <button id="t-speak" title="Speak replies out loud">Voice</button>
@@ -191,6 +193,8 @@
     <div class="chat-tools">
       <span id="activity" role="status"></span>
       <button id="briefing" type="button">Read briefing</button>
+      <button id="tuki-calculate" type="button" hidden>Calculate</button>
+      <button id="tuki-files" type="button" hidden>Find a file</button>
       <button id="web-search" type="button" hidden>Web search</button>
       <button id="upload-file" type="button" hidden>Upload to GitHub</button>
       <div id="code-tools" class="chat-tools">
@@ -273,6 +277,9 @@ function setToggles(st) {
   $('t-internet').setAttribute('aria-pressed', !!st.internet);
   $('t-internet').classList.toggle('off', !st.internet);
   $('t-internet').textContent = st.internet ? 'Internet on' : 'Internet off';
+  const tukiTools = st.mode !== 'talk' && (st.assistant === 'tuki' || st.mode === 'coding');
+  $('tuki-calculate').hidden = !tukiTools;
+  $('tuki-files').hidden = !tukiTools;
   const online = st.internet && !st.lockdown && st.mode !== 'talk';
   $('web-search').hidden = !online || !st.web_search;
   $('upload-file').hidden = !online || !st.github_upload;
@@ -326,6 +333,8 @@ function fillCommand(command, hint) {
   $('q').value = command + ' '; $('q').placeholder = hint; $('q').focus();
 }
 $('code-fix').onclick = () => fillCommand('/fix', 'file | what to change');
+$('tuki-calculate').onclick = () => fillCommand('/calc', 'Arithmetic expression');
+$('tuki-files').onclick = () => fillCommand('/files', 'Part of a filename');
 $('web-search').onclick = () => fillCommand('/search', 'Public search terms');
 $('upload-file').onclick = () => fillCommand('/upload', 'File relative to Jarvis Code');
 $('f').onsubmit = e => { e.preventDefault(); const t = $('q').value.trim(); if (!t) return; $('q').value = ''; api('/api/chat', {text:t}); };

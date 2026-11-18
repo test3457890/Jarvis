@@ -10,7 +10,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import config
+from . import assistants, config
 
 UI_FILE = Path(__file__).with_name("ui.html")
 
@@ -77,7 +77,9 @@ def serve(app, port: int):
                 mode = app.cfg.get("mode")
                 page = (UI_FILE.read_text(encoding="utf-8").replace("__JARVIS_KEY__", token)
                         .replace("__JARVIS_THEME__", theme if theme in config.THEMES else "hud")
-                        .replace("__JARVIS_MODE__", mode if mode in config.MODES else "everyday"))
+                        .replace("__JARVIS_MODE__", mode if mode in config.MODES else "everyday")
+                        .replace("__JARVIS_TUKI_NAME__", assistants.TUKI_NAME)
+                        .replace("__JARVIS_TUKI_FULL_NAME__", assistants.TUKI_FULL_NAME))
                 csp = ("default-src 'self'; script-src 'self' 'unsafe-inline'; "
                        "style-src 'self' 'unsafe-inline'; connect-src 'self'")
                 body = page.encode()

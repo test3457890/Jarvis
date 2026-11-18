@@ -162,6 +162,9 @@ def test_hud_mode_theme_and_confirmation(isolated_app, monkeypatch):
         with urllib.request.urlopen(url, timeout=5) as data:
             html = data.read().decode()
             assert "fonts.googleapis.com" not in data.headers["Content-Security-Policy"]
+            assert "Technical Utility for Knowledge and Insight" in html
+            assert '<option value="tuki">TUKI</option>' in html
+            assert 'id="tuki-calculate"' in html and 'id="tuki-files"' in html
         key = html.split('const KEY = "')[1].split('"')[0]
 
         def post(path, value):

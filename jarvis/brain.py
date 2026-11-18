@@ -152,9 +152,11 @@ class Brain:
             lines.append("You are in offline mode: you cannot browse the internet. Answer from the "
                          "offline library or your own knowledge, and say so when unsure.")
         if self.assistant == "tuki":
-            lines.append("You are answering as Tuki, Jarvis's technical assistant. For maths, use the "
+            lines.append(f"You are answering as {assistants.TUKI_NAME}, short for {assistants.TUKI_FULL_NAME}. "
+                         "You are Jarvis's technical assistant. For maths, use the "
                          "calculator when appropriate and show how the result was checked. For files, "
-                         "start with read-only inspection. For a fact-check, identify the claims, cite "
+                         "search configured folders by filename; use workspace tools for source files. "
+                         "For a fact-check, identify the claims, cite "
                          "sources you actually inspected, and label any claims you could not verify. "
                          "For current claims, offer to search or use an available local source. "
                          "Never treat a second model's opinion as evidence.")
@@ -181,7 +183,10 @@ class Brain:
             self.model_used = None
             self.fact_check = self.assistant == "tuki" and bool(assistants.FACT_CHECK.search(command))
             if not command:
-                return f"{self.assistant.title()} here. What would you like me to look at?"
+                return f"{assistants.display_name(self.assistant)} here. What would you like me to look at?"
+            if self.ctx.pending is None and assistants.tuki_name_question(command, self.assistant):
+                self.assistant = "tuki"
+                return f"{assistants.TUKI_NAME} stands for {assistants.TUKI_FULL_NAME}."
             if command.startswith("/"):
                 if self.ctx.pending:
                     self.confirm_pending(False)
@@ -208,6 +213,10 @@ class Brain:
         try:
             if command == "/search" and value.strip():
                 return skills.run(self.ctx, "web_search", {"query": value})
+            if command == "/calc" and value.strip():
+                return skills.run(self.ctx, "calculate", {"expression": value.strip()})
+            if command == "/files" and value.strip():
+                return skills.run(self.ctx, "search_files", {"query": value.strip()})
             if command == "/upload" and value.strip():
                 return online.prepare_upload(self.ctx, value.strip())
             if command == "/briefing" and not value:
@@ -224,7 +233,8 @@ class Brain:
                     return coder.apply_proposal(self.ctx)
                 if command == "/undo":
                     return coder.undo_proposal(self.ctx)
-            return "Available commands: /search query, /upload file. In Coding mode: /fix, /diff, /apply, /undo."
+            return ("Available commands: /calc expression, /files filename, /search query, /upload file. "
+                    "In Coding mode: /fix, /diff, /apply, /undo.")
         except (ValueError, OSError, OllamaError) as error:
             return f"Couldn't complete the request: {error}"
 
