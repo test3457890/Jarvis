@@ -2,6 +2,23 @@
 import re
 
 CHOICES = ("auto", "jarvis", "tuki")
+TUKI_NAME = "TUKI"
+TUKI_FULL_NAME = "Technical Utility for Knowledge and Insight"
+
+_TUKI_NAME_QUESTION = re.compile(
+    r"\b(?:what (?:(?:does|do) (?:the letters in |each letter in )?tuki stand for|tuki stands for|is tuki(?:'s full name)?)|"
+    r"tuki(?:'s)? (?:acronym|full name)|(?:your name|tuki) (?:stand|stands) for)\b", re.I
+)
+
+
+def display_name(assistant):
+    return TUKI_NAME if assistant == "tuki" else "Jarvis"
+
+
+def tuki_name_question(text, assistant):
+    return bool(_TUKI_NAME_QUESTION.search(text) or (
+        assistant == "tuki" and re.fullmatch(r"what (?:does your name|does each letter|do the letters) stand for[.?!]*", text, re.I)
+    ))
 
 _TUKI_PREFIX = re.compile(r"^(?:hey\s+)?tuki\b[\s,:.!?-]*", re.I)
 _TUKI_SUFFIX = re.compile(r",\s*tuki[.!?]*$", re.I)
@@ -36,7 +53,7 @@ def route(text, preference="auto", mode="everyday"):
     request = _WAKE_PREFIX.sub("", text)
     if preference in ("jarvis", "tuki"):
         return preference, request
-    if mode == "coding" or request.startswith(("/fix ", "/search ", "/diff", "/apply", "/undo")):
+    if mode == "coding" or request.startswith(("/fix ", "/search ", "/calc ", "/files", "/diff", "/apply", "/undo")):
         return "tuki", request
     if mode != "talk" and not _EDITING.match(request) and (_TECHNICAL.search(request) or FACT_CHECK.search(request)):
         return "tuki", request

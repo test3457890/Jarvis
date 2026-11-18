@@ -5,7 +5,7 @@ speech, voice, memory and planner are all local. It works with the internet unpl
 and it can use [Project NOMAD](https://www.projectnomad.us) as an optional offline
 knowledge library.
 
-[Install Jarvis](#install-once) · [Set up Project NOMAD](#project-nomad-integration) · [Jarvis and Tuki](#jarvis-and-tuki)
+[Install Jarvis](#install-once) · [Set up Project NOMAD](#project-nomad-integration) · [Jarvis and TUKI](#jarvis-and-tuki)
 
 ## Screenshots
 
@@ -45,21 +45,32 @@ knowledge library.
 - Say "Jarvis" anywhere in a sentence, ask follow-ups, and it understands the
   conversation in the room. A British voice is used if Windows has one.
 
-## Jarvis and Tuki
+## Jarvis and TUKI
 
-Choose Auto, Jarvis, or Tuki in the Assistant menu. The mode and theme are separate.
+TUKI stands for Technical Utility for Knowledge and Insight. The HUD shows the full
+name in the assistant controls. Choose Auto, Jarvis, or TUKI in the Assistant menu.
+The mode and theme settings are separate.
 Both assistants share the conversation and voice settings. The HUD shows who answered
 and which local model handled the turn.
 
 | Assistant | Best for | Default Ollama model |
 |---|---|---|
 | Jarvis | Spelling, grammar, reading and summarising, and everyday conversation | `qwen3:4b` |
-| Tuki | Fact-checking, maths, coding, and technical or file tasks | `qwen3:8b`, with the configured coding model for edits |
+| TUKI | Source-backed fact-checking, maths, coding, and finding local files | `qwen3:8b`, with the configured coding model for edits |
 
 In Auto, say “Jarvis, proofread this” or “Tuki, fact-check that.” You can type `Jarvis:` or
 `Tuki:` to select one assistant for a message. Fact-checks that need live search show the
 outbound query for approval, then show the returned sources and an assessment of their
 search snippets. Read the original sources for details that the snippets cannot establish.
+
+Try these in the HUD or terminal:
+
+| Task | Example |
+|---|---|
+| Math | `/calc (12.5 * 3) / 4 + 2^8` uses the local arithmetic tool. Broader maths questions use the model for reasoning. |
+| Coding | Switch to Coding mode and select Propose fix. Review the diff, then apply it or undo an edit from the HUD. |
+| Fact-checking | Say “Tuki, fact-check that.” If an enabled search needs to go online, approve the displayed query and inspect the source links. |
+| File search | `/files budget` finds matching filenames in your configured search folders (Documents, Desktop, and Downloads by default). |
 
 Existing installs can run `ollama pull qwen3:4b` to add the everyday model. If that model
 is missing, Jarvis temporarily uses the original main model until you install it and

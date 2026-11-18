@@ -17,6 +17,7 @@ import time
 import urllib.parse
 import urllib.request
 import json
+import math
 import webbrowser
 from pathlib import Path
 
@@ -461,24 +462,36 @@ _OPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
 
 
 def _eval(node):
-    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+    if isinstance(node, ast.Constant) and type(node.value) in (int, float) and math.isfinite(node.value):
         return node.value
     if isinstance(node, ast.BinOp) and type(node.op) in _OPS:
         left, right = _eval(node.left), _eval(node.right)
-        if isinstance(node.op, ast.Pow) and abs(right) > 1000:
-            raise ValueError("exponent too large")
-        return _OPS[type(node.op)](left, right)
+        if isinstance(node.op, ast.Pow) and (
+            abs(right) > 1000 or (
+                isinstance(left, int) and right >= 0 and left.bit_length() * right > 4096
+            )
+        ):
+            raise ValueError("power exceeds the calculator limit")
+        result = _OPS[type(node.op)](left, right)
+        if isinstance(result, int) and result.bit_length() > 4096:
+            raise ValueError("integer exceeds the calculator limit")
+        if isinstance(result, complex) or isinstance(result, float) and not math.isfinite(result):
+            raise ValueError("only finite real results are supported")
+        return result
     if isinstance(node, ast.UnaryOp) and type(node.op) in _OPS:
         return _OPS[type(node.op)](_eval(node.operand))
     raise ValueError("unsupported expression")
 
 
-@skill("Calculate a maths expression exactly, e.g. '(12.5*3)/4 + 2**8'.",
+@skill("Evaluate a real arithmetic expression, e.g. '(12.5*3)/4 + 2**8'.",
        params={"expression": ("string", "The arithmetic expression", True)})
 def calculate(ctx, expression):
+    expression = expression.strip()
+    if not expression or len(expression) > 256:
+        raise ValueError("use an arithmetic expression between 1 and 256 characters")
     expr = expression.replace("^", "**").replace("x", "*").replace("×", "*").replace("÷", "/")
     result = _eval(ast.parse(expr, mode="eval").body)
-    return f"{expression} = {round(result, 10):g}"
+    return f"{expression} = {result}"
 
 
 # ---------------------------------------------------------------- briefing

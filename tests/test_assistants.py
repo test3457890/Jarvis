@@ -1,3 +1,5 @@
+import pytest
+
 from jarvis import secure
 from jarvis.assistants import route
 from jarvis.brain import Brain, OllamaError
@@ -76,3 +78,30 @@ def test_fact_check_reuses_confirmed_sources_without_tools(isolated_app, monkeyp
     result = brain.ask("confirm search")
     assert "The snippet is inconclusive." in result
     assert "https://example.org/" in result
+
+
+def test_tuki_answers_name_questions_without_a_model(isolated_app, monkeypatch):
+    cfg, db, _, _ = isolated_app
+    brain = Brain(cfg, db)
+    monkeypatch.setattr(brain, "_chat", lambda *args: pytest.fail("name lookup used the model"))
+    for question in ("What does TUKI stand for?", "What does each letter in TUKI stand for?",
+                     "Tuki, what does your name stand for?"):
+        assert brain.ask(question) == "TUKI stands for Technical Utility for Knowledge and Insight."
+        assert brain.assistant == "tuki"
+
+
+def test_tuki_calculator_and_file_search_work_offline(isolated_app, monkeypatch):
+    cfg, db, _, app_dir = isolated_app
+    cfg["search_folders"] = [str(app_dir)]
+    (app_dir / "budget draft.txt").write_text("sample", encoding="utf-8")
+    brain = Brain(cfg, db)
+    monkeypatch.setattr(brain, "_chat", lambda *args: pytest.fail("offline commands used the model"))
+
+    assert brain.ask("/calc (12.5*3)/4 + 2^8").endswith("265.375")
+    assert brain.assistant == "tuki"
+    assert brain.ask("Tuki: /calc 2^70").endswith("1180591620717411303424")
+    assert "only finite real results" in brain.ask("/calc (-1)^0.5")
+    assert "calculator limit" in brain.ask("/calc (2^1000)^1000")
+    assert "budget draft.txt" in brain.ask("/files budget")
+    assert brain.assistant == "tuki"
+    assert brain.ask("/files other") == "No files found."

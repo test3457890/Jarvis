@@ -258,7 +258,7 @@ class App:
             try:
                 chosen = assistant_switch[1].lower()
                 self.set_preference("assistant", chosen)
-                answer = "Automatic routing is on." if chosen == "auto" else f"{chosen.title()} is selected."
+                answer = "Automatic routing is on." if chosen == "auto" else f"{assistants.display_name(chosen)} is selected."
             except OSError:
                 answer = "I couldn't save that setting."
         elif switch:
@@ -271,7 +271,7 @@ class App:
         else:
             with self.brain._lock:
                 answer = self.brain.ask(text, room_context)
-                label = self.brain.assistant.title()
+                label = assistants.display_name(self.brain.assistant)
                 model = self.brain.model_used
         self.reply(answer, speak=(via == "voice" or self.cfg.get("speak_replies")), assistant=label, model=model)
         if self.speaker:
@@ -401,7 +401,7 @@ def doctor(cfg):
         models = brain.installed_models()
         line(True, f"Ollama is running ({len(models)} models installed)")
         has = lambda m: any(x == m or x == m + ":latest" for x in models)
-        line(has(cfg["model"]), f"Tuki model {cfg['model']}", f"run: ollama pull {cfg['model']}")
+        line(has(cfg["model"]), f"{assistants.TUKI_NAME} model {cfg['model']}", f"run: ollama pull {cfg['model']}")
         everyday = cfg.get("everyday_model") or cfg["model"]
         line(has(everyday), f"Jarvis model {everyday}", f"run: ollama pull {everyday}", optional=True)
         line(has(cfg["coder_model"]), f"Coding model {cfg['coder_model']}", f"run: ollama pull {cfg['coder_model']}",
@@ -449,7 +449,7 @@ def text_chat(app):
             break
         if text:
             answer = app.handle(text)
-            print(f"{app.brain.assistant.title()}: {answer}\n")
+            print(f"{assistants.display_name(app.brain.assistant)}: {answer}\n")
 
 
 def main(argv=None):
