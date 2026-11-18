@@ -17,6 +17,10 @@ DEFAULTS = {
     "assistant": "auto",
     "everyday_model": "qwen3:4b",
     "technical_keep_alive": 0,
+    "everyday_keep_alive": "2m",
+    "embed_keep_alive": "2m",
+    "memory_embeddings": True,
+    "performance_profile": "standard",
     "theme": "hud",
     "voice_choice": "auto",
     "name": "Jarvis",
@@ -132,3 +136,28 @@ def save(cfg: dict) -> None:
         temporary.replace(CONFIG_PATH)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+PERFORMANCE_PROFILES = {
+    "standard": {
+        "model": "qwen3:8b", "everyday_model": "qwen3:4b",
+        "coder_model": "qwen2.5-coder:7b", "num_ctx": 8192,
+        "whisper_model": "small.en", "memory_embeddings": True,
+        "everyday_keep_alive": "2m", "technical_keep_alive": 0,
+        "embed_keep_alive": "2m",
+    },
+    "low-memory": {
+        "model": "qwen3:4b", "everyday_model": "qwen3:4b",
+        "coder_model": "qwen2.5-coder:1.5b", "num_ctx": 2048,
+        "whisper_model": "base.en", "memory_embeddings": False,
+        "everyday_keep_alive": 0, "technical_keep_alive": 0,
+        "embed_keep_alive": 0,
+    },
+}
+
+
+def apply_profile(cfg, profile):
+    """Return explicit model and memory settings while preserving personal settings."""
+    if profile not in PERFORMANCE_PROFILES:
+        raise ValueError("Choose standard or low-memory.")
+    return {**cfg, **PERFORMANCE_PROFILES[profile], "performance_profile": profile}

@@ -61,10 +61,11 @@ class Brain:
             return [m["name"] for m in json.loads(r.read().decode()).get("models", [])]
 
     def embed(self, text):
-        if not self._embed_ok:
+        if not self._embed_ok or not self.cfg.get("memory_embeddings", True):
             return None
         try:
-            data = self._post("/api/embed", {"model": self.cfg["embed_model"], "input": text}, timeout=30)
+            data = self._post("/api/embed", {"model": self.cfg["embed_model"], "input": text,
+                          "keep_alive": self.cfg.get("embed_keep_alive", "2m")}, timeout=30)
             return data["embeddings"][0]
         except Exception:
             self._embed_ok = False  # embedding model missing: fall back to keyword recall
@@ -89,7 +90,7 @@ class Brain:
         for _ in range(5):
             self.model_used = model
             payload = {"model": model, "messages": messages, "stream": False,
-                       "keep_alive": self.cfg.get("technical_keep_alive", 0) if technical else "2m",
+                       "keep_alive": self.cfg.get("technical_keep_alive", 0) if technical else self.cfg.get("everyday_keep_alive", "2m"),
                        "options": {"temperature": 0.3 if technical else 0.6,
                                    "num_ctx": self.cfg.get("num_ctx", 8192)}}
             if use_tools and model not in self._no_tools:
