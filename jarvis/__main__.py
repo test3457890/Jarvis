@@ -9,6 +9,7 @@
 import argparse
 import datetime as dt
 import getpass
+import re
 import shutil
 import subprocess
 import sys
@@ -28,8 +29,10 @@ class App:
         self.bus = EventBus()
         self.memory = Memory()
         self.brain = Brain(cfg, self.memory)
+        self._settings_lock = threading.Lock()
         self.memory.embed = self.brain.embed
-        self.brain.ctx.on_pending = lambda p: self.emit("pending", p["preview"] if p else None)
+        self.brain.ctx.on_pending = lambda p: self.emit(
+            "pending", {"text": p["preview"], "id": p["id"]} if p else None)
         self.speaker = None
         self.listener = None
         self.voice_error = ""
@@ -54,16 +57,25 @@ class App:
     def notify(self, text, speak=True):
         print(f"\n[jarvis] {text}")
         self.emit("system", text)
-        if speak and self.speaker and self.cfg.get("speak_replies", True):
+        if speak and self.speaker and self.cfg.get("speak_replies", True) and self.cfg.get("mode") != "talk":
             self.speaker.say(text)
 
     def state(self):
+        pending = self.brain.ctx.pending
         return {"status": self.status, "speak_replies": bool(self.cfg.get("speak_replies")),
                 "mic_on": bool(self.listener and not self.listener.paused.is_set()),
                 "voice_available": self.listener is not None, "voice_error": self.voice_error,
                 "lockdown": bool(self.cfg.get("lockdown")),
-                "pending": self.brain.ctx.pending["preview"] if self.brain.ctx.pending else None,
-                "model": self.cfg["model"], "honorific": self.cfg.get("honorific", "sir")}
+                "internet": bool(self.cfg.get("allow_internet_tools")),
+                "web_search": bool(self.cfg.get("allow_web_search") and secure.has_secret("brave_search_key")),
+                "github_upload": bool(self.cfg.get("github_upload_repo") and secure.has_secret("github_upload_token")),
+                "pending": {"text": pending["preview"], "id": pending.get("id")} if pending else None,
+                "model": (self.cfg.get("coder_model") or self.cfg["model"])
+                if self.cfg.get("mode") == "coding" else self.cfg["model"],
+                "mode": self.cfg.get("mode", "everyday"), "theme": self.cfg.get("theme", "hud"),
+                "voice_choice": self.cfg.get("voice_choice", "auto"),
+                "piper_available": bool(self.cfg.get("piper_model")),
+                "honorific": self.cfg.get("honorific", "sir")}
 
     def dashboard(self):
         now = time.time()
@@ -78,6 +90,10 @@ class App:
         return data
 
     def toggle(self, what):
+        with self._settings_lock:
+            return self._toggle(what)
+
+    def _toggle(self, what):
         if what == "speak":
             self.cfg["speak_replies"] = not self.cfg.get("speak_replies")
             config.save(self.cfg)
@@ -86,6 +102,9 @@ class App:
                 self.listener.paused.clear()
             else:
                 self.listener.paused.set()
+        elif what == "internet":
+            self.cfg["allow_internet_tools"] = not self.cfg.get("allow_internet_tools")
+            config.save(self.cfg)
         elif what == "lockdown":
             self.cfg["lockdown"] = not self.cfg.get("lockdown")
             config.save(self.cfg)
@@ -97,9 +116,35 @@ class App:
         self.emit("toggles", st)
         return st
 
-    def confirm(self, yes: bool):
-        result = self.brain.confirm_pending(yes)
+    def set_preference(self, key, value):
+        choices = {"mode": config.MODES, "theme": config.THEMES,
+                   "voice_choice": ("auto", "windows", "piper")}
+        if key not in choices or value not in choices[key]:
+            raise ValueError("Unknown setting.")
+        if key == "voice_choice" and value == "piper" and not self.cfg.get("piper_model"):
+            raise ValueError("Set your local Piper voice model in Jarvis setup first.")
+        with self.brain._lock, self._settings_lock:
+            config.save({**self.cfg, key: value})
+            self.cfg[key] = value
+            if key == "mode" and value == "talk" and self.brain.ctx.pending:
+                self.brain.confirm_pending(False)
+            state = self.state()
+        self.emit("toggles", state)
+        return state
+
+    def preview_voice(self):
+        if not self.speaker:
+            return {"error": "Speech is unavailable."}
+        honorific = self.cfg.get("honorific") or "sir"
+        self.speaker.say(f"At your service, {honorific}. Shall we get started?")
+        return {"ok": True}
+
+    def confirm(self, yes: bool, expected_id: str):
+        result = self.brain.confirm_pending(yes, expected_id=expected_id)
         self.reply(result, speak=True)
+        if self.speaker:
+            self.speaker.wait()
+        self.emit("status", "listening" if self.listener else "idle")
         return {"result": result}
 
     def _start_listener(self):
@@ -200,7 +245,17 @@ class App:
     def handle(self, text, room_context="", via="typed"):
         self.emit("user", {"text": text, "via": via})
         self.emit("status", "thinking")
-        answer = self.brain.ask(text, room_context)
+        switch = re.fullmatch(r"(?:jarvis[, :]+)?(?:switch to|turn on|use) (everyday|coding|briefing|talk)(?: mode)?[.!?]?",
+                              text.strip(), re.IGNORECASE)
+        if switch:
+            mode = switch[1].lower()
+            try:
+                self.set_preference("mode", mode)
+                answer = f"{mode.title()} mode, {self.cfg.get('honorific') or 'sir'}."
+            except OSError:
+                answer = "I couldn't save that setting."
+        else:
+            answer = self.brain.ask(text, room_context)
         self.reply(answer, speak=(via == "voice" or self.cfg.get("speak_replies")))
         if self.speaker:
             self.speaker.wait()
@@ -213,7 +268,13 @@ class App:
         self.emit("reply", text)
         if speak and self.speaker and self.cfg.get("speak_replies", True):
             self.emit("status", "speaking")
-            self.speaker.say(text)
+            spoken = text
+            if spoken.startswith(("Preview only.", "Proposed edit for", "Brave search results.")):
+                spoken = (spoken.split("\n", 1)[0] if not spoken.startswith("Brave") else
+                          "I've put the search results on screen.")
+            elif self.cfg.get("mode") == "coding":
+                spoken = spoken.split("\n\n", 1)[0].split("```", 1)[0].strip()[:350]
+            self.speaker.say(spoken or "The details are on screen.")
 
 
 def _system_stats():
@@ -254,6 +315,8 @@ def setup(cfg):
     ask("Your name (used to sign emails)", "user_name")
     ask("What should Jarvis call you (sir, ma'am, boss, your name)", "honorific")
     ask("Daily briefing time (HH:MM)", "briefing_time")
+    ask("Windows voice name (try George if installed)", "sapi_voice_contains")
+    ask("Optional local Piper voice model (.onnx path)", "piper_model")
 
     print("\nCANVAS. In Canvas open Calendar, click 'Calendar Feed' (bottom right), copy the link.")
     print(f"  Currently: {'connected' if secure.has_secret('canvas_feed_url') else 'not connected'}")
@@ -283,6 +346,19 @@ def setup(cfg):
             secure.set_secret("smtp_host", host)
             secure.set_secret("smtp_password", pw)
             print("  Saved (encrypted).")
+    print("\nONLINE TOOLS. Jarvis starts offline. Configure only the services you want to use.")
+    brave = getpass.getpass("  Brave Search API key (hidden, Enter to keep current): ").strip()
+    if brave:
+        secure.set_secret("brave_search_key", brave)
+        cfg["allow_web_search"] = True
+        cfg["allow_internet_tools"] = True
+    ask("GitHub upload repository (owner/repo)", "github_upload_repo")
+    if cfg.get("github_upload_repo"):
+        ask("GitHub upload branch", "github_upload_branch")
+        token = getpass.getpass("  GitHub token for that repository (hidden, Enter to keep current): ").strip()
+        if token:
+            secure.set_secret("github_upload_token", token)
+            cfg["allow_internet_tools"] = True
     config.save(cfg)
     print("\nDone. Your secrets are encrypted with your Windows account and never stored in config.json.")
     if secure.has_secret("canvas_feed_url"):
@@ -361,9 +437,17 @@ def main(argv=None):
     p.add_argument("command", nargs="?", default="run", choices=["run", "doctor", "briefing", "setup"])
     p.add_argument("--text", action="store_true", help="chat in the terminal instead of by voice")
     p.add_argument("--no-voice", action="store_true", help="don't use the microphone")
+    p.add_argument("--mode", choices=config.MODES, help="Start in this mode")
+    p.add_argument("--theme", choices=config.THEMES, help="Start with this theme")
     p.add_argument("--no-browser", action="store_true", help="don't open the HUD window")
     args = p.parse_args(argv)
     cfg = config.load()
+    if args.mode:
+        cfg["mode"] = args.mode
+    if args.theme:
+        cfg["theme"] = args.theme
+    elif args.mode == "talk":
+        cfg["theme"] = "simple"
 
     if args.command == "doctor":
         return doctor(cfg)

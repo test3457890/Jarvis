@@ -10,6 +10,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from . import config
+
 UI_FILE = Path(__file__).with_name("ui.html")
 
 
@@ -71,9 +73,13 @@ def serve(app, port: int):
             if not self._host_ok():
                 return self._json({"error": "forbidden"}, 403)
             if self.path == "/":
-                page = UI_FILE.read_text(encoding="utf-8").replace("__JARVIS_KEY__", token)
-                csp = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' "
-                       "https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'")
+                theme = app.cfg.get("theme")
+                mode = app.cfg.get("mode")
+                page = (UI_FILE.read_text(encoding="utf-8").replace("__JARVIS_KEY__", token)
+                        .replace("__JARVIS_THEME__", theme if theme in config.THEMES else "hud")
+                        .replace("__JARVIS_MODE__", mode if mode in config.MODES else "everyday"))
+                csp = ("default-src 'self'; script-src 'self' 'unsafe-inline'; "
+                       "style-src 'self' 'unsafe-inline'; connect-src 'self'")
                 body = page.encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -117,9 +123,13 @@ def serve(app, port: int):
         def do_POST(self):
             if not self._host_ok() or not self._authed():
                 return self._json({"error": "forbidden"}, 403)
-            length = min(int(self.headers.get("Content-Length") or 0), 100_000)
             try:
+                length = int(self.headers.get("Content-Length") or 0)
+                if not 0 <= length <= 100_000:
+                    return self._json({"error": "invalid content length"}, 400)
                 data = json.loads(self.rfile.read(length) or b"{}")
+                if not isinstance(data, dict):
+                    return self._json({"error": "expected a JSON object"}, 400)
             except ValueError:
                 return self._json({"error": "bad json"}, 400)
             if self.path == "/api/chat":
@@ -130,8 +140,22 @@ def serve(app, port: int):
                 self._json({"ok": True})
             elif self.path == "/api/toggle":
                 self._json(app.toggle(str(data.get("what", ""))))
+            elif self.path == "/api/preferences":
+                try:
+                    state = app.set_preference(data.get("key"), data.get("value"))
+                except (ValueError, TypeError) as error:
+                    return self._json({"error": str(error)}, 400)
+                except OSError:
+                    return self._json({"error": "Could not save the setting."}, 500)
+                self._json(state)
+            elif self.path == "/api/voice-preview":
+                self._json(app.preview_voice())
             elif self.path == "/api/confirm":
-                self._json(app.confirm(bool(data.get("yes"))))
+                if not isinstance(data.get("yes"), bool):
+                    return self._json({"error": "expected a boolean confirmation"}, 400)
+                if not isinstance(data.get("id"), str) or not data["id"]:
+                    return self._json({"error": "expected a request identifier"}, 400)
+                self._json(app.confirm(data["yes"], data["id"]))
             else:
                 self._json({"error": "not found"}, 404)
 

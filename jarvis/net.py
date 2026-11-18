@@ -59,6 +59,10 @@ def allowed_endpoints(cfg: dict) -> set[tuple[str, str, int]]:
 
     if cfg.get("allow_internet_tools"):
         allowed.add(("https", "en.wikipedia.org", 443))
+        if cfg.get("allow_web_search") and secure.has_secret("brave_search_key"):
+            allowed.add(("https", "api.search.brave.com", 443))
+        if cfg.get("github_upload_repo") and secure.has_secret("github_upload_token"):
+            allowed.add(("https", "api.github.com", 443))
 
     return allowed
 
@@ -72,13 +76,15 @@ def check_url(url: str, cfg: dict, purpose: str = "") -> str:
     return url
 
 
-def urlopen(req_or_url, cfg: dict, timeout: int = 20, purpose: str = ""):
+def urlopen(req_or_url, cfg: dict, timeout: int = 20, purpose: str = "", *, allow_redirects=True):
     """Open an HTTP/HTTPS URL only if both the initial URL and any redirects are allowlisted."""
     url = req_or_url.full_url if isinstance(req_or_url, urllib.request.Request) else str(req_or_url)
     check_url(url, cfg, purpose=purpose)
 
     class _AllowlistRedirectHandler(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
+            if not allow_redirects:
+                raise NetworkBlockedError("This request does not allow redirects.")
             check_url(newurl, cfg, purpose=f"{purpose}:redirect" if purpose else "redirect")
             return super().redirect_request(req, fp, code, msg, headers, newurl)
 

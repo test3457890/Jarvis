@@ -10,6 +10,7 @@ import datetime as dt
 import operator
 import os
 import random
+import secrets
 import re
 import subprocess
 import time
@@ -25,16 +26,17 @@ SKILLS = {}
 
 
 def skill(description, params=None, risky=False, internet=False, untrusted=False,
-          preview=None, available=None):
+          preview=None, available=None, manual=False):
     """risky:     needs the user's spoken/typed/clicked "yes" first (and is audited)
     internet:  only offered when internet tools are allowed
     untrusted: result comes from outside (web, files, Canvas) and is fenced off
     preview:   fn(ctx, **args) -> text describing exactly what will happen
+    manual:    available to direct commands only, outside the model tool list
     available: fn(cfg) -> bool, hide the skill when it isn't set up"""
     def deco(fn):
         SKILLS[fn.__name__] = {"fn": fn, "description": description, "params": params or {},
                                "risky": risky, "internet": internet, "untrusted": untrusted,
-                               "preview": preview, "available": available}
+                               "preview": preview, "available": available, "manual": manual}
         return fn
     return deco
 
@@ -62,6 +64,8 @@ def tool_schemas(cfg) -> list:
     tools = []
     lockdown = bool(cfg.get("lockdown"))
     for name, s in SKILLS.items():
+        if s["manual"]:
+            continue
         if s["internet"] and not cfg.get("allow_internet_tools"):
             continue
         if lockdown and s["risky"]:
@@ -86,6 +90,9 @@ class Context:
     def __init__(self, cfg, memory):
         self.cfg = cfg
         self.memory = memory
+        self.code_proposal = None
+        self.applied_code = None
+        self.proposal_seen = False
         self.pending = None  # {"name", "args", "preview"} waiting for the user's "yes"
         self.on_pending = lambda pending: None
         self.injection_seen = False  # outside content this turn tried to give orders
@@ -125,7 +132,7 @@ def run(ctx: Context, name: str, args: dict, confirmed=False) -> str:
             what = s["preview"](ctx, **clean) if s["preview"] else f"{name} {clean}"
         except Exception as e:
             return f"Can't prepare {name}: {e}"
-        ctx.pending = {"name": name, "args": clean, "preview": what}
+        ctx.pending = {"name": name, "args": clean, "preview": what, "id": secrets.token_urlsafe(12)}
         ctx.on_pending(ctx.pending)
         return (f"NOT DONE YET. Waiting for the user's confirmation. Tell the user exactly what "
                 f"will happen: {what}. Then ask them to say yes or no.")
@@ -521,4 +528,4 @@ SKILLS["read_clipboard"]["untrusted"] = True
 SKILLS["read_note"]["untrusted"] = True
 
 # Load the other skill modules (they register themselves with @skill).
-from . import planner, comms, coder, nomad  # noqa: E402,F401
+from . import planner, comms, coder, nomad, online  # noqa: E402,F401

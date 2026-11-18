@@ -34,38 +34,48 @@ class Speaker:
 
     def _worker(self):
         engine = None
-        use_piper = bool(self.cfg.get("piper_model")) and self.cfg.get("tts") == "piper"
-        if not use_piper:
-            try:
-                import pyttsx3
-                engine = pyttsx3.init()
-                engine.setProperty("rate", self.cfg.get("speech_rate", 185))
-                want = self.cfg.get("sapi_voice_contains", "").lower()
-                # Prefer a British male voice for the movie feel, if Windows has one.
-                prefs = [want] if want else ["george", "ryan", "united kingdom", "great britain", "david"]
-                voices = engine.getProperty("voices")
-                for p in prefs:
-                    hit = next((v for v in voices if p in v.name.lower()), None)
-                    if hit:
-                        engine.setProperty("voice", hit.id)
-                        break
-            except Exception as e:
-                print(f"[voice] Text to speech unavailable: {e}")
         while True:
             text = self._q.get()
             self.speaking.set()
             try:
+                voice = self.cfg.get("voice_choice", "auto")
+                use_piper = self.cfg.get("piper_model") and (
+                    voice == "piper" or (voice == "auto" and self.cfg.get("tts") == "piper")
+                )
                 if use_piper:
-                    self._piper(text)
-                elif engine:
-                    engine.say(text)
-                    engine.runAndWait()
+                    try:
+                        self._piper(text)
+                        continue
+                    except (OSError, subprocess.SubprocessError) as error:
+                        print(f"[voice] Piper unavailable, trying the Windows voice: {type(error).__name__}")
+                if engine is None:
+                    engine = self._windows_voice()
+                engine.say(text)
+                engine.runAndWait()
             except Exception as e:
                 print(f"[voice] Speech failed: {e}")
+                engine = None
             finally:
                 time.sleep(0.25)  # let the room echo die before listening again
                 self.speaking.clear()
                 self._q.task_done()
+
+    def _windows_voice(self):
+        import pyttsx3
+
+        engine = pyttsx3.init()
+        engine.setProperty("rate", self.cfg.get("speech_rate", 185))
+        preferred = self.cfg.get("sapi_voice_contains", "").lower()
+        preferences = tuple(filter(None, (
+            preferred, "george", "ryan", "united kingdom", "great britain",
+        )))
+        voices = engine.getProperty("voices")
+        for preference in preferences:
+            voice = next((v for v in voices if preference in v.name.lower()), None)
+            if voice:
+                engine.setProperty("voice", voice.id)
+                break
+        return engine
 
     def _piper(self, text):
         fd, wav = tempfile.mkstemp(suffix=".wav")
@@ -73,7 +83,7 @@ class Speaker:
         try:
             subprocess.run([self.cfg.get("piper_exe", "piper"), "--model", self.cfg["piper_model"],
                             "--output_file", wav], input=text, text=True, capture_output=True,
-                           check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                           check=True, timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             winsound.PlaySound(wav, winsound.SND_FILENAME)
         finally:
             try:
@@ -145,7 +155,7 @@ class Listener:
         speech, silent_blocks, in_speech = [], 0, False
         while True:
             block = self._audio.get()
-            if self.speaker.speaking.is_set() or self.paused.is_set():
+            if (self.speaker and self.speaker.speaking.is_set()) or self.paused.is_set():
                 speech, in_speech, silent_blocks = [], False, 0
                 pre.clear()
                 continue

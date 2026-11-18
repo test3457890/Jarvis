@@ -32,8 +32,9 @@ and it's built to pair with [Project NOMAD](https://www.projectnomad.us).
 **Codes**
 - Writes and fixes source files in `Documents\Jarvis Code` using a local Ollama coding model.
 - Checks generated Python syntax before saving and keeps the previous version in a `.bak` file.
-- Ask “Preview the fix for budget.py so it handles an empty input file.” Jarvis shows a proposed
-  diff without saving it. A later edit request generates a fresh change.
+- Coding mode previews edits before saving. Apply saves the exact preview and Undo restores the
+  last applied change if the file has stayed the same. You can include up to three other files
+  from the code workspace as read-only context.
 - Runs supported files only after confirmation. The syntax check does not execute code.
 
 **Project NOMAD**
@@ -45,6 +46,43 @@ and it's built to pair with [Project NOMAD](https://www.projectnomad.us).
 - Boot sequence, arc-reactor HUD, live CPU/GPU/RAM gauges, today's schedule, deadlines.
 - Say "Jarvis" anywhere in a sentence, ask follow-ups, and it understands the
   conversation in the room. A British voice is used if Windows has one.
+
+## Modes and themes
+
+Use the Mode menu in the HUD or say “Jarvis, switch to Coding mode.”
+
+| Mode | Behaviour |
+|---|---|
+| Everyday | General conversation and assistant tools. |
+| Coding | Local coding model for file edits, with a diff, apply and undo controls. |
+| Briefing | A shortcut to read your current briefing and a concise style for planning. |
+| Talk | A chat-only view with no action tools or spoken background reminders. |
+
+Choose Sci-fi HUD, Simple dark, or Simple light independently. Use the Voice toggle to mute
+responses, the Mic toggle to pause listening, and Try voice to hear a sample. Jarvis can use a
+Windows voice such as George if installed, or a local Piper voice such as `en_GB-alan-medium`.
+Set the local Piper model path in `Jarvis.bat setup` and select Piper in the HUD.
+
+`Jarvis.bat --mode talk --theme simple` opens a minimal talk view. For coding, type
+`/fix budget.py | handle empty input | rules.txt` to select a target and an optional related file.
+Use `/diff`, `/apply`, or `/undo`, or the corresponding HUD buttons.
+
+## Optional online tools
+
+Jarvis starts offline. Use `Jarvis.bat setup` on Windows to configure the services you want.
+Keys are entered through hidden prompts and stored with Windows DPAPI.
+
+- [Brave Search](https://api-dashboard.search.brave.com/) provides public web results.
+  Ask for a web search or type `/search your query`. Confirm the outbound search terms
+  to get source links in the HUD. Only approved search terms are sent to Brave.
+- [GitHub uploads](https://docs.github.com/en/rest/repos/contents#create-or-update-file-contents)
+  can add a selected file to `uploads/` in one configured repository and branch. Use a
+  repository-scoped token with Contents write permission. Type `/upload report.pdf` with
+  the file in your Jarvis Code workspace. Jarvis shows the path, size and destination before
+  confirmation. Each upload can create a commit and be visible to anyone with repository access.
+  Uploads are limited to supported files up to 5 MiB. Existing paths are rejected.
+- Use the Internet toggle in the HUD to turn online tools on or off. Lockdown blocks
+  searches and uploads, including requests that were already waiting for confirmation.
 
 ## Security
 - **Nothing happens without your "yes":** calls, texts, sending email, running code,

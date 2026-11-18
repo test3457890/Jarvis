@@ -1,12 +1,19 @@
 """Settings for Jarvis. Stored as JSON in %APPDATA%\\Jarvis\\config.json."""
 import json
 import os
+import tempfile
 from pathlib import Path
 
 APP_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / "Jarvis"
 CONFIG_PATH = APP_DIR / "config.json"
 
+MODES = ("everyday", "coding", "briefing", "talk")
+THEMES = ("hud", "simple", "light")
+
 DEFAULTS = {
+    "mode": "everyday",
+    "theme": "hud",
+    "voice_choice": "auto",
     "name": "Jarvis",
     "user_name": "",
     # Local language model served by Ollama (must support tool calling).
@@ -41,6 +48,9 @@ DEFAULTS = {
     "comms_rate_limit_window_seconds": 300,
     # Offline by default. Turn on to allow tools that use the internet (Wikipedia).
     "allow_internet_tools": False,
+    "allow_web_search": False,
+    "github_upload_repo": "",
+    "github_upload_branch": "main",
     "notes_dir": str(APP_DIR / "notes"),
     "search_folders": [
         str(Path.home() / "Documents"),
@@ -66,7 +76,7 @@ DEFAULTS = {
     "kiwix_url": "",
     "personality": (
         "You are J.A.R.V.I.S., a calm, dry-witted, fiercely loyal AI assistant in the style of "
-        "Tony Stark's butler AI, running entirely on the user's own computer. You are practical "
+        "a British butler, running locally on the user's computer. You are practical "
         "first: you get things done, keep the user on schedule and gently call out anything "
         "slipping. Address the user as '{honorific}' now and then. Replies are usually read "
         "aloud, so keep them to one to three sentences unless asked for detail, and never use "
@@ -88,6 +98,10 @@ def load() -> dict:
     # put your own text in "custom_personality" to replace it.
     cfg["personality"] = cfg.get("custom_personality") or DEFAULTS["personality"]
     cfg.setdefault("custom_personality", "")
+    for key, choices in (("mode", MODES), ("theme", THEMES),
+                         ("voice_choice", ("auto", "windows", "piper"))):
+        if cfg.get(key) not in choices:
+            cfg[key] = choices[0]
     save(cfg)  # writes any new default keys
     Path(cfg["notes_dir"]).mkdir(parents=True, exist_ok=True)
     return cfg
@@ -96,4 +110,16 @@ def load() -> dict:
 def save(cfg: dict) -> None:
     APP_DIR.mkdir(parents=True, exist_ok=True)
     data = {k: v for k, v in cfg.items() if k != "personality"}
-    CONFIG_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    with tempfile.NamedTemporaryFile(dir=CONFIG_PATH.parent, mode="w", encoding="utf-8",
+                                     delete=False) as stream:
+        temporary = Path(stream.name)
+        try:
+            json.dump(data, stream, indent=2)
+        except Exception:
+            stream.close()
+            temporary.unlink(missing_ok=True)
+            raise
+    try:
+        temporary.replace(CONFIG_PATH)
+    finally:
+        temporary.unlink(missing_ok=True)

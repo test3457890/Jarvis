@@ -6,7 +6,7 @@ import threading
 import urllib.error
 import urllib.request
 
-from . import net, secure, skills
+from . import coder, net, online, secure, skills
 
 _YES = re.compile(r"^\W*(yes|yeah|yep|yup|sure|do it|confirm(ed)?|go ahead|affirmative|please do|ok(ay)?)\b", re.I)
 _NO = re.compile(r"^\W*(no|nope|cancel|stop|don'?t|never ?mind|abort)\b", re.I)
@@ -29,7 +29,7 @@ class Brain:
         self.tools_ok = True
         self.think_ok = True
         self._embed_ok = True
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self.history = memory.recent_messages(cfg.get("history_turns", 12))
 
     # ------------------------------------------------------------ Ollama plumbing
@@ -116,6 +116,18 @@ class Brain:
             "review it. Before a phone call the user must make, offer short talking points. For "
             "coding, use write_code / fix_code / run_code. For factual questions, try "
             "search_library (Project NOMAD's offline library) first.")
+        mode = cfg.get("mode", "everyday")
+        if mode == "coding":
+            lines.append("Coding mode: explain the likely cause, propose fixes using fix_code, "
+                         "and give a short spoken summary of any diff. Applying a proposed edit "
+                         "requires the user's /apply command. Never claim it was saved before that.")
+        elif mode == "briefing":
+            lines.append("Briefing mode: lead with the top priority and give actionably short summaries.")
+        elif mode == "talk":
+            lines.append("Talk mode: keep the conversation natural. You have no action tools in this mode.")
+        if mode != "talk" and cfg.get("allow_internet_tools") and cfg.get("allow_web_search"):
+            lines.append("For current or public information, you may propose a web_search. "
+                         "Use public search terms only. Never include personal details, file content or secrets.")
         if not cfg.get("allow_internet_tools"):
             lines.append("You are in offline mode: you cannot browse the internet. Answer from the "
                          "offline library or your own knowledge, and say so when unsure.")
@@ -124,9 +136,10 @@ class Brain:
         facts = self.memory.recall(user_text, k=5)
         if facts:
             lines.append("Things you remember about the user: " + " | ".join(facts))
-        lines.append("When the user tells you a lasting personal fact or preference, save it "
-                     "with the remember tool.")
-        if room_context:
+        if mode != "talk":
+            lines.append("When the user tells you a lasting personal fact or preference, save it "
+                         "with the remember tool.")
+        if room_context and mode != "talk":
             lines.append("Recent conversation overheard in the room (use it to understand what "
                          "the user is referring to):\n" + room_context)
         return "\n".join(lines)
@@ -134,7 +147,14 @@ class Brain:
     def ask(self, user_text: str, room_context: str = "") -> str:
         with self._lock:
             self.ctx.injection_seen = False
-            reply = self._ask(user_text.strip(), room_context)
+            command = user_text.strip()
+            if command.startswith("/"):
+                if self.ctx.pending:
+                    self.confirm_pending(False)
+                return self._command(command)
+            if self.ctx.pending and self.ctx.pending["name"] in ("github_upload", "web_search"):
+                return self._confirm_online_text(command)
+            reply = self._ask(command, room_context)
             if self.ctx.injection_seen:
                 reply = secure.scrub_claims(reply)
                 if self.ctx.pending:  # never leave an action queued up by outside content
@@ -147,15 +167,68 @@ class Brain:
             self.history = self.history[-2 * self.cfg.get("history_turns", 12):]
             return reply
 
-    def confirm_pending(self, yes: bool) -> str:
-        """The user answered a confirmation (by voice, typing, or the on-screen buttons)."""
-        pending, self.ctx.pending = self.ctx.pending, None
-        self.ctx.on_pending(None)
-        if not pending:
-            return "There's nothing waiting for confirmation."
-        if not yes:
-            return "Cancelled. Nothing was done."
-        return skills.run(self.ctx, pending["name"], pending["args"], confirmed=True)
+    def _command(self, text):
+        command, _, value = text.partition(" ")
+        if self.cfg.get("mode") == "talk":
+            return "Talk mode is for conversation. Switch modes to use commands."
+        try:
+            if command == "/search" and value.strip():
+                return skills.run(self.ctx, "web_search", {"query": value})
+            if command == "/upload" and value.strip():
+                return online.prepare_upload(self.ctx, value.strip())
+            if command == "/briefing" and not value:
+                return skills.run(self.ctx, "briefing", {})
+            if command == "/fix" and self.cfg.get("mode") == "coding":
+                fields = [field.strip() for field in value.split("|")]
+                if len(fields) >= 2 and all(fields) and len(fields) <= 5:
+                    return coder.propose_fix(self.ctx, fields[0], fields[1], fields[2:])
+                return "Use /fix file | what to change | optional related file (up to three)."
+            if not value and self.cfg.get("mode") == "coding":
+                if command == "/diff":
+                    return coder.show_proposal(self.ctx)
+                if command == "/apply":
+                    return coder.apply_proposal(self.ctx)
+                if command == "/undo":
+                    return coder.undo_proposal(self.ctx)
+            return "Available commands: /search query, /upload file. In Coding mode: /fix, /diff, /apply, /undo."
+        except (ValueError, OSError, OllamaError) as error:
+            return f"Couldn't complete the request: {error}"
+
+    def _confirm_online_text(self, text):
+        expected = {"github_upload": "confirm upload", "web_search": "confirm search"}
+        name = self.ctx.pending["name"]
+        if text.casefold().rstrip(".!?") == expected[name]:
+            return self.confirm_pending(True)
+        if _NO.match(text):
+            return self.confirm_pending(False)
+        return f'Use the HUD Confirm button, say “{expected[name]}”, or say “cancel”.'
+
+    def confirm_pending(self, yes: bool, *, expected_id=None) -> str:
+        """Process a confirmation from the HUD or from an explicit user reply."""
+        with self._lock:
+            if expected_id is not None and (
+                not self.ctx.pending or self.ctx.pending.get("id") != expected_id
+            ):
+                return "That confirmation has expired. Review the current request."
+            pending, self.ctx.pending = self.ctx.pending, None
+            self.ctx.on_pending(None)
+            if not pending:
+                return "There's nothing waiting for confirmation."
+            if not yes:
+                return "Cancelled. Nothing was done."
+            if self.cfg.get("mode") == "talk":
+                return "Talk mode is active. No action was taken."
+            self.ctx.injection_seen = False
+            result = skills.run(self.ctx, pending["name"], pending["args"], confirmed=True)
+            if pending["name"] == "web_search":
+                if self.ctx.injection_seen:
+                    self.ctx.injection_seen = False
+                    return "The search results included suspicious instructions. They were discarded."
+                if result.startswith(secure.UNTRUSTED_NOTE):
+                    return ("Brave search results.\n\n" +
+                            result.removeprefix(secure.UNTRUSTED_NOTE).removesuffix(secure.UNTRUSTED_END))
+                return result
+            return result
 
     def _ask(self, user_text, room_context):
         # A risky action is waiting for a yes/no: decide it here, never by the model.
@@ -171,6 +244,9 @@ class Brain:
         messages += self.history
         messages.append({"role": "user", "content": user_text})
         try:
+            if self.cfg.get("mode") == "talk":
+                msg = self._chat(messages, use_tools=False)
+                return _THINK.sub("", msg.get("content", "")).strip() or "I'm listening."
             for _ in range(6):  # up to 6 rounds of tool use
                 msg = self._chat(messages, use_tools=True)
                 calls = msg.get("tool_calls") or []
@@ -185,7 +261,17 @@ class Brain:
                             args = json.loads(args)
                         except ValueError:
                             args = {}
-                    result = skills.run(self.ctx, fn.get("name", ""), args)
+                    name = fn.get("name", "")
+                    if skills.SKILLS.get(name, {}).get("manual"):
+                        result = "This action is only available directly to the user."
+                    else:
+                        result = skills.run(self.ctx, name, args)
+                    if self.ctx.pending and self.ctx.pending["name"] == "web_search":
+                        if self.ctx.injection_seen:
+                            return "Web search was blocked."
+                        return self.ctx.pending["preview"] + '. Use Confirm or say “confirm search”.'
+                    if name in ("fix_code", "write_code") and "Preview only." in result and self.ctx.code_proposal:
+                        return result.removeprefix(secure.UNTRUSTED_NOTE).removesuffix(secure.UNTRUSTED_END)
                     messages.append({"role": "tool", "tool_name": fn.get("name", ""), "content": result})
             msg = self._chat(messages, use_tools=False)
             return _THINK.sub("", msg.get("content", "")).strip() or "Done."
