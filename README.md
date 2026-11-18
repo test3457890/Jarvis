@@ -319,4 +319,58 @@ selected folders if the search limit is reached. Document search works locally w
 Use Review remembered facts to edit or delete individual facts. Deletion requires confirmation.
 Export remembered facts downloads a JSON copy to your browser's download folder. These controls
 manage remembered facts. The saved conversation history is separate, and prior conversation
-can still contain a fact you deleted. Backup, restore, and conversation deletion remain planned.
+can still contain a fact you deleted. Backup, restore, and conversation deletion are available in the same panel.
+
+## Streaming, source pages and file tasks
+
+Reply drafts stream into the HUD. Stop or Escape cancels the active reply and clears pending
+approvals. Talk mode speaks completed sentences as they arrive. Action modes speak after
+completed tool processing. Speech stops at a worker checkpoint. A network request may remain
+pending until it receives another chunk or times out. Completed actions can be reviewed separately.
+
+Use `/read https://example.org/page | the claim to check` to request source-page evidence.
+Jarvis shows the URL for approval. Type `confirm source` or use Confirm. Reads accept public
+HTTPS HTML or text pages. A redirect needs separate destination approval. Evidence extraction
+covers up to 12,000 characters from a page up to 1 MB. Use `/check https://source-one | https://source-two | claim` to approve and compare
+up to three source pages in one assessment. Extracted excerpts are shortened to fit your context. The quoted passages let you check the assessment against the source text.
+
+Use `/copy original.txt | copy.txt` or `/move original.txt | moved.txt` for files inside
+Jarvis Code. Confirm the preview. `/jobs` shows the persistent task journal. `/resume JOBID`
+requests approval to continue an interrupted task. `/undo-file JOBID` requests approval to
+reverse a completed task. Changed files block undo. Destination folders must already exist.
+Tasks support files up to 5 MiB and publish new destinations without overwriting existing files.
+
+## Setup, backup and releases
+
+The Setup panel changes the performance profile and document folders. Install missing models
+with the command shown after saving. Restart Jarvis for speech-model changes.
+
+Documents and memory includes Clear conversation history, Back up local data, and Restore
+backup. Restore validates the database, saves a rescue snapshot and replaces local database
+contents transactionally. Backups include conversations, facts, reminders, tasks, events,
+contacts and file-task journals. They are local unencrypted database copies. Keep them private.
+Deleting live data leaves existing backups available until you remove those backup files.
+Configuration and encrypted credentials have their own files and are outside these snapshots.
+
+Versioned source packages are published in [Releases](https://github.com/test3457890/Jarvis/releases)
+after the main-branch test workflow succeeds. Verify the ZIP using the SHA256SUMS.txt value.
+Close Jarvis and run the updater from your existing program folder.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File upgrade.ps1 -Package "C:\Downloads\Jarvis 1.1.0.zip" -Checksum "PASTE_SHA256_VALUE"
+```
+
+The updater reports the program-backup folder. Restore those shipped files when needed.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File upgrade.ps1 -Restore "PASTE_PROGRAM_BACKUP_FOLDER"
+```
+
+Source recovery restores shipped program files. Python packages and Ollama models have their
+own installation state. Run install.ps1 with your profile after updating to refresh dependencies,
+then run `Jarvis.bat doctor`. The ZIP contains source. Python, Ollama, speech models and optional
+image-generation backends require installation.
+
+Run `python -m scripts.benchmark` in the installed environment to record real model timings
+and the tested hardware configuration. `--audio recording.wav --expected "Jarvis read my briefing"`
+also measures transcription error rate for that labelled recording. Reports are saved locally.

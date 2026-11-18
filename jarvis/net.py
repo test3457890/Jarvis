@@ -142,3 +142,61 @@ def check_smtp(host: str, cfg: dict) -> str:
         secure.audit("network_blocked", {"host": h, "purpose": "smtp_host_mismatch"})
         raise NetworkBlockedError(f"Blocked SMTP connection to non-configured host: {host}")
     return host
+
+
+def read_public_page(url, cfg):
+    """Read an approved HTTPS page over a connection pinned to a public address."""
+    import http.client
+    import ipaddress
+    import socket
+    import ssl
+
+    if not cfg.get('allow_internet_tools') or cfg.get('lockdown'):
+        raise NetworkBlockedError('Public page reading requires Internet on and Lockdown off.')
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        port = parsed.port
+    except ValueError:
+        raise NetworkBlockedError('Use a public HTTPS page URL.') from None
+    if (parsed.scheme != 'https' or not parsed.hostname or parsed.username is not None or
+            parsed.password is not None or port not in (None, 443) or
+            len(url) > 2000 or any(ord(c) < 33 for c in url)):
+        raise NetworkBlockedError('Use a public HTTPS page URL on port 443 without credentials.')
+    host = parsed.hostname.encode('idna').decode('ascii')
+    addresses = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+    if not addresses or any(not ipaddress.ip_address(item[4][0]).is_global for item in addresses):
+        raise NetworkBlockedError('The page address must resolve only to public Internet addresses.')
+    family, kind, protocol, _, address = addresses[0]
+
+    class PinnedHTTPS(http.client.HTTPSConnection):
+        def connect(self):
+            sock = socket.socket(family, kind, protocol)
+            sock.settimeout(15)
+            try:
+                sock.connect(address)
+                self.sock = ssl.create_default_context().wrap_socket(sock, server_hostname=host)
+            except BaseException:
+                sock.close()
+                raise
+
+    connection = PinnedHTTPS(host, timeout=15)
+    path = urllib.parse.urlunsplit(('', '', parsed.path or '/', parsed.query, ''))
+    secure.audit('public_page_read', {'host': host, 'purpose': 'approved_source'})
+    try:
+        connection.request('GET', path, headers={'User-Agent':'JarvisLocalAssistant/1.1', 'Accept':'text/html,text/plain',
+                                                 'Accept-Encoding':'identity'})
+        response = connection.getresponse()
+        if 300 <= response.status < 400:
+            raise NetworkBlockedError('This page redirects. Review and approve the destination URL separately.')
+        if response.status != 200:
+            raise ValueError(f'The page returned HTTP {response.status}.')
+        content_type = response.headers.get_content_type()
+        if content_type not in ('text/html', 'text/plain') or response.getheader('Content-Encoding', 'identity') != 'identity':
+            raise ValueError('The source must provide an uncompressed HTML or text page.')
+        data = response.read(1_000_001)
+        if len(data) > 1_000_000:
+            raise ValueError('The source exceeds the 1 MB page limit.')
+        charset = response.headers.get_content_charset() or 'utf-8'
+        return data.decode(charset, errors='replace'), content_type
+    finally:
+        connection.close()

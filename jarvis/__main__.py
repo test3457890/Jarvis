@@ -17,7 +17,7 @@ import threading
 import time
 import webbrowser
 
-from . import assistants, config, images, net, nomad, planner, secure, skills
+from . import assistants, config, images, net, nomad, planner, recovery, secure, skills
 from .brain import Brain
 from .memory import Memory
 
@@ -30,6 +30,11 @@ class App:
         self.memory = Memory()
         self.brain = Brain(cfg, self.memory)
         self._settings_lock = threading.Lock()
+        self._turn_lock = threading.Lock()
+        self._stream_spoken = 0
+        self._allow_stream_speech = False
+        self.brain.on_stream = self._stream_reply
+        self.brain.on_metrics = lambda values: self.emit("metrics", values)
         self._image_job = threading.Lock()
         self.brain.ctx.on_images = lambda cards: self.emit("image_results", cards)
         self.memory.embed = self.brain.embed
@@ -148,11 +153,78 @@ class App:
         finally:
             self._image_job.release()
 
+    def stop(self):
+        self.brain.cancelled.set()
+        if self.speaker:
+            self.speaker.stop()
+        self.brain.ctx.pending = None
+        self.emit("pending", None)
+        self.emit("stream", "")
+        return {"ok": True}
+
+    def _stream_reply(self, text):
+        self.emit("stream", text)
+        if self._allow_stream_speech and self.speaker and not self.brain.cancelled.is_set():
+            # Speech starts early only in Talk mode, which has no action tools.
+            tail = text[self._stream_spoken:]
+            for sentence in re.finditer(r".+?[.!?](?:\s+|$)", tail, re.S):
+                self.speaker.say(sentence[0])
+                self._stream_spoken += len(sentence[0])
+
+    def settings_operation(self, data=None):
+        with self.brain._lock, self._settings_lock:
+            if data is not None:
+                if self.cfg.get("lockdown"):
+                    raise ValueError("Turn off Lockdown to change setup.")
+                from pathlib import Path
+                updated = dict(self.cfg)
+                if "profile" in data:
+                    updated = config.apply_profile(updated, data["profile"])
+                if "document_folders" in data:
+                    folders = data["document_folders"]
+                    if not isinstance(folders, list) or len(folders) > 20 or any(
+                        not isinstance(item, str) or not item.strip() for item in folders
+                    ):
+                        raise ValueError("Enter up to 20 folder paths, one per line.")
+                    folders = [str(Path(item).expanduser().resolve()) for item in folders]
+                    if any(not Path(item).is_dir() for item in folders):
+                        raise ValueError("Every selected document folder must exist.")
+                    updated["document_folders"] = folders
+                config.save(updated)
+                self.cfg.update(updated)
+            return {"profile": self.cfg.get("performance_profile", "standard"),
+                    "document_folders": self.cfg.get("document_folders", []),
+                    "model": self.cfg["model"], "coder_model": self.cfg.get("coder_model")}
+
+    def recovery_operation(self, data=None):
+        with self.brain._lock:
+            result = {}
+            if data is not None:
+                if self.cfg.get("lockdown"):
+                    raise ValueError("Turn off Lockdown to use recovery actions.")
+                if data.get("action") == "backup":
+                    result["saved"] = recovery.backup(self.memory)
+                elif data.get("action") == "restore" and data.get("confirmed") is True:
+                    result["rescue_backup"] = recovery.restore(self.memory, data.get("name"))
+                    self.brain.history = self.memory.recent_messages(self.cfg.get("history_turns", 10))
+                    self.brain.ctx.pending = None
+                    self.brain.ctx.code_proposal = None
+                    self.brain.ctx.applied_code = None
+                    self.emit("pending", None)
+                else:
+                    raise ValueError("Choose Backup or confirm a selected restore.")
+            return {**result, "backups": recovery.list_backups()}
+
     def memory_operation(self, data=None):
         with self.brain._lock:
             if data is not None:
                 if self.cfg.get("lockdown"):
                     raise ValueError("Turn off Lockdown to change remembered facts.")
+                if data.get("action") == "clear_history" and data.get("confirmed") is True:
+                    with self.memory._lock, self.memory.db:
+                        self.memory.db.execute("DELETE FROM messages")
+                    self.brain.history = []
+                    return {"facts": [{"id": key, "text": text} for key, text in self.memory.all_facts()]}
                 fact_id = data.get("id")
                 if type(fact_id) is not int or fact_id < 1:
                     raise ValueError("Choose a remembered fact.")
@@ -276,7 +348,41 @@ class App:
             return
         self.handle(command, room_context, "voice")
 
+    def submit_request(self, text):
+        if text.strip().casefold().rstrip('.!?') in ("stop", "/stop", "cancel reply"):
+            self.handle(text)
+            return True
+        if not self._turn_lock.acquire(blocking=False):
+            return False
+        try:
+            threading.Thread(target=self._run_handle, args=(text, "", "typed"), daemon=True).start()
+        except BaseException:
+            self._turn_lock.release()
+            raise
+        return True
+
     def handle(self, text, room_context="", via="typed"):
+        if text.strip().casefold().rstrip('.!?') in ("stop", "/stop", "cancel reply"):
+            self.stop()
+            self.emit("system", "Stop requested. Any completed actions remain in task history.")
+            return "Stop requested."
+        if not self._turn_lock.acquire(blocking=False):
+            self.emit("system", "Jarvis is working. Use Stop before starting another request.")
+            return "Jarvis is working."
+        return self._run_handle(text, room_context, via)
+
+    def _run_handle(self, text, room_context, via):
+        try:
+            self._stream_spoken = 0
+            self._allow_stream_speech = bool(self.cfg.get("mode") == "talk" and self.cfg.get("speak_replies"))
+            return self._handle(text, room_context, via)
+        finally:
+            self._allow_stream_speech = False
+            self.emit("stream", "")
+            self.emit("status", "listening" if self.listener else "idle")
+            self._turn_lock.release()
+
+    def _handle(self, text, room_context="", via="typed"):
         self.emit("user", {"text": text, "via": via})
         self.emit("status", "thinking")
         switch = re.fullmatch(r"(?:jarvis[, :]+)?(?:switch to|turn on|use) (everyday|coding|briefing|talk)(?: mode)?[.!?]?",
@@ -306,7 +412,10 @@ class App:
                 answer = self.brain.ask(text, room_context)
                 label = assistants.display_name(self.brain.assistant)
                 model = self.brain.model_used
-        self.reply(answer, speak=(via == "voice" or self.cfg.get("speak_replies")), assistant=label, model=model)
+        if self._stream_spoken and self.speaker and not self.brain.cancelled.is_set():
+            self.speaker.say(answer[self._stream_spoken:])
+        self.reply(answer, speak=(not self._stream_spoken and not self.brain.cancelled.is_set() and
+                                 (via == "voice" or self.cfg.get("speak_replies"))), assistant=label, model=model)
         if self.speaker:
             self.speaker.wait()
         if via == "voice" and self.listener:

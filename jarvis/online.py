@@ -156,3 +156,73 @@ def github_upload(ctx, filename, repo, branch, digest, size):
     if not result.get("commit", {}).get("sha"):
         return "GitHub returned no commit. Check the repository before retrying."
     return f"Uploaded to https://github.com/{repo}/blob/{result['commit']['sha']}/{quote(destination, safe='/')}"
+
+
+@skill('Read a public HTTPS source page after the user approves its URL. '
+       'Return extracted source text for evidence comparison.',
+       params={'url': ('string', 'Public HTTPS URL to read', True)},
+       risky=True, internet=True, untrusted=True,
+       preview=lambda ctx, url: f'read this public source page: {url}')
+def read_source(ctx, url):
+    from html.parser import HTMLParser
+
+    class ArticleText(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.hidden = 0
+            self.parts = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag in ('script', 'style', 'noscript', 'svg'):
+                self.hidden += 1
+            if tag in ('p', 'div', 'br', 'h1', 'h2', 'li') and not self.hidden:
+                self.parts.append('\n')
+
+        def handle_endtag(self, tag):
+            if tag in ('script', 'style', 'noscript', 'svg') and self.hidden:
+                self.hidden -= 1
+
+        def handle_data(self, data):
+            if not self.hidden:
+                self.parts.append(data)
+
+    if not isinstance(url, str):
+        raise ValueError('Enter a source URL.')
+    text, kind = net.read_public_page(url, ctx.cfg)
+    if kind == 'text/html':
+        parser = ArticleText()
+        parser.feed(text)
+        text = ''.join(parser.parts)
+    text = '\n'.join(' '.join(line.split()) for line in text.splitlines() if line.strip())
+    clipped = len(text) > 12000
+    text = text[:12000]
+    return f'Source page\n{url}\nExtracted text' + (' (first 12,000 characters)' if clipped else '') + f'\n{text}'
+
+
+def _source_urls(urls):
+    if not isinstance(urls, str):
+        raise ValueError('Enter up to three HTTPS source URLs separated by |.')
+    selected = [value.strip() for value in urls.split('|') if value.strip()]
+    if not 1 <= len(selected) <= 3 or any(not url.startswith('https://') or len(url)>2000 for url in selected):
+        raise ValueError('Enter one to three HTTPS source URLs separated by |.')
+    return selected
+
+
+@skill('Compare a claim against up to three public source pages after URL approval.',
+       params={'urls':('string','One to three HTTPS URLs separated by |',True),
+               'claim':('string','Claim to assess against the supplied sources',True)},
+       risky=True, internet=True, untrusted=True,
+       preview=lambda ctx, urls, claim: 'read and compare these source pages: ' + ' | '.join(_source_urls(urls)))
+def check_sources(ctx, urls, claim):
+    selected = _source_urls(urls)
+    budget = min(12000, int(ctx.cfg.get('num_ctx',8192)) * 2)
+    per_source = max(700, budget // len(selected))
+    excerpts = []
+    for url in selected:
+        if ctx.cancelled is not None and ctx.cancelled.is_set():
+            return 'Stopped by the user.'
+        try:
+            excerpts.append(read_source(ctx,url)[:per_source])
+        except (ValueError, OSError) as error:
+            excerpts.append(f'Source could not be read: {url}\n{error}')
+    return '\n\n'.join(excerpts)

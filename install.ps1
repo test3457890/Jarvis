@@ -25,6 +25,9 @@ function Invoke-SetupCommand {
     }
 }
 
+if (-not (Get-Command py -ErrorAction SilentlyContinue) -and -not (Get-Command python -ErrorAction SilentlyContinue)) {
+    throw 'Install Python 3.12 from python.org, enable Add Python to PATH, then run install.ps1 again.'
+}
 Write-Host "== 1/4 Python environment" -ForegroundColor Cyan
 if (-not (Test-Path ".venv")) {
     # Python 3.12 has the best support for the speech libraries.

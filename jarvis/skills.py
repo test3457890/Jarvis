@@ -94,6 +94,7 @@ class Context:
         self.code_proposal = None
         self.applied_code = None
         self.proposal_seen = False
+        self.cancelled = None
         self.pending = None  # {"name", "args", "preview"} waiting for the user's "yes"
         self.on_images = lambda images: None
         self.on_pending = lambda pending: None
@@ -102,6 +103,8 @@ class Context:
 
 
 def run(ctx: Context, name: str, args: dict, confirmed=False) -> str:
+    if ctx.cancelled is not None and ctx.cancelled.is_set():
+        return "Stopped by the user."
     s = SKILLS.get(name)
     if not s:
         return f"Unknown tool {name}. Use one of the listed tools."
@@ -134,6 +137,8 @@ def run(ctx: Context, name: str, args: dict, confirmed=False) -> str:
             what = s["preview"](ctx, **clean) if s["preview"] else f"{name} {clean}"
         except Exception as e:
             return f"Can't prepare {name}: {e}"
+        if ctx.cancelled is not None and ctx.cancelled.is_set():
+            return "Stopped by the user."
         ctx.pending = {"name": name, "args": clean, "preview": what, "id": secrets.token_urlsafe(12)}
         ctx.on_pending(ctx.pending)
         return (f"NOT DONE YET. Waiting for the user's confirmation. Tell the user exactly what "
@@ -144,6 +149,8 @@ def run(ctx: Context, name: str, args: dict, confirmed=False) -> str:
         if not ctx.rate_limiter.allow("comms", limit, window):
             secure.audit("rate_limited", {"skill": name, "limit": limit, "window": window})
             return f"Rate limit reached: at most {limit} calls, texts, or emails are allowed per {int(window)} seconds."
+    if ctx.cancelled is not None and ctx.cancelled.is_set():
+        return "Stopped by the user."
     try:
         result = str(s["fn"](ctx, **clean))
     except TypeError as e:
@@ -347,8 +354,9 @@ def open_file(ctx, path):
     return f"Opened {p.name}."
 
 
-@skill("Open a website in the browser (needs internet to load the page).",
-       params={"site": ("string", "A URL or site name like youtube", True)})
+@skill("Open a website in the browser after approval (needs internet to load the page).",
+       params={"site": ("string", "A URL or site name like youtube", True)}, risky=True, internet=True,
+       preview=lambda ctx, site: "open this website in your browser: " + site)
 def open_website(ctx, site):
     s = site.strip()
     if not re.match(r"^https?://", s):
@@ -542,4 +550,4 @@ SKILLS["read_clipboard"]["untrusted"] = True
 SKILLS["read_note"]["untrusted"] = True
 
 # Load the other skill modules (they register themselves with @skill).
-from . import planner, comms, coder, nomad, online, images, documents  # noqa: E402,F401
+from . import planner, comms, coder, nomad, online, images, documents, filejobs  # noqa: E402,F401

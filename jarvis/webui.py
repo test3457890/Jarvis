@@ -119,6 +119,10 @@ def serve(app, port: int):
                 self._json(app.state())
             elif self.path == "/api/memory":
                 self._json(app.memory_operation())
+            elif self.path == "/api/recovery":
+                self._json(app.recovery_operation())
+            elif self.path == "/api/setup":
+                self._json(app.settings_operation())
             elif self.path == "/api/dashboard":
                 self._json(app.dashboard())
             else:
@@ -141,8 +145,11 @@ def serve(app, port: int):
                 text = str(data.get("text", "")).strip()[:4000]
                 if not text:
                     return self._json({"error": "empty"}, 400)
-                threading.Thread(target=app.handle, args=(text, "", "typed"), daemon=True).start()
+                if not app.submit_request(text):
+                    return self._json({"error": "Jarvis is working. Use Stop before starting another request."}, 409)
                 self._json({"ok": True})
+            elif self.path == "/api/stop":
+                self._json(app.stop())
             elif self.path == "/api/toggle":
                 self._json(app.toggle(str(data.get("what", ""))))
             elif self.path == "/api/preferences":
@@ -161,6 +168,13 @@ def serve(app, port: int):
                 except OSError:
                     return self._json({"error": "The local image backend failed or is unavailable. Check the setup."}, 502)
                 self._json(output)
+            elif self.path in ("/api/setup", "/api/recovery"):
+                try:
+                    operation = app.settings_operation if self.path == "/api/setup" else app.recovery_operation
+                    result = operation(data)
+                except (ValueError, TypeError, OSError) as error:
+                    return self._json({"error": str(error)}, 400)
+                self._json(result)
             elif self.path == "/api/memory":
                 try:
                     result = app.memory_operation(data)

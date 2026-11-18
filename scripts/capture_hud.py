@@ -90,6 +90,8 @@ def capture(app, base_url):
         page.get_by_role("button", name="Save memory").click()
         expect(page.locator("#memory-status")).to_contain_text("Remembered facts")
         expect(field).to_have_value("I prefer afternoon study blocks")
+        page.get_by_role("button", name="Back up local data").click()
+        expect(page.locator("#backup-status")).to_contain_text("Saved Jarvis")
         with page.expect_download() as download:
             page.get_by_role("button", name="Export remembered facts").click()
         assert download.value.suggested_filename == "Jarvis Memories.json"
@@ -98,6 +100,21 @@ def capture(app, base_url):
         page.get_by_role("button", name="Delete memory").click()
         expect(page.locator("#memory-status")).to_have_text("No remembered facts.")
         assert not app.memory.all_facts()
+        page.once("dialog", lambda dialog: dialog.accept())
+        page.get_by_role("button", name="Restore backup", exact=True).click()
+        expect(page.locator("#backup-status")).to_contain_text("Restored.")
+        assert app.memory.all_facts()[0][1] == "I prefer afternoon study blocks"
+        page.once("dialog", lambda dialog: dialog.accept())
+        page.get_by_role("button", name="Clear conversation history").click()
+        expect(page.locator("#memory-status")).to_have_text("Conversation history cleared.")
+        assert not app.brain.history
+        page.locator("#setup-panel summary").click()
+        page.get_by_role("button", name="Load current setup").click()
+        expect(page.locator("#setup-folders")).not_to_have_value("")
+        page.locator("#setup-form button").click()
+        expect(page.locator("#setup-status")).to_contain_text("Saved.")
+        page.get_by_role("button", name="Stop", exact=True).click()
+        page.screenshot(path=OUT / "setup-recovery.png")
         assert not errors, errors
 
 

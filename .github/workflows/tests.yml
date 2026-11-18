@@ -24,6 +24,16 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
+      - name: Check updater syntax
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PWD "upgrade.ps1"), [ref]$tokens, [ref]$errors
+          )
+          if ($errors.Count) { $errors | Out-String | Write-Error; exit 1 }
       - name: Check installer syntax
         if: runner.os == 'Windows'
         shell: pwsh
@@ -36,6 +46,7 @@ jobs:
           if ($errors.Count) { $errors | Out-String | Write-Error; exit 1 }
       - run: python -m pip install "pytest>=8,<10" "Pillow>=10.4" "pypdf>=5,<7" "python-docx>=1.1,<2"
       - run: python -m pytest -q
+      - run: python -m scripts.package_release
 
   hud:
     name: Capture HUD examples

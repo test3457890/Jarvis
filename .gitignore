@@ -13,3 +13,5 @@ config.json
 notes/
 HANDOFF.md
 .env
+
+dist/
