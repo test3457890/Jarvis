@@ -331,8 +331,8 @@ pending until it receives another chunk or times out. Completed actions can be r
 Use `/read https://example.org/page | the claim to check` to request source-page evidence.
 Jarvis shows the URL for approval. Type `confirm source` or use Confirm. Reads accept public
 HTTPS HTML or text pages. A redirect needs separate destination approval. Evidence extraction
-covers up to 12,000 characters from a page up to 1 MB. For multiple sources, read and review
-them individually. The quoted passages let you check the assessment against the source text.
+covers up to 12,000 characters from a page up to 1 MB. Use `/check https://source-one | https://source-two | claim` to approve and compare
+up to three source pages in one assessment. Extracted excerpts are shortened to fit your context. The quoted passages let you check the assessment against the source text.
 
 Use `/copy original.txt | copy.txt` or `/move original.txt | moved.txt` for files inside
 Jarvis Code. Confirm the preview. `/jobs` shows the persistent task journal. `/resume JOBID`

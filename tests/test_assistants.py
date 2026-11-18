@@ -64,7 +64,7 @@ def test_fact_check_reuses_confirmed_sources_without_tools(isolated_app, monkeyp
     def post(path, payload):
         if "tools" in payload:
             assert {t["function"]["name"] for t in payload["tools"]} <= {
-                "web_search", "search_library", "calculate"
+                "web_search", "search_library", "calculate", "read_source", "check_sources"
             }
             return {"message": {"tool_calls": [
                 {"function": {"name": "web_search", "arguments": {"query": "public question"}}}

@@ -197,3 +197,32 @@ def read_source(ctx, url):
     clipped = len(text) > 12000
     text = text[:12000]
     return f'Source page\n{url}\nExtracted text' + (' (first 12,000 characters)' if clipped else '') + f'\n{text}'
+
+
+def _source_urls(urls):
+    if not isinstance(urls, str):
+        raise ValueError('Enter up to three HTTPS source URLs separated by |.')
+    selected = [value.strip() for value in urls.split('|') if value.strip()]
+    if not 1 <= len(selected) <= 3 or any(not url.startswith('https://') or len(url)>2000 for url in selected):
+        raise ValueError('Enter one to three HTTPS source URLs separated by |.')
+    return selected
+
+
+@skill('Compare a claim against up to three public source pages after URL approval.',
+       params={'urls':('string','One to three HTTPS URLs separated by |',True),
+               'claim':('string','Claim to assess against the supplied sources',True)},
+       risky=True, internet=True, untrusted=True,
+       preview=lambda ctx, urls, claim: 'read and compare these source pages: ' + ' | '.join(_source_urls(urls)))
+def check_sources(ctx, urls, claim):
+    selected = _source_urls(urls)
+    budget = min(12000, int(ctx.cfg.get('num_ctx',8192)) * 2)
+    per_source = max(700, budget // len(selected))
+    excerpts = []
+    for url in selected:
+        if ctx.cancelled is not None and ctx.cancelled.is_set():
+            return 'Stopped by the user.'
+        try:
+            excerpts.append(read_source(ctx,url)[:per_source])
+        except (ValueError, OSError) as error:
+            excerpts.append(f'Source could not be read: {url}\n{error}')
+    return '\n\n'.join(excerpts)

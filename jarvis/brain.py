@@ -153,7 +153,7 @@ class Brain:
                 tools = skills.tool_schemas(self.cfg)
                 if self.fact_check:
                     tools = [tool for tool in tools if tool["function"]["name"] in
-                             ("web_search", "search_library", "calculate")]
+                             ("web_search", "search_library", "calculate", "read_source", "check_sources")]
                 if tools:
                     payload["tools"] = tools
             if model not in self._no_think:
@@ -249,7 +249,7 @@ class Brain:
                 if self.ctx.pending:
                     self.confirm_pending(False)
                 return self._command(command)
-            if self.ctx.pending and self.ctx.pending["name"] in ("github_upload", "web_search", "image_search", "read_source"):
+            if self.ctx.pending and self.ctx.pending["name"] in ("github_upload", "web_search", "image_search", "read_source", "check_sources"):
                 return self._confirm_online_text(command)
             reply = self._ask(command, room_context)
             if self.ctx.injection_seen:
@@ -298,6 +298,11 @@ class Brain:
             if command == "/jobs":
                 return "\n".join(f"{job['id']} {job['state']} {job['operation']} {job['source']} -> {job['destination']}"
                                  for job in filejobs.jobs(self.ctx)) or "No file jobs."
+            if command == "/check":
+                urls, separator, claim = value.rpartition(" | ")
+                if not separator or not claim.strip():
+                    return "Use /check https://source-one | https://source-two | claim to assess."
+                return skills.run(self.ctx, "check_sources", {"urls":urls, "claim":claim.strip()[:1000]})
             if command == "/read" and value.strip():
                 url, _, claim = value.partition(" | ")
                 result = skills.run(self.ctx, "read_source", {"url": url.strip()})
@@ -342,7 +347,7 @@ class Brain:
 
     def _confirm_online_text(self, text):
         expected = {"github_upload": "confirm upload", "web_search": "confirm search",
-                    "image_search": "confirm image search", "read_source": "confirm source"}
+                    "image_search": "confirm image search", "read_source": "confirm source", "check_sources": "confirm sources"}
         name = self.ctx.pending["name"]
         if text.casefold().rstrip(".!?") == expected[name]:
             return self.confirm_pending(True)
@@ -367,6 +372,12 @@ class Brain:
                 return "Talk mode is active. No action was taken."
             self.ctx.injection_seen = False
             result = skills.run(self.ctx, pending["name"], pending["args"], confirmed=True)
+            if pending["name"] == "check_sources":
+                if self.ctx.injection_seen:
+                    return "Source text contained suspicious instructions. It was discarded."
+                if result.startswith(secure.UNTRUSTED_NOTE):
+                    evidence = result.removeprefix(secure.UNTRUSTED_NOTE).removesuffix(secure.UNTRUSTED_END)
+                    return self._summarise_evidence(pending["args"]["claim"], evidence, source_page=True)
             if pending["name"] == "read_source" and pending.get("source_claim"):
                 if self.ctx.injection_seen:
                     return "The source contained suspicious instructions. Its text was discarded."
@@ -440,7 +451,7 @@ class Brain:
                         except ValueError:
                             args = {}
                     name = fn.get("name", "")
-                    if self.fact_check and name not in ("web_search", "search_library", "calculate"):
+                    if self.fact_check and name not in ("web_search", "search_library", "calculate", "read_source", "check_sources"):
                         result = "Fact-checking only has access to evidence and the calculator."
                     elif skills.SKILLS.get(name, {}).get("manual"):
                         result = "This action is only available directly to the user."
@@ -458,6 +469,10 @@ class Brain:
                         if self.ctx.injection_seen:
                             return "Web search was blocked."
                         return self.ctx.pending["preview"] + '. Use Confirm or say “confirm search”.'
+                    if self.ctx.pending:
+                        if self.ctx.pending["name"] == "read_source" and self.fact_check:
+                            self.ctx.pending["source_claim"] = user_text[:1000]
+                        return self.ctx.pending["preview"] + ". Use Confirm or cancel."
                     if name in ("fix_code", "write_code") and "Preview only." in result and self.ctx.code_proposal:
                         return result.removeprefix(secure.UNTRUSTED_NOTE).removesuffix(secure.UNTRUSTED_END)
                     messages.append({"role": "tool", "tool_name": fn.get("name", ""), "content": result})

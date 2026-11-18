@@ -171,3 +171,17 @@ def test_setup_preserves_secrets_and_validates_folders(isolated_app, monkeypatch
     with pytest.raises(ValueError):
         app.settings_operation({'document_folders':[str(home/'missing')]})
     app.memory.db.close()
+
+
+def test_multiple_sources_are_read_only_after_approval(isolated_app):
+    cfg, db, _, _ = isolated_app
+    cfg['allow_internet_tools']=True
+    brain=Brain(cfg,db)
+    with patch.object(net,'read_public_page',side_effect=[('The launch is Monday.','text/plain'),('The launch is Tuesday.','text/plain')]) as read:
+        brain.ask('/check https://one.example/source | https://two.example/source | The launch is Monday')
+        read.assert_not_called()
+        with patch.object(brain,'_chat',return_value={'content':'Disputed. The supplied sources disagree.'}):
+            result=brain.ask('confirm sources')
+        assert read.call_count==2
+        assert 'https://one.example/source' in result and 'https://two.example/source' in result
+        assert 'Disputed' in result
