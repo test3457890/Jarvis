@@ -35,3 +35,11 @@ def isolated_app(tmp_path, monkeypatch):
     ctx = skills.Context(cfg, db)
     yield cfg, db, ctx, app_dir
     db.db.close()
+
+
+@pytest.fixture
+def mock_canvas_secret(monkeypatch):
+    def set_feed(url):
+        monkeypatch.setattr(secure, "get_secret",
+                            lambda name, default="": url if name == "canvas_feed_url" else default)
+    return set_feed

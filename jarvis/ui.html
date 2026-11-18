@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>J.A.R.V.I.S.</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600&display=swap">
 <style>
   :root { --bg:#02060a; --panel:rgba(8,22,34,.72); --line:rgba(79,216,255,.22); --line2:rgba(79,216,255,.5);
           --cyan:#4fd8ff; --cyan2:#aef3ff; --text:#d9f4ff; --dim:#6c91a6; --warn:#ffb347; --red:#ff5d6c; --ok:#5dffb0;
@@ -22,7 +21,24 @@
            border:1px solid var(--line); border-radius:4px; background:var(--panel); }
   .brand { font:700 18px var(--hud); letter-spacing:.45em; color:var(--cyan2); text-shadow:0 0 12px var(--cyan); }
   .brand small { font:500 10px var(--hud); letter-spacing:.3em; color:var(--dim); margin-left:10px; }
-  .toggles { display:flex; gap:8px; }
+  .toggles { display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:8px; }
+  header { flex-wrap:wrap; gap:12px; }
+  .prefs label { display:inline-flex; align-items:center; gap:6px; font-size:13px; }
+  .prefs { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  select { color:var(--text); background:var(--bg); border:1px solid var(--line2); border-radius:4px;
+           padding:5px 7px; font:inherit; }
+  :focus-visible { outline:2px solid var(--cyan); outline-offset:3px; }
+  #activity { color:var(--dim); font-size:13px; }
+  #code-tools { display:none; }
+  body[data-mode=coding] #code-tools { display:flex; }
+  #briefing { display:none; }
+  body[data-mode=briefing] #briefing { display:inline-block; }
+  .chat-tools { display:flex; flex-wrap:wrap; gap:8px; padding:8px 16px; align-items:center; }
+  .chat-tools button { font-size:12px; }
+  .chat-tools [hidden], body[data-mode=talk] #t-internet { display:none; }
+  .msg a { color:var(--cyan2); overflow-wrap:anywhere; }
+  .msg.diff { max-width:100%; font-family:Consolas,monospace; font-size:13px; }
+
   button { background:transparent; color:var(--cyan2); border:1px solid var(--line2); border-radius:3px; padding:6px 12px;
            font:600 13px var(--body); letter-spacing:.08em; text-transform:uppercase; cursor:pointer; }
   button:hover { background:rgba(79,216,255,.1); }
@@ -95,8 +111,36 @@
   #boot { position:fixed; inset:0; background:var(--bg); z-index:10; display:flex; align-items:center; justify-content:center; transition:opacity .6s; }
   #boot pre { font:500 13px/1.8 var(--hud); color:var(--cyan); letter-spacing:.12em; min-width:min(520px,90vw); }
   #boot.done { opacity:0; pointer-events:none; }
+  body[data-theme=simple], body[data-theme=light] {
+    --bg:#171a21; --panel:#21252e; --line:#414958; --line2:#63718a; --cyan:#a6c9ff;
+    --cyan2:#c5dcff; --text:#f1f4fa; --dim:#acb5c7; --warn:#ffc77f;
+    --hud:"Segoe UI",system-ui,sans-serif; --body:"Segoe UI",system-ui,sans-serif;
+    background:var(--bg);
+  }
+  body[data-theme=light] { --bg:#f1f3f8; --panel:#fff; --line:#bac6d9; --line2:#798aaa;
+    --cyan:#2355a1; --cyan2:#153d7a; --text:#1d2b40; --dim:#52647f; --warn:#804600;
+    --red:#a72636; --ok:#14784c; }
+  body[data-theme=simple] .msg.user { background:#303b50; }
+  body[data-theme=light] .msg.user { background:#eaf1fc; }
+  body:not([data-theme=hud]) .msg.jarvis, body:not([data-theme=hud]) input { background:var(--panel); }
+  body:not([data-theme=hud]) .msg { border-radius:10px; }
+  body:not([data-theme=hud]) .panel, body:not([data-theme=hud]) header { border-radius:12px; }
+  body:not([data-theme=hud]) .brand { letter-spacing:.03em; text-shadow:none; }
+  body:not([data-theme=hud]) .brand small,
+  body:not([data-theme=hud]) .panel::before, body:not([data-theme=hud]) .panel::after,
+  body:not([data-theme=hud])::before, body:not([data-theme=hud]) .grid,
+  body:not([data-theme=hud]) .reactor-wrap, body:not([data-theme=hud]) #boot { display:none; }
+  body[data-mode=talk] .app { grid-template-columns:minmax(0, 840px); justify-content:center; }
+  body[data-mode=talk] aside, body[data-mode=talk] #boot { display:none; }
+  @media (prefers-reduced-motion:reduce) {
+    *, *::before, *::after { animation-duration:0s !important; transition-duration:0s !important; }
+    #boot { display:none; }
+  }
   @media (max-width:1100px) { .app { grid-template-columns:240px 1fr; } .right { display:none; } }
   @media (max-width:720px) {
+    header { align-items:flex-start; } .toggles { justify-content:flex-start; }
+    form { padding:10px; } #q { min-width:0; }
+
     body { overflow:auto; } .app { grid-template-columns:1fr; height:auto; padding:10px; }
     .left .systems, #heard, canvas#wave { display:none; } .reactor { width:110px; height:110px; }
     .r2 { inset:8px; } .r3 { inset:20px; border-width:4px; } .r4 { inset:32px; } .core { inset:40px; }
@@ -104,15 +148,27 @@
   }
 </style>
 </head>
-<body data-state="idle">
+<body data-state="idle" data-theme="__JARVIS_THEME__" data-mode="__JARVIS_MODE__">
 <div class="grid"></div>
 <div id="boot"><pre id="bootlog"></pre></div>
 <div class="app">
   <header>
     <div class="brand">J.A.R.V.I.S.<small>JUST A RATHER VERY INTELLIGENT SYSTEM</small></div>
+    <div class="prefs">
+      <label>Mode <select id="mode"><option value="everyday">Everyday</option><option value="coding">Coding</option>
+        <option value="briefing">Briefing</option><option value="talk">Talk</option></select></label>
+      <label>Assistant <select id="assistant"><option value="auto">Auto</option>
+        <option value="jarvis">Jarvis</option><option value="tuki">Tuki</option></select></label>
+      <label>Theme <select id="theme"><option value="hud">Sci-fi HUD</option><option value="simple">Simple dark</option>
+        <option value="light">Simple light</option></select></label>
+      <label>Voice <select id="voice_choice"><option value="auto">Automatic</option>
+        <option value="windows">Windows</option><option value="piper">Piper</option></select></label>
+      <button id="voice-preview" type="button">Try voice</button>
+    </div>
     <div class="toggles">
       <button id="t-speak" title="Speak replies out loud">Voice</button>
       <button id="t-mic" title="Pause or resume listening">Mic</button>
+      <button id="t-internet" title="Allow or block online tools">Internet</button>
       <button id="t-lock" title="Lockdown mode: disable all risky actions">Lockdown</button>
     </div>
   </header>
@@ -132,10 +188,22 @@
   </aside>
 
   <section class="panel chat">
-    <div id="log"></div>
+    <div class="chat-tools">
+      <span id="activity" role="status"></span>
+      <button id="briefing" type="button">Read briefing</button>
+      <button id="web-search" type="button" hidden>Web search</button>
+      <button id="upload-file" type="button" hidden>Upload to GitHub</button>
+      <div id="code-tools" class="chat-tools">
+        <button id="code-fix" type="button">Propose fix</button>
+        <button id="code-diff" type="button">Show diff</button>
+        <button id="code-apply" type="button">Apply proposal</button>
+        <button id="code-undo" type="button">Undo last edit</button>
+      </div>
+    </div>
+    <div id="log" role="log" aria-label="Conversation"></div>
     <div id="pending"><b>AWAITING YOUR AUTHORISATION</b><p id="pending-text"></p>
       <button class="yes" id="p-yes">Confirm</button><button class="no" id="p-no">Cancel</button></div>
-    <form id="f"><input id="q" autocomplete="off" maxlength="4000" placeholder="Type to Jarvis, or say “Jarvis…”"><button>Send</button></form>
+    <form id="f"><input id="q" aria-label="Message to Jarvis" autocomplete="off" maxlength="4000" placeholder="Type to Jarvis, or say “Jarvis…”"><button>Send</button></form>
   </section>
 
   <aside class="col right">
@@ -154,8 +222,11 @@ function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.
 
 // ---- boot sequence
 (async () => {
-  const lines = ['INITIALISING J.A.R.V.I.S. ...', 'NEURAL CORE ............ LOCAL', 'MEMORY BANKS ........... ENCRYPTED',
-                 'VOICE SYSTEMS .......... ONLINE', 'NETWORK EXPOSURE ....... NONE (THIS PC ONLY)', 'ALL SYSTEMS NOMINAL.'];
+  if (document.body.dataset.theme !== 'hud' || document.body.dataset.mode === 'talk' ||
+      matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    $('boot').classList.add('done'); return;
+  }
+  const lines = ['INITIALISING J.A.R.V.I.S. ...', 'NEURAL CORE ............ LOCAL', 'STARTING HUD ...'];
   for (const l of lines) { $('bootlog').textContent += l + '\n'; await new Promise(r => setTimeout(r, 230)); }
   setTimeout(() => $('boot').classList.add('done'), 300);
 })();
@@ -164,12 +235,47 @@ function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.
 function add(role, text, via) {
   const d = el('div', 'msg ' + role);
   if (via) d.appendChild(el('span', 'via', via));
-  d.appendChild(document.createTextNode(text));
+  if (role === 'jarvis' && (text.startsWith('Preview only.') || text.startsWith('Proposed edit for'))) {
+    d.classList.add('diff');
+  }
+  const links = /https?:\/\/[^\s<>"']+/g;
+  let offset = 0;
+  for (const match of text.matchAll(links)) {
+    if (role !== 'jarvis' || d.classList.contains('diff')) break;
+    d.appendChild(document.createTextNode(text.slice(offset, match.index)));
+    const link = el('a', '', match[0]);
+    link.href = match[0]; link.target = '_blank'; link.rel = 'noopener noreferrer';
+    d.appendChild(link); offset = match.index + match[0].length;
+  }
+  d.appendChild(document.createTextNode(text.slice(offset)));
   $('log').appendChild(d); $('log').scrollTop = $('log').scrollHeight;
 }
-function setState(s) { document.body.dataset.state = s; $('status').textContent = s; }
-function setPending(text) { $('pending').classList.toggle('on', !!text); $('pending-text').textContent = text ? 'Jarvis wants to ' + text + '.' : ''; }
+function setState(s) {
+  document.body.dataset.state = s; $('status').textContent = s;
+  $('activity').textContent = s ? s[0].toUpperCase() + s.slice(1) : '';
+}
+let pendingId = null;
+function setPending(request) {
+  pendingId = request?.id || null;
+  $('pending').classList.toggle('on', !!request);
+  $('pending-text').textContent = request ? 'Jarvis wants to ' + request.text + '.' : '';
+}
 function setToggles(st) {
+  for (const key of ['mode', 'theme', 'voice_choice', 'assistant']) {
+    if (st[key]) $(key).value = st[key];
+  }
+  if (st.mode) document.body.dataset.mode = st.mode;
+  if (st.theme) document.body.dataset.theme = st.theme;
+  $('voice_choice').querySelector('[value=piper]').disabled = !st.piper_available;
+  $('t-speak').setAttribute('aria-pressed', !!st.speak_replies);
+  $('t-mic').setAttribute('aria-pressed', !!st.mic_on);
+  $('t-lock').setAttribute('aria-pressed', !!st.lockdown);
+  $('t-internet').setAttribute('aria-pressed', !!st.internet);
+  $('t-internet').classList.toggle('off', !st.internet);
+  $('t-internet').textContent = st.internet ? 'Internet on' : 'Internet off';
+  const online = st.internet && !st.lockdown && st.mode !== 'talk';
+  $('web-search').hidden = !online || !st.web_search;
+  $('upload-file').hidden = !online || !st.github_upload;
   $('t-speak').classList.toggle('off', !st.speak_replies);
   $('t-mic').classList.toggle('off', !st.mic_on); $('t-mic').disabled = !st.voice_available;
   $('t-mic').title = st.voice_available ? 'Pause or resume listening' : 'Voice input unavailable: ' + (st.voice_error || 'starting');
@@ -185,19 +291,60 @@ es.onmessage = e => {
   if (ev.kind === 'status') setState(ev.data);
   else if (ev.kind === 'heard') $('heard').textContent = '“' + ev.data + '”';
   else if (ev.kind === 'user') add('user', ev.data.text, ev.data.via === 'voice' ? 'spoken' : 'typed');
-  else if (ev.kind === 'reply') { add('jarvis', ev.data); refresh(); }
+  else if (ev.kind === 'reply') {
+    const reply = ev.data;
+    if (typeof reply === 'string') add('jarvis', reply);
+    else add('jarvis', reply.text, [reply.assistant, reply.model].filter(Boolean).join(' · '));
+    refresh();
+  }
   else if (ev.kind === 'system') add('system', ev.data);
   else if (ev.kind === 'toggles') setToggles(ev.data);
   else if (ev.kind === 'pending') setPending(ev.data);
 };
 es.onerror = () => setState('offline');
 es.onopen = () => { if (document.body.dataset.state === 'offline') setState('idle'); };
+function send(text) { return api('/api/chat', {text}); }
+for (const key of ['mode', 'theme', 'voice_choice', 'assistant']) {
+  $(key).onchange = async () => {
+    try {
+      const state = await api('/api/preferences', {key, value: $(key).value});
+      if (state.error) {
+        add('system', state.error);
+        setToggles(await api('/api/state'));
+      } else setToggles(state);
+    } catch { add('system', 'The setting could not be changed.'); }
+  };
+}
+$('voice-preview').onclick = () => api('/api/voice-preview', {}).then(state => {
+  if (state.error) add('system', state.error);
+});
+$('briefing').onclick = () => send('/briefing');
+$('code-diff').onclick = () => send('/diff');
+$('code-apply').onclick = () => send('/apply');
+$('code-undo').onclick = () => send('/undo');
+function fillCommand(command, hint) {
+  $('q').value = command + ' '; $('q').placeholder = hint; $('q').focus();
+}
+$('code-fix').onclick = () => fillCommand('/fix', 'file | what to change');
+$('web-search').onclick = () => fillCommand('/search', 'Public search terms');
+$('upload-file').onclick = () => fillCommand('/upload', 'File relative to Jarvis Code');
 $('f').onsubmit = e => { e.preventDefault(); const t = $('q').value.trim(); if (!t) return; $('q').value = ''; api('/api/chat', {text:t}); };
 $('t-speak').onclick = () => api('/api/toggle', {what:'speak'}).then(setToggles);
 $('t-mic').onclick = () => api('/api/toggle', {what:'mic'}).then(setToggles);
 $('t-lock').onclick = () => api('/api/toggle', {what:'lockdown'}).then(setToggles);
-$('p-yes').onclick = () => { setPending(null); api('/api/confirm', {yes:true}); };
-$('p-no').onclick = () => { setPending(null); api('/api/confirm', {yes:false}); };
+$('t-internet').onclick = () => api('/api/toggle', {what:'internet'}).then(setToggles);
+async function confirm(yes) {
+  if (!pendingId) return;
+  const id = pendingId;
+  setPending(null);
+  try {
+    const result = await api('/api/confirm', {yes, id});
+    if (result.error) add('system', result.error);
+    setToggles(await api('/api/state'));
+  } catch { add('system', 'Could not confirm this request. Check its status before retrying.'); }
+}
+$('p-yes').onclick = () => confirm(true);
+$('p-no').onclick = () => confirm(false);
 
 // ---- HUD panels
 function gauge(name, v) {
@@ -211,6 +358,7 @@ function list(id, items, render, emptyText) {
   items.forEach(it => ul.appendChild(render(it)));
 }
 function refresh() {
+  if (document.body.dataset.mode === 'talk') return;
   api('/api/dashboard').then(d => {
     const s = d.system || {}; const g = $('gauges'); g.replaceChildren();
     if (s.cpu !== undefined) g.appendChild(gauge('CPU', s.cpu));
@@ -241,6 +389,9 @@ tick(); setInterval(tick, 1000);
 const cv = $('wave'), cx = cv.getContext('2d'); let ph = 0;
 (function draw() {
   const st = document.body.dataset.state; const amp = st === 'speaking' ? 14 : st === 'thinking' ? 6 : st === 'listening' ? 3 : 1;
+  if (!cv.offsetWidth || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    requestAnimationFrame(draw); return;
+  }
   cx.clearRect(0, 0, cv.width, cv.height); cx.strokeStyle = 'rgba(79,216,255,.85)'; cx.lineWidth = 1.5; cx.beginPath();
   for (let x = 0; x <= cv.width; x += 3) { const y = 20 + Math.sin(x / 14 + ph) * amp * Math.sin(x / cv.width * Math.PI) * (0.6 + 0.4 * Math.sin(ph * 3 + x / 40));
     x ? cx.lineTo(x, y) : cx.moveTo(x, y); }

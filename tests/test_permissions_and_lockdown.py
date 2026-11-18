@@ -1,5 +1,6 @@
 """Tests for lockdown mode, per-skill permissions, comms rate limits, and HUD auth."""
 import json
+import os
 import socket
 import urllib.error
 import urllib.request
@@ -54,7 +55,7 @@ def test_comms_rate_limit(isolated_app, monkeypatch):
     cfg, _, ctx, _ = isolated_app
     cfg["comms_rate_limit_max"] = 2
     cfg["comms_rate_limit_window_seconds"] = 300
-    monkeypatch.setattr("os.startfile", lambda *a, **kw: None)
+    monkeypatch.setattr(os, "startfile", lambda *a, **kw: None, raising=False)
 
     r1 = skills.run(ctx, "phone_call", {"who": "5551112222"}, confirmed=True)
     r2 = skills.run(ctx, "phone_call", {"who": "5551112222"}, confirmed=True)

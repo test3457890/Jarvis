@@ -2,7 +2,10 @@
 
 A movie-style AI assistant that runs entirely on your own PC. The brain (`qwen3:8b`),
 speech, voice, memory and planner are all local. It works with the internet unplugged,
-and it's built to pair with [Project NOMAD](https://www.projectnomad.us).
+and it can use [Project NOMAD](https://www.projectnomad.us) as an optional offline
+knowledge library.
+
+[Install Jarvis](#install-once) · [Set up Project NOMAD](#project-nomad-integration) · [Jarvis and Tuki](#jarvis-and-tuki)
 
 ## Screenshots
 
@@ -32,19 +35,73 @@ and it's built to pair with [Project NOMAD](https://www.projectnomad.us).
 **Codes**
 - Writes and fixes source files in `Documents\Jarvis Code` using a local Ollama coding model.
 - Checks generated Python syntax before saving and keeps the previous version in a `.bak` file.
-- Ask “Preview the fix for budget.py so it handles an empty input file.” Jarvis shows a proposed
-  diff without saving it. A later edit request generates a fresh change.
+- Coding mode previews edits before saving. Apply saves the exact preview and Undo restores the
+  last applied change if the file has stayed the same. You can include up to three other files
+  from the code workspace as read-only context.
 - Runs supported files only after confirmation. The syntax check does not execute code.
-
-**Project NOMAD**
-- Searches NOMAD's offline library (Wikipedia, medical, repair guides).
-- Opens NOMAD's maps, Khan Academy, notes and other services.
-- Shows NOMAD's status on the HUD.
 
 **Feels like the movies**
 - Boot sequence, arc-reactor HUD, live CPU/GPU/RAM gauges, today's schedule, deadlines.
 - Say "Jarvis" anywhere in a sentence, ask follow-ups, and it understands the
   conversation in the room. A British voice is used if Windows has one.
+
+## Jarvis and Tuki
+
+Choose Auto, Jarvis, or Tuki in the Assistant menu. The mode and theme are separate.
+Both assistants share the conversation and voice settings. The HUD shows who answered
+and which local model handled the turn.
+
+| Assistant | Best for | Default Ollama model |
+|---|---|---|
+| Jarvis | Spelling, grammar, reading and summarising, and everyday conversation | `qwen3:4b` |
+| Tuki | Fact-checking, maths, coding, and technical or file tasks | `qwen3:8b`, with the configured coding model for edits |
+
+In Auto, say “Jarvis, proofread this” or “Tuki, fact-check that.” You can type `Jarvis:` or
+`Tuki:` to select one assistant for a message. Fact-checks that need live search show the
+outbound query for approval, then show the returned sources and an assessment of their
+search snippets. Read the original sources for details that the snippets cannot establish.
+
+Existing installs can run `ollama pull qwen3:4b` to add the everyday model. If that model
+is missing, Jarvis temporarily uses the original main model until you install it and
+restart. Both model choices are configurable with `everyday_model` and `model` in
+`config.json`.
+
+## Modes and themes
+
+Use the Mode menu in the HUD or say “Jarvis, switch to Coding mode.”
+
+| Mode | Behaviour |
+|---|---|
+| Everyday | General conversation and assistant tools. |
+| Coding | Local coding model for file edits, with a diff, apply and undo controls. |
+| Briefing | A shortcut to read your current briefing and a concise style for planning. |
+| Talk | A chat-only view with no action tools or spoken background reminders. |
+
+Choose Sci-fi HUD, Simple dark, or Simple light independently. Use the Voice toggle to mute
+responses, the Mic toggle to pause listening, and Try voice to hear a sample. Jarvis can use a
+Windows voice such as George if installed, or a local Piper voice such as `en_GB-alan-medium`.
+Set the local Piper model path in `Jarvis.bat setup` and select Piper in the HUD.
+
+`Jarvis.bat --mode talk --theme simple` opens a minimal talk view. For coding, type
+`/fix budget.py | handle empty input | rules.txt` to select a target and an optional related file.
+Use `/diff`, `/apply`, or `/undo`, or the corresponding HUD buttons.
+
+## Optional online tools
+
+Jarvis starts offline. Use `Jarvis.bat setup` on Windows to configure the services you want.
+Keys are entered through hidden prompts and stored with Windows DPAPI.
+
+- [Brave Search](https://api-dashboard.search.brave.com/) provides public web results.
+  Ask for a web search or type `/search your query`. Confirm the outbound search terms
+  to get source links in the HUD. Only approved search terms are sent to Brave.
+- [GitHub uploads](https://docs.github.com/en/rest/repos/contents#create-or-update-file-contents)
+  can add a selected file to `uploads/` in one configured repository and branch. Use a
+  repository-scoped token with Contents write permission. Type `/upload report.pdf` with
+  the file in your Jarvis Code workspace. Jarvis shows the path, size and destination before
+  confirmation. Each upload can create a commit and be visible to anyone with repository access.
+  Uploads are limited to supported files up to 5 MiB. Existing paths are rejected.
+- Use the Internet toggle in the HUD to turn online tools on or off. Lockdown blocks
+  searches and uploads, including requests that were already waiting for confirmation.
 
 ## Security
 - **Nothing happens without your "yes":** calls, texts, sending email, running code,
@@ -100,9 +157,51 @@ right), copy the link, and paste it into `Jarvis.bat setup`.
 
 **Phone calls and texts:** set up the **Phone Link** app with your phone once.
 
-**Project NOMAD on another machine:** set `nomad_url` in
-`%APPDATA%\Jarvis\config.json` to that machine's address. In NOMAD's Command Center
-you can add a link tile pointing to `http://127.0.0.1:8765`.
+## Project NOMAD integration
+
+[Project NOMAD](https://github.com/Crosstalk-Solutions/project-nomad) is a separate,
+optional server. It hosts the offline content you download. Jarvis can search its
+Kiwix library, read an excerpt from a matching article, and use that excerpt in a reply.
+Jarvis can also open installed NOMAD services such as maps, education, or notes in
+your browser. The HUD's Project NOMAD panel shows which default service ports respond.
+
+### Connect Jarvis to NOMAD
+
+1. Start NOMAD and install the Kiwix service and at least one searchable content
+   pack in the NOMAD Command Center.
+2. On the PC running Jarvis, open the NOMAD Command Center and Kiwix in your browser.
+   With default ports, they use `:8080` and `:8090` respectively.
+3. If both are on the same machine and reachable over loopback, use the defaults.
+   If NOMAD runs on another machine, set `nomad_url` in
+   `%APPDATA%\Jarvis\config.json` to its Command Center address. For example, merge
+   these entries into your settings for a host at the example address `192.168.1.50`:
+
+   ```json
+   {
+     "nomad_url": "http://192.168.1.50:8080",
+     "kiwix_url": ""
+   }
+   ```
+
+   Leave `kiwix_url` empty to search port `8090` on the same host. If your Kiwix
+   service uses a different URL, set `kiwix_url` to that service's base address.
+4. Restart Jarvis and run `Jarvis.bat doctor`. Try “Jarvis, search the offline library
+   for how a compass works” or “Jarvis, open NOMAD maps.”
+
+NOMAD library queries go directly to the configured Kiwix server and work with
+Jarvis's Internet toggle off. A NOMAD server on a second machine still needs a reachable
+local network connection. Search coverage and freshness depend on your downloaded
+content. Jarvis and Tuki continue to use the Ollama server set in `ollama_url`,
+which is separate from the NOMAD connection.
+
+## Verify an installation
+
+Run `Jarvis.bat doctor` after setup to check the models and voice dependencies.
+On Windows, try both assistants from the HUD, use Try voice, and say a wake word.
+Verify any enabled online service with a public test query or a throwaway file.
+
+The GitHub test workflow runs `python -m pytest -q` on both Windows and Linux.
+It uses mock responses for online services and tests native DPAPI on Windows.
 
 ## Inspired by (ideas re-implemented, no code copied)
 [CS50 Jarvis](https://github.com/diegofcn/Jarvis-CS50-Final-Project) ·
