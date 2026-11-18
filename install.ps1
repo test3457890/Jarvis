@@ -1,11 +1,21 @@
 # One-time setup for Jarvis. Needs internet ONCE to download; after that Jarvis runs offline.
 # Run from this folder:  powershell -ExecutionPolicy Bypass -File install.ps1
+param(
+    [ValidateSet("standard", "low-memory")]
+    [string] $Profile = "standard"
+)
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
 $model = "qwen3:8b"
 $embed = "nomic-embed-text"
 $whisper = "small.en"
+$coder = "qwen2.5-coder:7b"
+if ($Profile -eq "low-memory") {
+    $model = "qwen3:4b"
+    $coder = "qwen2.5-coder:1.5b"
+    $whisper = "base.en"
+}
 
 function Invoke-SetupCommand {
     param([string] $Executable, [string[]] $Arguments)
@@ -39,14 +49,18 @@ if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-Write-Host "== 3/4 AI models (one time: Jarvis 2.5 GB, Tuki 5.2 GB, coder 4.7 GB, memory 0.3 GB)" -ForegroundColor Cyan
-foreach ($tag in @("qwen3:4b", $model, $embed, "qwen2.5-coder:7b")) {
+Invoke-SetupCommand ollama @("list")
+Write-Host "== 3/4 AI models for $Profile" -ForegroundColor Cyan
+$models = @("qwen3:4b", $model, $coder)
+if ($Profile -eq "standard") { $models += $embed }
+foreach ($tag in ($models | Select-Object -Unique)) {
     Invoke-SetupCommand ollama @("pull", $tag)
 }
 
 Write-Host "== 4/4 Speech recognition model (one time)" -ForegroundColor Cyan
 Invoke-SetupCommand $venvPython @("-c", "from faster_whisper import WhisperModel; WhisperModel('$whisper', device='cpu', compute_type='int8'); print('whisper ready')")
 
+Invoke-SetupCommand $venvPython @("-c", "from jarvis import config; config.save(config.apply_profile(config.load(), '$Profile'))")
 Write-Host ""
 & $venvPython -m jarvis doctor
 if ($LASTEXITCODE -ne 0) {

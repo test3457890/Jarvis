@@ -207,6 +207,26 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 Keep this folder at a short path such as `Documents\Jarvis`. Windows can't load
 some of the voice libraries from very long paths.
 
+## Low-memory setup
+
+For an 8 GB PC, run the installer with the low-memory profile.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1 -Profile low-memory
+```
+
+This selects smaller chat and coding models, a shorter context, base.en speech recognition,
+and keyword memory recall. Chat models unload after each reply. This can reduce retained
+memory and adds model loading time on the next reply. Performance depends on your PC.
+
+The installer saves the profile after the model downloads finish. Existing users can switch
+with `Jarvis.bat --text --profile low-memory` after downloading those models. Use
+`--profile standard` to restore the larger defaults. Profiles preserve your personal settings
+and select their own model names. Restart Jarvis after changing a profile through setup.
+
+See the [upgrade plan](docs/Upgrade%20Plan.md) for the remaining voice, document,
+fact-checking, desktop, memory, and release work.
+
 ## Use
 | Command | What it does |
 |---|---|

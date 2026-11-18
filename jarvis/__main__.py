@@ -344,6 +344,13 @@ def setup(cfg):
         if val:
             cfg[key] = val
 
+    profile = input("Performance profile [Enter to keep current, standard, low-memory]: ").strip()
+    if profile:
+        updated = config.apply_profile(cfg, profile)
+        config.save(updated)
+        cfg.update(updated)
+        print("Profile saved. Run install.ps1 -Profile " + profile + " to download its models.")
+
     ask("Your name (used to sign emails)", "user_name")
     ask("What should Jarvis call you (sir, ma'am, boss, your name)", "honorific")
     ask("Daily briefing time (HH:MM)", "briefing_time")
@@ -477,8 +484,12 @@ def main(argv=None):
     p.add_argument("--mode", choices=config.MODES, help="Start in this mode")
     p.add_argument("--theme", choices=config.THEMES, help="Start with this theme")
     p.add_argument("--no-browser", action="store_true", help="don't open the HUD window")
+    p.add_argument("--profile", choices=tuple(config.PERFORMANCE_PROFILES), help="Save a performance profile")
     args = p.parse_args(argv)
     cfg = config.load()
+    if args.profile:
+        cfg = config.apply_profile(cfg, args.profile)
+        config.save(cfg)
     if args.mode:
         cfg["mode"] = args.mode
     if args.theme:
