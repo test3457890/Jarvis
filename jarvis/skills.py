@@ -94,6 +94,7 @@ class Context:
         self.code_proposal = None
         self.applied_code = None
         self.proposal_seen = False
+        self.cancelled = None
         self.pending = None  # {"name", "args", "preview"} waiting for the user's "yes"
         self.on_images = lambda images: None
         self.on_pending = lambda pending: None
@@ -102,6 +103,8 @@ class Context:
 
 
 def run(ctx: Context, name: str, args: dict, confirmed=False) -> str:
+    if ctx.cancelled is not None and ctx.cancelled.is_set():
+        return "Stopped by the user."
     s = SKILLS.get(name)
     if not s:
         return f"Unknown tool {name}. Use one of the listed tools."
@@ -542,4 +545,4 @@ SKILLS["read_clipboard"]["untrusted"] = True
 SKILLS["read_note"]["untrusted"] = True
 
 # Load the other skill modules (they register themselves with @skill).
-from . import planner, comms, coder, nomad, online, images, documents  # noqa: E402,F401
+from . import planner, comms, coder, nomad, online, images, documents, filejobs  # noqa: E402,F401

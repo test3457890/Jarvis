@@ -14,6 +14,7 @@ THEMES = ("hud", "simple", "light")
 
 DEFAULTS = {
     "mode": "everyday",
+    "stream_replies": True,
     "assistant": "auto",
     "everyday_model": "qwen3:4b",
     "technical_keep_alive": 0,

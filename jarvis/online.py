@@ -156,3 +156,44 @@ def github_upload(ctx, filename, repo, branch, digest, size):
     if not result.get("commit", {}).get("sha"):
         return "GitHub returned no commit. Check the repository before retrying."
     return f"Uploaded to https://github.com/{repo}/blob/{result['commit']['sha']}/{quote(destination, safe='/')}"
+
+
+@skill('Read a public HTTPS source page after the user approves its URL. '
+       'Return extracted source text for evidence comparison.',
+       params={'url': ('string', 'Public HTTPS URL to read', True)},
+       risky=True, internet=True, untrusted=True,
+       preview=lambda ctx, url: f'read this public source page: {url}')
+def read_source(ctx, url):
+    from html.parser import HTMLParser
+
+    class ArticleText(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.hidden = 0
+            self.parts = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag in ('script', 'style', 'noscript', 'svg'):
+                self.hidden += 1
+            if tag in ('p', 'div', 'br', 'h1', 'h2', 'li') and not self.hidden:
+                self.parts.append('\n')
+
+        def handle_endtag(self, tag):
+            if tag in ('script', 'style', 'noscript', 'svg') and self.hidden:
+                self.hidden -= 1
+
+        def handle_data(self, data):
+            if not self.hidden:
+                self.parts.append(data)
+
+    if not isinstance(url, str):
+        raise ValueError('Enter a source URL.')
+    text, kind = net.read_public_page(url, ctx.cfg)
+    if kind == 'text/html':
+        parser = ArticleText()
+        parser.feed(text)
+        text = ''.join(parser.parts)
+    text = '\n'.join(' '.join(line.split()) for line in text.splitlines() if line.strip())
+    clipped = len(text) > 12000
+    text = text[:12000]
+    return f'Source page\n{url}\nExtracted text' + (' (first 12,000 characters)' if clipped else '') + f'\n{text}'

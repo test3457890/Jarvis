@@ -9,6 +9,7 @@ import tempfile
 import threading
 import time
 import winsound
+import wave
 
 import numpy as np
 
@@ -22,12 +23,28 @@ class Speaker:
         self.cfg = cfg
         self.speaking = threading.Event()
         self._q = queue.Queue()
+        self._generation = 0
+        self._guard = threading.Lock()
         threading.Thread(target=self._worker, daemon=True, name="tts").start()
 
     def say(self, text: str):
         text = re.sub(r"[*#`_>|]", "", text).strip()
         if text:
-            self._q.put(text)
+            with self._guard:
+                self._q.put((self._generation, text))
+
+    def stop(self):
+        with self._guard:
+            self._generation += 1
+            while True:
+                try:
+                    self._q.get_nowait()
+                    self._q.task_done()
+                except queue.Empty:
+                    break
+
+    def _stopped(self, generation):
+        return generation != self._generation
 
     def wait(self):
         self._q.join()
@@ -35,7 +52,10 @@ class Speaker:
     def _worker(self):
         engine = None
         while True:
-            text = self._q.get()
+            generation, text = self._q.get()
+            if self._stopped(generation):
+                self._q.task_done()
+                continue
             self.speaking.set()
             try:
                 voice = self.cfg.get("voice_choice", "auto")
@@ -44,14 +64,24 @@ class Speaker:
                 )
                 if use_piper:
                     try:
-                        self._piper(text)
+                        self._piper(text, generation)
                         continue
                     except (OSError, subprocess.SubprocessError) as error:
                         print(f"[voice] Piper unavailable, trying the Windows voice: {type(error).__name__}")
                 if engine is None:
                     engine = self._windows_voice()
+                if self._stopped(generation):
+                    continue
                 engine.say(text)
-                engine.runAndWait()
+                engine.startLoop(False)
+                try:
+                    while engine.isBusy() and not self._stopped(generation):
+                        engine.iterate()
+                        time.sleep(0.01)
+                    if self._stopped(generation):
+                        engine.stop()
+                finally:
+                    engine.endLoop()
             except Exception as e:
                 print(f"[voice] Speech failed: {e}")
                 engine = None
@@ -77,14 +107,37 @@ class Speaker:
                 break
         return engine
 
-    def _piper(self, text):
+    def _piper(self, text, generation):
         fd, wav = tempfile.mkstemp(suffix=".wav")
         os.close(fd)
         try:
-            subprocess.run([self.cfg.get("piper_exe", "piper"), "--model", self.cfg["piper_model"],
-                            "--output_file", wav], input=text, text=True, capture_output=True,
-                           check=True, timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-            winsound.PlaySound(wav, winsound.SND_FILENAME)
+            with subprocess.Popen([self.cfg.get("piper_exe", "piper"), "--model", self.cfg["piper_model"],
+                                   "--output_file", wav], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, text=True,
+                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)) as process:
+                deadline = time.monotonic() + 30
+                first = True
+                while True:
+                    if self._stopped(generation) or time.monotonic() > deadline:
+                        process.kill()
+                        process.communicate()
+                        return
+                    try:
+                        process.communicate(input=text if first else None, timeout=0.1)
+                        break
+                    except subprocess.TimeoutExpired:
+                        first = False
+                if process.returncode:
+                    raise subprocess.CalledProcessError(process.returncode, process.args)
+            if self._stopped(generation):
+                return
+            with wave.open(wav, 'rb') as audio:
+                duration = audio.getnframes() / audio.getframerate()
+            winsound.PlaySound(wav, winsound.SND_FILENAME | winsound.SND_ASYNC)
+            deadline = time.monotonic() + duration
+            while time.monotonic() < deadline and not self._stopped(generation):
+                time.sleep(0.02)
+            winsound.PlaySound(None, 0)
         finally:
             try:
                 os.remove(wav)

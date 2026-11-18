@@ -1,25 +1,20 @@
-# Jarvis upgrade plan
+# Jarvis upgrade status
 
-## First delivery
+The 1.1.0 release provides the following upgrades.
 
-The installer and runtime offer standard and low-memory profiles. Low-memory uses qwen3:4b, qwen2.5-coder:1.5b, a 2048-token context, base.en speech recognition, keyword memory recall, and zero chat keep-alive. Model quality and speed require measurement on the target PC.
+| Area | Delivered behavior |
+|---|---|
+| Setup | HUD profile and document-folder controls, CLI setup, prerequisite errors and recoverable installer downloads |
+| Low memory | Smaller models, shorter context, keyword recall and configurable model residency |
+| Voice | Streaming drafts, sentence playback in Talk mode, Stop button, Escape key and queued-speech cancellation |
+| Documents | Selected local PDF, Word, Markdown and text extraction with page or section references and bounded current-file searches |
+| Fact-checking | Approved HTTPS page reads, pinned public-address connections, extracted source text and claim assessment |
+| Desktop files | Confirmed copy/move inside Jarvis Code, persistent job state, resume, history and undo |
+| Browser | Existing website-opening skill, with source reading as a separately approved operation |
+| Memory | Fact editing/deletion/export, conversation deletion and transactional database backup/restore with rescue snapshots |
+| Releases | Versioned source ZIP, SHA256 checksums, manifest validation and source updater with backup/restore |
+| Evaluation | Reproducible automated tests, live browser checks, runtime reply timing and local model/speech benchmark commands |
 
-## Document and memory delivery
+The document search reads current files on demand. Persistent indexing, OCR and broad browser form automation remain future extensions. Early sentence playback applies to Talk mode. Action modes wait for completed tool processing before speech. Stop cancels pending approvals and stops speech at the next worker checkpoint. Requests waiting on network I/O may take until a chunk arrives or the request times out. A completed file action can be reversed through its supported undo command.
 
-Selected local folders can be searched for PDF, Word, Markdown and text excerpts. Sources
-include PDF pages, Word paragraphs or tables, and text lines. The first version reads current
-files on demand with explicit size and coverage limits. Persistent indexing and OCR remain
-future work. The HUD supports review, edit, confirmed deletion and JSON export of remembered
-facts. Conversation deletion and backup/restore remain future work.
-
-## Remaining deliveries
-
-1. Installation and releases. Add a setup screen, recoverable prerequisite checks, versioned release packages, an upgrade backup, and restoration of the previous version. Verify a clean Windows install and a failed upgrade recovery.
-2. Voice. Add streamed replies, sentence playback, an interrupt control, and measured wake-word accuracy. Verify that cancellation cannot approve a pending action or execute a partial tool call.
-3. Documents. Add explicit folder selection, PDF and Word extraction, a local index, and file/page citations. Verify changed and deleted documents and keep permission checks on every read.
-4. Fact-checking. Add approved full-page retrieval, source comparison, and claim-level evidence. Verify redirects, private network destinations, and embedded instructions before enabling retrieval.
-5. Desktop tasks. Add task previews, progress, cancellation, and resumable steps for supported browser and file workflows. Verify partial failures and undo where supported.
-6. Memory controls. Add review, edit, deletion, export, and transactional backup/restore in the HUD. Include the saved conversation and remembered facts in deletion choices.
-7. Published evaluation. Measure installation success, time to first reply, full response time, memory use, speech recognition, document citation accuracy, and task completion on named hardware. Publish measured results with the tested version.
-
-These remaining deliveries are planned work. A passing mocked service test does not establish model accuracy or performance on a user's hardware.
+Hardware benchmarks and microphone validation must be collected on the target PC. Published automation results establish the tested behavior. They do not measure model intelligence, voice quality or comparative ranking among other GitHub projects.

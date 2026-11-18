@@ -38,6 +38,12 @@
   .chat-tools button { font-size:12px; }
   .chat > details { flex:0 0 auto; min-height:0; }
   #log { min-height:0; }
+  #stream-draft { padding:8px 16px; max-height:25vh; overflow:auto; white-space:pre-wrap; color:var(--dim); }
+  #response-timing { color:var(--dim); font-size:12px; }
+  #setup-panel { padding:8px 16px; overflow:auto; max-height:40vh; }
+  #setup-form { display:grid; }
+  #setup-form label { display:grid; gap:6px; }
+  #setup-folders { min-width:0; width:100%; box-sizing:border-box; }
   #knowledge { border-top:1px solid var(--line); padding:8px 16px; max-height:46%; overflow:auto; }
   #knowledge summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
   body[data-mode=talk] #knowledge { display:none; }
@@ -221,9 +227,15 @@
   <section class="panel chat">
     <div class="chat-tools">
       <span id="activity" role="status"></span>
+      <button id="stop-reply" type="button">Stop</button>
+      <span id="response-timing"></span>
       <button id="briefing" type="button">Read briefing</button>
       <button id="tuki-calculate" type="button" hidden>Calculate</button>
       <button id="tuki-files" type="button" hidden>Find a file</button>
+      <button id="file-copy" type="button">Copy file</button>
+      <button id="file-move" type="button">Move file</button>
+      <button id="file-jobs" type="button">File task history</button>
+      <button id="read-source" type="button">Read source page</button>
       <button id="web-search" type="button" hidden>Web search</button>
       <button id="upload-file" type="button" hidden>Upload to GitHub</button>
       <div id="code-tools" class="chat-tools">
@@ -234,6 +246,7 @@
       </div>
     </div>
     <div id="log" role="log" aria-label="Conversation"></div>
+    <div id="stream-draft" aria-label="Reply draft" hidden></div>
     <div id="pending"><b>AWAITING YOUR AUTHORISATION</b><p id="pending-text"></p>
       <button class="yes" id="p-yes">Confirm</button><button class="no" id="p-no">Cancel</button></div>
     <details id="planner" name="assistant-tools">
@@ -260,9 +273,25 @@
         <button id="memory-refresh" type="button">Review remembered facts</button>
         <button id="memory-export" type="button">Export remembered facts</button>
       </div>
-      <p>These controls manage remembered facts. Saved conversations have their own history.</p>
+      <p>Manage remembered facts here. Clear history removes saved conversation text and the current chat context.</p>
+      <button id="history-clear" type="button">Clear conversation history</button>
+      <button id="backup-create" type="button">Back up local data</button>
+      <button id="backup-list" type="button">Review backups</button>
+      <select id="backup-name" aria-label="Backup to restore"></select>
+      <button id="backup-restore" type="button">Restore backup</button>
+      <p id="backup-status" role="status"></p>
       <p id="memory-status" role="status"></p>
       <div id="memory-list"></div>
+    </details>
+    <details id="setup-panel" name="assistant-tools">
+      <summary>Setup</summary>
+      <button id="setup-load" type="button">Load current setup</button>
+      <form id="setup-form">
+        <label>Performance<select id="setup-profile"><option value="standard">Standard</option><option value="low-memory">Low memory</option></select></label>
+        <label>Document folders, one per line<textarea id="setup-folders" rows="3"></textarea></label>
+        <button>Save setup</button>
+      </form>
+      <p id="setup-status" role="status"></p>
     </details>
     <details id="images" name="assistant-tools">
       <summary>Images</summary>
@@ -392,6 +421,15 @@ es.onmessage = e => {
     else add('jarvis', reply.text, [reply.assistant, reply.model].filter(Boolean).join(' · '));
     refresh();
   }
+  else if (ev.kind === 'stream') {
+    $('stream-draft').textContent = ev.data;
+    $('stream-draft').hidden = !ev.data;
+  }
+  else if (ev.kind === 'metrics') {
+    const first = ev.data.first_token_seconds;
+    $('response-timing').textContent = (first == null ? '' : 'First text ' + first.toFixed(2) + 's · ') +
+      'Reply ' + ev.data.response_seconds.toFixed(2) + 's';
+  }
   else if (ev.kind === 'system') add('system', ev.data);
   else if (ev.kind === 'toggles') setToggles(ev.data);
   else if (ev.kind === 'pending') setPending(ev.data);
@@ -421,6 +459,8 @@ for (const key of ['mode', 'theme', 'voice_choice', 'assistant']) {
 $('voice-preview').onclick = () => api('/api/voice-preview', {}).then(state => {
   if (state.error) add('system', state.error);
 });
+$('stop-reply').onclick = () => api('/api/stop', {}).catch(() => add('system', 'Could not reach Jarvis.'));
+document.addEventListener('keydown', event => { if (event.key === 'Escape') $('stop-reply').click(); });
 $('briefing').onclick = () => send('/briefing');
 $('document-search').onsubmit = event => {
   event.preventDefault();
@@ -462,6 +502,46 @@ $('memory-refresh').onclick = async () => {
     renderMemories(result.facts);
   } catch { $('memory-status').textContent = 'Could not load remembered facts.'; }
 };
+$('history-clear').onclick = async () => {
+  if (!window.confirm('Delete saved conversations and clear current chat context? Remembered facts and backups have their own controls.')) return;
+  const result = await api('/api/memory', {action:'clear_history', confirmed:true});
+  if (result.error) $('memory-status').textContent = result.error;
+  else { $('log').replaceChildren(); $('memory-status').textContent = 'Conversation history cleared.'; }
+};
+async function backups(data) {
+  try {
+    const result = await api('/api/recovery', data);
+    if (result.error) throw new Error(result.error);
+    $('backup-name').replaceChildren(...result.backups.map(name => { const item = el('option', '', name); item.value = name; return item; }));
+    $('backup-status').textContent = result.rescue_backup ? 'Restored. A rescue backup was saved as ' + result.rescue_backup :
+      result.saved ? 'Saved ' + result.saved : result.backups.length + ' local backups.';
+  } catch (error) { $('backup-status').textContent = error.message; }
+}
+$('backup-create').onclick = () => backups({action:'backup'});
+$('backup-list').onclick = () => backups();
+$('backup-restore').onclick = () => {
+  const name = $('backup-name').value;
+  if (name && window.confirm('Restore tasks, events, memories, and conversation from ' + name + '? A rescue backup will be saved first.')) {
+    backups({action:'restore', name, confirmed:true});
+  }
+};
+$('setup-load').onclick = async () => {
+  try {
+    const result = await api('/api/setup');
+    if (result.error) throw new Error(result.error);
+    $('setup-profile').value = result.profile;
+    $('setup-folders').value = result.document_folders.join('\n');
+  } catch (error) { $('setup-status').textContent = error.message; }
+};
+$('setup-form').onsubmit = async event => {
+  event.preventDefault();
+  try {
+    const result = await api('/api/setup', {profile:$('setup-profile').value,
+      document_folders:$('setup-folders').value.split('\n').map(value => value.trim()).filter(Boolean)});
+    if (result.error) throw new Error(result.error);
+    $('setup-status').textContent = 'Saved. Restart Jarvis for voice changes. Run install.ps1 -Profile ' + result.profile + ' to download missing models.';
+  } catch (error) { $('setup-status').textContent = error.message; }
+};
 $('memory-export').onclick = async () => {
   try {
     const result = await api('/api/memory');
@@ -495,6 +575,10 @@ function fillCommand(command, hint) {
 }
 $('code-fix').onclick = () => fillCommand('/fix', 'file | what to change');
 $('tuki-calculate').onclick = () => fillCommand('/calc', 'Arithmetic expression');
+$('file-copy').onclick = () => fillCommand('/copy', 'source | destination inside Jarvis Code');
+$('file-move').onclick = () => fillCommand('/move', 'source | destination inside Jarvis Code');
+$('file-jobs').onclick = () => send('/jobs');
+$('read-source').onclick = () => fillCommand('/read', 'https://source-page | optional claim to check');
 $('tuki-files').onclick = () => fillCommand('/files', 'Part of a filename');
 $('web-search').onclick = () => fillCommand('/search', 'Public search terms');
 $('upload-file').onclick = () => fillCommand('/upload', 'File relative to Jarvis Code');
