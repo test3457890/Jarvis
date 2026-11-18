@@ -17,12 +17,28 @@ general File tasks.
 5. Type `/test budget/budget.py` to preview the detected test command. Confirm only if
    you trust the project code and want it to run on this PC. If tests fail, use
    `/fix-tests budget/budget.py | fix the reported failure`, then review another diff.
-6. Type `/undo` to restore the applied edit if those files have not changed again.
+6. Type `/build budget/budget.py` to preview the build command. Python projects use
+   `python -m compileall`, which byte-compiles files without importing or running them.
+   Node projects use `npm run build` when the project defines it, which runs project code.
+   Both need your confirmation.
+7. Type `/undo` to restore the applied edit if those files have not changed again. The last
+   applied edit is saved in Jarvis's local database, so `/undo` also works after a restart.
+
+When `/fix-tests` uses failed test or build output, Jarvis adds up to three workspace files named
+in that output (for example traceback paths) as read-only context.
 
 You can add up to three read-only context files after the change request, for example
-`/fix budget/budget.py | handle empty input | budget/rules.txt`. The model sees a bounded
-project file list and the selected file contents. It does not inspect an entire repository
-or automatically understand every dependency. Select up to six editable files per request.
+`/fix budget/budget.py | handle empty input | budget/rules.txt`. Jarvis also picks up to three
+related files itself: modules the target imports, files that import it, its tests, and files
+named in your request. The preview lists every file sent as context under
+"Read-only context sent to the model". Set `auto_context` to `false` in `config.json` to turn this off.
+
+Context is bounded. The project scan stops after 5,000 entries, skips `.git`, virtual
+environments, `node_modules`, build folders and links, and the model sees at most 200 file names.
+File contents per request are limited to 12,000 characters on the Standard profile and
+4,096 on the 8 GB low-memory profile, whose model has a 2,048-token context. Automatic
+context files that do not fit are left out; files you name that do not fit stop the request.
+Paths that go through a link or junction are refused. Select up to six editable files per request.
 If its patch quotes lines that do not match, Jarvis requests one repair from the model.
 An unrepairable patch saves nothing. More attempts can be made with a narrower request.
 
@@ -49,9 +65,14 @@ Python and JavaScript program runs through the separate Run skill also require a
 | Changed file after preview | Preview a patch, change its target in an editor, then `/apply` | Jarvis refuses to overwrite your newer edit |
 | Invalid Python or JSON | Ask for a deliberately invalid change in a disposable test file | Syntax error shown; file unchanged |
 | No detected tests | Use `/test` in a project without Python tests or an npm test script | Jarvis reports no test command found |
+| Link inside the workspace | Make a symbolic link in the project and `/fix` it | Refused, nothing sent to the model |
+| Large project | Put more than 5,000 files in a project and `/fix` one file | Preview works; the project list is marked truncated |
+| Test or build timeout | A test that sleeps longer than 120 seconds | Stopped and reported as no result |
+| Undo after restart | Apply, restart Jarvis, `/undo` | Restored if the files are unchanged |
 | Low-memory model quality | Run the same small fix on both profiles and compare the diffs and results | Record what actually happened; a smaller model can produce invalid patches |
 
-The automated suite checks patch rejection, a repaired patch, multi-file apply and undo,
+The automated suite checks relevant-file selection, context budgets, link refusal, bounded scans,
+malformed and conflicting patches, timeouts, approved builds, undo after restart, patch rejection, a repaired patch, multi-file apply and undo,
 syntax failures, changed-file protection, rollback on a failed write, and test approval.
 It uses stubbed model responses. It does not measure a real model's coding accuracy,
 compile every language, or prove that generated code is correct. For hardware timings,

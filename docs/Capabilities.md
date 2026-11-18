@@ -12,7 +12,7 @@ models or audio but has not been verified with real models, a microphone or spea
 | Install | Real Ollama and speech model downloads through the wizard | Untested on hardware | Needs Ollama on a Windows PC |
 | Upgrade | Upgrade from 1.1.1 and 1.2.1 with their own updater, rollback | Working | `tests/test_upgrade_paths.py` (Windows CI) |
 | Upgrade | Code-signed releases | Not implemented | `docs/WindowsDefender.md` |
-| HUD | Every visible control | Working | `docs/ControlReport.md` (47 checks) |
+| HUD | Every visible control | Working | `docs/ControlReport.md` (49 checks) |
 | HUD | Six themes with contrast checks, phone-width layout | Working | `tests/test_themes.py`, HUD audit |
 | Chat | Jarvis and TUKI routing, streaming, Stop and Escape | Working (stubbed model) | HUD audit, unit tests |
 | Chat | Answer quality and speed with real models | Untested on hardware | `docs/Benchmarks.md` |
@@ -20,6 +20,9 @@ models or audio but has not been verified with real models, a microphone or spea
 | Voice | Wake word and microphone input | Untested on hardware | |
 | Voice | Spoken interruption while Jarvis is speaking | Not implemented | |
 | Coding | Focused multi-file patches, preview, apply, undo, approved tests | Working (stubbed model) | `tests/test_coding_patches.py`, HUD audit |
+| Coding | Relevant-file selection, profile-sized context, bounded scans, link refusal | Working (stubbed model) | `tests/test_coding_phase2.py` |
+| Coding | Approved build command, failure files fed back, undo after restart | Working (stubbed model) | `tests/test_coding_phase2.py`, HUD audit |
+| Benchmarks | Reply time, first sentence, peak memory, coding suite | Harness working; no results yet | `tests/test_benchmark_harness.py`, `docs/Benchmarks.md` |
 | Coding | Patch success rate with real coding models | Untested on hardware | |
 | Files | Selected-folder file tasks with journal, resume, undo | Working | `tests/test_folder_tasks.py`, HUD audit |
 | Files | Windows Recycle Bin integration | Not implemented | Uses `.Jarvis Recycle` instead |

@@ -96,6 +96,7 @@ class Context:
         self.proposal_seen = False
         self.last_test_output = ""
         self.last_test_file = ""
+        self.last_test_root = ""
         self.cancelled = None
         self.pending = None  # {"name", "args", "preview"} waiting for the user's "yes"
         self.on_images = lambda images: None

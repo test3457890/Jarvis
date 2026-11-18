@@ -2,7 +2,20 @@
 
 All notable changes to Jarvis. Each release adds a section here before it is tagged.
 
-## Unreleased (increment 1: control inventory and reliability)
+## Unreleased (increment 2: coding and performance)
+- Coding picks up to three related files as read-only context (imports, importers, tests, files named
+  in the request) and lists them in the preview. `auto_context: false` turns it off.
+- Coding context is sized to the performance profile: 12,000 characters on Standard, 4,096 on the
+  8 GB profile (2,048-token model context). Project scans stop at 5,000 entries.
+- Paths through links or junctions in the coding workspace are refused.
+- New `/build` (and Build project button): `compileall` for Python, `npm run build` for Node, only
+  after confirmation. Test and build timeouts are reported as no result.
+- `/fix-tests` adds files named in the failure output as context.
+- The last applied edit is saved, so `/undo` works after a restart and still refuses changed files.
+- `scripts/benchmark.py` measures time to first sentence and peak memory, and `--coding` runs a
+  three-task coding suite that asks before running generated code. No real results recorded yet.
+
+## Increment 1: control inventory and reliability
 - Fixed: the HUD's approval-banner function was named `confirm`, which replaced the browser's
   `window.confirm`. Every "Are you sure?" prompt (delete a remembered fact, restore a backup, clear
   conversation history, download above the storage budget) went ahead without asking. Present since
