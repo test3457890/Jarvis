@@ -1,4 +1,4 @@
-Jarvis 1.1.0 adds a guided setup panel, low-memory profiles, document search with source references, remembered-fact controls, conversation deletion, local database backup and restore, streamed reply drafts, Stop and Escape controls, source-page reading with URL approval, and persistent workspace copy/move tasks with resume and undo.
+Jarvis 1.1.1 adds a guided setup panel, low-memory profiles, document search with source references, remembered-fact controls, conversation deletion, local database backup and restore, streamed reply drafts, Stop and Escape controls, source-page reading with URL approval, and persistent workspace copy/move tasks with resume and undo.
 
 Talk mode can speak completed sentences while the model is still replying. Other modes speak their final reply after tool processing. Speech interruption is controlled from the HUD. Microphone wake-word performance and voice quality depend on the PC, microphone, and installed voice.
 
@@ -7,3 +7,5 @@ The release ZIP includes the program source and a file-hash manifest. SHA256SUMS
 Source-page reads support public HTTPS HTML and text pages up to 1 MB. Redirects require approval of their destination URL. Extracted evidence is limited to 12,000 characters and can omit content on long pages. Source assessments should be checked against the quoted evidence. Scanned PDFs require OCR. The browser currently opens approved websites through the existing skill. File automation supports previewed copy and move tasks inside Jarvis Code, up to 5 MiB, with recovery and undo.
 
 Automated tests exercise Windows and Linux, mocked model/network failures, real PDF and Word extraction, the updater on Windows, and the live HUD in Chromium. Model speed, factual accuracy, microphone performance, and image generation quality require testing with installed local models and target hardware. Run python -m scripts.benchmark to record local model timings. Optional --audio and --expected arguments evaluate a labelled speech recording. Reports stay in the local Jarvis benchmarks folder.
+
+Release filenames use Jarvis followed by the version without spaces, so GitHub downloads and SHA256SUMS.txt agree.
