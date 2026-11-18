@@ -102,3 +102,4 @@ if (-not $SkipPackages) {
 Write-Host ""
 Write-Host "Done. Open Jarvis from the Start menu or the 'Start Jarvis' shortcut in this folder." -ForegroundColor Green
 Write-Host "PowerShell fallback: & `"$venvPython`" -m jarvis"
+exit 0
