@@ -25,20 +25,23 @@ DAY = 86400
 
 # ================================================================ storage
 def init_db(memory):
-    with memory._lock:
-        memory.db.executescript(
+    with memory._lock, memory.db as db:
+        db.executescript(
             """
+            BEGIN IMMEDIATE;
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY, uid TEXT UNIQUE, title TEXT, course TEXT, due REAL,
                 est_min INTEGER, priority INTEGER DEFAULT 2, status TEXT DEFAULT 'open',
                 source TEXT, url TEXT, notes TEXT, nudged INTEGER DEFAULT 0, created REAL);
             CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY, uid TEXT UNIQUE, title TEXT, start REAL, end REAL,
-                location TEXT, source TEXT, notes TEXT, task_id INTEGER, nudged INTEGER DEFAULT 0);
+                location TEXT, source TEXT, notes TEXT, task_id INTEGER, nudged INTEGER DEFAULT 0,
+                blocks_time INTEGER NOT NULL DEFAULT 1);
             CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
             """
         )
-        memory.db.commit()
+        if "blocks_time" not in {row[1] for row in db.execute("PRAGMA table_info(events)")}:
+            db.execute("ALTER TABLE events ADD COLUMN blocks_time INTEGER NOT NULL DEFAULT 1")
 
 
 def kv_get(memory, key, default=None):
@@ -207,6 +210,7 @@ def parse_ics(text: str) -> list:
             "uid": e.get("UID", ("", ""))[0],
             "title": _unescape(e.get("SUMMARY", ("(untitled)", ""))[0]),
             "start": start, "end": end, "all_day": all_day,
+            "blocks_time": e.get("TRANSP", ("", ""))[0].strip().upper() != "TRANSPARENT",
             "description": _unescape(e.get("DESCRIPTION", ("", ""))[0])[:500],
             "url": e.get("URL", ("", ""))[0],
             "location": _unescape(e.get("LOCATION", ("", ""))[0]),
@@ -262,11 +266,12 @@ def sync_canvas_now(memory, cfg, force=False) -> str:
         else:
             existed = _q(memory, "SELECT id FROM events WHERE uid=?", (it["uid"],))
             if existed:
-                _q(memory, "UPDATE events SET title=?, start=?, end=?, location=? WHERE uid=?",
-                   (it["title"], it["start"], it["end"], it["location"], it["uid"]))
+                _q(memory, "UPDATE events SET title=?, start=?, end=?, location=?, blocks_time=? WHERE uid=?",
+                   (it["title"], it["start"], it["end"], it["location"], it["blocks_time"], it["uid"]))
             else:
-                _q(memory, "INSERT INTO events(uid,title,start,end,location,source,notes) VALUES (?,?,?,?,?,?,?)",
-                   (it["uid"], it["title"], it["start"], it["end"], it["location"], "canvas", it["description"]))
+                _q(memory, "INSERT INTO events(uid,title,start,end,location,source,notes,blocks_time) "
+                           "VALUES (?,?,?,?,?,?,?,?)", (it["uid"], it["title"], it["start"], it["end"],
+                           it["location"], "canvas", it["description"], it["blocks_time"]))
                 new_events += 1
     extra = _sync_canvas_api(memory, cfg)
     return (f"Canvas synced: {new_tasks} new assignments, {new_events} new calendar items"
@@ -309,7 +314,8 @@ BREAK_SECONDS = 5 * 60
 def _busy(db, start, end):
     # Feeds sometimes supply only a start time. Reserve 15 minutes for those entries.
     return db.execute(
-        "WITH busy AS (SELECT start, CASE WHEN end > start THEN end ELSE start + 900 END AS finish FROM events) "
+        "WITH busy AS (SELECT start, CASE WHEN end > start THEN end ELSE start + 900 END AS finish "
+        "FROM events WHERE blocks_time=1) "
         "SELECT start, finish FROM busy WHERE start < ? AND finish + ? > ? ORDER BY start",
         (end, BREAK_SECONDS, start),
     ).fetchall()
@@ -509,7 +515,8 @@ def list_tasks(ctx, days=None):
 def add_event(ctx, title, date, start_time, duration_minutes=None, location=None):
     start = at(parse_date(date), parse_time(start_time))
     end = start + float(duration_minutes or 60) * 60
-    clash = _q(ctx.memory, "SELECT title, start FROM events WHERE source!='plan' AND end>? AND start<?", (start, end))
+    clash = _q(ctx.memory, "SELECT title, start FROM events WHERE source!='plan' AND blocks_time=1 AND end>? AND start<?",
+               (start, end))
     _q(ctx.memory, "INSERT INTO events(uid,title,start,end,location,source) VALUES (?,?,?,?,?,?)",
        (f"manual-{time.time()}", title, start, end, location or "", "manual"))
     msg = f"Added {title} on {fmt_ts(start)} until {fmt_ts(end, False)}."
@@ -537,6 +544,23 @@ def remove_event(ctx, title, date=None):
     return f"Removed {rows[0][1]} ({fmt_ts(rows[0][2])})."
 
 
+def _day_events(memory, start, end):
+    return _q(memory, "SELECT start, COALESCE(end,start), title, location, source, blocks_time FROM events "
+                      "WHERE start<? AND (end>? OR start>=?) ORDER BY start, id", (end, start, start))
+
+
+def _event_time(start, end, midnight, next_midnight, show_end=False):
+    if start <= midnight and end >= next_midnight:
+        return "All day"
+    if start < midnight:
+        return "Until " + fmt_ts(end, False)
+    if show_end and end >= next_midnight:
+        return "From " + fmt_ts(start, False)
+    if show_end and end > start:
+        return f"{fmt_ts(start, False)}-{fmt_ts(end, False)}"
+    return fmt_ts(start, False)
+
+
 @skill("Show the schedule for a day or the whole week (events, classes and planned work).",
        params={"when": ("string", "'today', 'tomorrow', a weekday, a date, or 'week'", False)},
        untrusted=True)
@@ -547,11 +571,14 @@ def show_schedule(ctx, when="today"):
         days = [parse_date(when)]
     out = []
     for d in days:
-        rows = _q(ctx.memory, "SELECT start, end, title, location FROM events WHERE start>=? AND start<? ORDER BY start",
-                  (at(d, dt.time(0)), at(d, dt.time(23, 59, 59))))
+        midnight = at(d, dt.time.min)
+        next_midnight = at(d + dt.timedelta(days=1), dt.time.min)
+        rows = _day_events(ctx.memory, midnight, next_midnight)
         due = _q(ctx.memory, "SELECT title, due FROM tasks WHERE status='open' AND due>=? AND due<? ORDER BY due",
-                 (at(d, dt.time(0)), at(d, dt.time(23, 59, 59))))
-        items = [f"{fmt_ts(s, False)}-{fmt_ts(e, False)} {t}{' @ ' + l if l else ''}" for s, e, t, l in rows]
+                 (midnight, next_midnight))
+        items = [f"{_event_time(s, e, midnight, next_midnight, show_end=True)} {title}"
+                 + (f" @ {location}" if location else "") + ("" if busy else " (free)")
+                 for s, e, title, location, _, busy in rows]
         items += [f"DUE {fmt_ts(dd, False)}: {t}" for t, dd in due]
         out.append(f"{d:%A %b %d}: " + ("; ".join(items) if items else "free"))
     return "\n".join(out)
@@ -590,14 +617,18 @@ def whats_falling_behind(ctx):
 
 @skill("Export the calendar and deadlines to an .ics file you can import into Google or Outlook calendar.")
 def export_calendar(ctx):
-    rows = _q(ctx.memory, "SELECT uid, title, start, end, location FROM events WHERE end>?", (time.time() - 7 * DAY,))
+    rows = _q(ctx.memory, "SELECT uid, title, start, end, location, blocks_time FROM events WHERE end>?",
+              (time.time() - 7 * DAY,))
     tasks = _q(ctx.memory, "SELECT uid, title, due FROM tasks WHERE status='open' AND due>?", (time.time(),))
     stamp = lambda ts: dt.datetime.fromtimestamp(ts, dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     esc = lambda s: (s or "").replace("\\", "\\\\").replace(",", "\\,").replace(";", "\\;").replace("\n", "\\n")
     lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Jarvis//EN"]
-    for uid, title, s, e, loc in rows:
+    for uid, title, s, e, loc, busy in rows:
         lines += ["BEGIN:VEVENT", f"UID:{uid}@jarvis", f"DTSTAMP:{stamp(time.time())}", f"DTSTART:{stamp(s)}",
-                  f"DTEND:{stamp(e)}", f"SUMMARY:{esc(title)}", f"LOCATION:{esc(loc)}", "END:VEVENT"]
+                  f"DTEND:{stamp(e)}", f"SUMMARY:{esc(title)}", f"LOCATION:{esc(loc)}"]
+        if not busy:
+            lines.append("TRANSP:TRANSPARENT")
+        lines.append("END:VEVENT")
     for uid, title, due in tasks:
         lines += ["BEGIN:VEVENT", f"UID:{uid}-due@jarvis", f"DTSTAMP:{stamp(time.time())}", f"DTSTART:{stamp(due - 900)}",
                   f"DTEND:{stamp(due)}", f"SUMMARY:{esc('DUE: ' + title)}", "END:VEVENT"]
@@ -611,13 +642,14 @@ def export_calendar(ctx):
 def dashboard(memory):
     now = time.time()
     d = dt.date.today()
-    today = _q(memory, "SELECT start, end, title, source FROM events WHERE start>=? AND start<? ORDER BY start",
-               (at(d, dt.time(0)), at(d, dt.time(23, 59, 59))))
+    midnight = at(d, dt.time.min)
+    next_midnight = at(d + dt.timedelta(days=1), dt.time.min)
+    today = _day_events(memory, midnight, next_midnight)
     tasks = _q(memory, "SELECT title, course, due FROM tasks WHERE status='open' AND due IS NOT NULL AND due>? "
                        "ORDER BY due LIMIT 8", (now - 14 * DAY,))
     return {
-        "today": [{"time": f"{fmt_ts(s, False)}", "title": t, "source": src, "past": e < now}
-                  for s, e, t, src in today],
+        "today": [{"time": _event_time(s, e, midnight, next_midnight), "title": t if busy else f"{t} (free)",
+                   "source": src, "past": e < now} for s, e, t, _, src, busy in today],
         "deadlines": [{"title": t, "course": c, "when": fmt_ts(due),
                        "hours": round((due - now) / 3600, 1)} for t, c, due in tasks],
         "canvas": canvas_configured(),

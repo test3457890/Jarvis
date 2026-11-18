@@ -406,10 +406,11 @@ $('new-task').onsubmit = async event => {
   const form = event.currentTarget;
   const title = $('task-title').value.trim();
   if (!title) { $('task-title').focus(); return; }
+  const minutes = $('task-minutes').valueAsNumber;
   const button = form.querySelector('button');
   button.disabled = true;
   try {
-    const command = ['/task ' + title, $('task-due').value, $('task-minutes').value].join(' | ');
+    const command = ['/task ' + title, $('task-due').value, Number.isFinite(minutes) ? minutes : ''].join(' | ');
     if (await send(command)) form.reset();
   } finally { button.disabled = false; }
 };

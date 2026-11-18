@@ -88,12 +88,14 @@ def test_failed_rebuild_keeps_previous_plan(isolated_app, morning):
 
 
 def test_cached_all_day_events_block_dates_and_keep_assignment_due_time(isolated_app, mock_canvas_secret, morning):
-    cfg, db, _, _ = isolated_app
+    cfg, db, ctx, app_dir = isolated_app
     after_trip = morning + dt.timedelta(days=2)
     mock_canvas_secret("https://canvas.example.edu/feeds/calendars/test.ics")
     planner.CANVAS_CACHE.write_text(
         "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:trip\nSUMMARY:Field trip\n"
         f"DTSTART;VALUE=DATE:{morning:%Y%m%d}\nDTEND;VALUE=DATE:{after_trip:%Y%m%d}\nEND:VEVENT\n"
+        "BEGIN:VEVENT\nUID:notice\nSUMMARY:Registration opens\nTRANSP:TRANSPARENT\n"
+        f"DTSTART;VALUE=DATE:{after_trip:%Y%m%d}\nEND:VEVENT\n"
         "BEGIN:VEVENT\nUID:event-assignment-1\nSUMMARY:Reflection\n"
         f"DTSTART;VALUE=DATE:{after_trip:%Y%m%d}\nEND:VEVENT\nEND:VCALENDAR", encoding="utf-8"
     )
@@ -104,8 +106,24 @@ def test_cached_all_day_events_block_dates_and_keep_assignment_due_time(isolated
         planner.at(morning, dt.time.min), planner.at(after_trip, dt.time.min)
     )
     assert db.db.execute("SELECT due FROM tasks").fetchone() == (planner.at(after_trip, dt.time(23, 59)),)
+    assert "All day Field trip" in planner.show_schedule(ctx, (morning + dt.timedelta(days=1)).isoformat())
+    assert "All day Registration opens (free)" in planner.show_schedule(ctx, after_trip.isoformat())
+    assert "Field trip" not in planner.show_schedule(ctx, after_trip.isoformat())
+    assert planner.dashboard(db)["today"][0]["time"] == "All day"
     planner.make_week_plan(db, cfg)
     assert blocks(db)[0][1] == planner.at(after_trip, dt.time(8))
+    with patch("jarvis.planner.Path.home", return_value=app_dir):
+        planner.export_calendar(ctx)
+    assert "TRANSP:TRANSPARENT" in (app_dir / "Documents" / "Jarvis Calendar.ics").read_text()
+
+
+def test_existing_calendar_upgrades_without_losing_events(isolated_app, morning):
+    _, db, ctx, _ = isolated_app
+    planner.add_event(ctx, "Class", morning.isoformat(), "9 am", 50)
+    db.db.execute("ALTER TABLE events DROP COLUMN blocks_time")
+    planner.init_db(db)
+    planner.init_db(db)
+    assert db.db.execute("SELECT title, blocks_time FROM events").fetchall() == [("Class", 1)]
 
 
 def test_ics_dates_durations_and_explicit_date_time():
