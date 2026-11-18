@@ -2,6 +2,17 @@
 
 All notable changes to Jarvis. Each release adds a section here before it is tagged.
 
+## Unreleased (increment 1: control inventory and reliability)
+- Fixed: the HUD's approval-banner function was named `confirm`, which replaced the browser's
+  `window.confirm`. Every "Are you sure?" prompt (delete a remembered fact, restore a backup, clear
+  conversation history, download above the storage budget) went ahead without asking. Present since
+  1.1.x. The prompts now appear, and declining keeps the data.
+- New `scripts/hud_control_audit.py` drives every HUD control in Chromium and checks its real result
+  (saved settings, files on disk, memory, pending approvals). It runs in CI and writes a report.
+- Windows CI upgrades v1.1.1 and v1.2.1 installs with their own updaters, checks settings and data
+  are untouched, then rolls back.
+- Added a capability matrix (`docs/Capabilities.md`).
+
 ## 1.2.1
 - Coding mode retries one patch with the model when its SEARCH text does not match or its edit format is invalid. Neither attempt writes files before preview and Apply.
 - Requests selecting more than six editable files now report the limit instead of silently ignoring files.
