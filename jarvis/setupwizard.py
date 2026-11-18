@@ -212,7 +212,7 @@ def _clean_folders(values, label):
 
 def apply_choices(cfg, choices):
     """Merge wizard choices into the existing configuration. Nothing else is removed."""
-    updated = config.apply_profile(cfg, choices.get("profile", cfg.get("performance_profile", "standard")))
+    updated = config.apply_profile(cfg, choices["profile"]) if "profile" in choices else dict(cfg)
     folders = _clean_folders(choices.get("document_folders"), "document folders")
     if folders is not None:
         updated["document_folders"] = folders

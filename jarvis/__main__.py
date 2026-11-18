@@ -18,7 +18,7 @@ import threading
 import time
 import webbrowser
 
-from . import assistants, config, images, net, nomad, planner, recovery, secure, setupwizard, skills
+from . import assistants, config, filejobs, images, net, nomad, planner, recovery, secure, setupwizard, skills
 from .brain import Brain
 from .memory import Memory
 
@@ -192,10 +192,13 @@ class App:
                     if any(not Path(item).is_dir() for item in folders):
                         raise ValueError("Every selected document folder must exist.")
                     updated["document_folders"] = folders
+                if "file_folders" in data:
+                    updated = setupwizard.apply_choices(updated, {"file_folders": data["file_folders"]})
                 config.save(updated)
                 self.cfg.update(updated)
             return {"profile": self.cfg.get("performance_profile", "standard"),
                     "document_folders": self.cfg.get("document_folders", []),
+                    "file_folders": self.cfg.get("file_folders", []),
                     "model": self.cfg["model"], "coder_model": self.cfg.get("coder_model")}
 
     def recovery_operation(self, data=None):
@@ -239,6 +242,42 @@ class App:
                 if not changed:
                     raise ValueError("This remembered fact has already been removed. Refresh the list.")
             return {"facts": [{"id": key, "text": text} for key, text in self.memory.all_facts()]}
+
+    def files_operation(self, data):
+        """Selected-folder file tasks for the HUD. Changes always go through a confirmation."""
+        action = data.get("action")
+        if self.cfg.get("mode") == "talk" or self.cfg.get("lockdown"):
+            raise ValueError("File tasks are unavailable in Talk or Lockdown.")
+        if action == "roots":
+            return {"roots": [str(root) for root in filejobs.folder_roots(self.cfg)],
+                    "limits": filejobs.LIMITS_TEXT}
+        index = data.get("root", 0)
+        if action == "browse":
+            return filejobs.browse(self.cfg, index, data.get("path", ""))
+        if action == "search":
+            return filejobs.search(self.cfg, index, data.get("query"), data.get("path", ""))
+        with self.brain._lock:
+            ctx = self.brain.ctx
+            if action == "jobs":
+                return {"jobs": [{"id": job["id"], "state": job["state"], "action": job["action"],
+                                  "root": job["root"], "steps": len(job["steps"]),
+                                  "done": sum(step["state"] == "done" for step in job["steps"]),
+                                  "error": next((step.get("error") for step in job["steps"] if step.get("error")), ""),
+                                  "summary": filejobs.describe_steps(job["steps"], limit=5)}
+                                 for job in filejobs.folder_jobs(ctx)]}
+            if action == "prepare":
+                spec = data.get("spec") or {}
+                if not isinstance(spec, dict):
+                    raise ValueError("Expected file task details.")
+                result = filejobs.prepare_folder_task(ctx, index, data.get("task"), spec)
+                result["pending"] = {"text": ctx.pending["preview"], "id": ctx.pending["id"]} if ctx.pending else None
+                return result
+            if action in ("resume", "undo"):
+                tool = "execute_folder_job" if action == "resume" else "undo_folder_job"
+                message = skills.run(ctx, tool, {"job_id": data.get("job_id")})
+                return {"message": message,
+                        "pending": {"text": ctx.pending["preview"], "id": ctx.pending["id"]} if ctx.pending else None}
+        raise ValueError("Unknown file task action.")
 
     def wizard_operation(self, data=None):
         """First-run setup wizard. GET returns status; POST saves choices or starts downloads."""

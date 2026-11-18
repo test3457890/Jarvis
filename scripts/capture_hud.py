@@ -62,6 +62,24 @@ def capture(app, base_url):
         page.get_by_role("button", name="Apply proposal").click()
         expect(page.get_by_text("Updated budget.py.", exact=False)).to_be_visible()
 
+        page.locator("#mode").select_option("everyday")
+        page.locator("#file-tasks summary").click()
+        expect(page.locator("#ft-items")).to_contain_text("holiday.jpg")
+        page.locator("#ft-action").select_option("organize")
+        page.get_by_role("button", name="Preview changes").click()
+        expect(page.locator("#ft-preview")).to_contain_text("Move holiday.jpg to Images/holiday.jpg")
+        expect(page.locator("#pending")).to_be_visible()
+        page.screenshot(path=OUT / "file-tasks.png")
+        page.get_by_role("button", name="Confirm").click()
+        expect(page.locator("#log .jarvis").last).to_contain_text("Finished")
+        expect(page.locator("#ft-items")).to_contain_text("Images")
+        page.get_by_role("button", name="Show task history").click()
+        page.locator("#ft-history").get_by_role("button", name="Undo").click()
+        page.get_by_role("button", name="Confirm").click()
+        expect(page.locator("#log .jarvis").last).to_contain_text("File task undone")
+        assert (Path(app.cfg["file_folders"][0]) / "holiday.jpg").exists()
+        page.locator("#mode").select_option("coding")
+
         page.locator("#images summary").click()
         page.locator("#image-prompt").fill("Minimal mountain landscape at dusk")
         page.get_by_role("button", name="Generate locally").click()
@@ -134,7 +152,12 @@ def main():
         code = home / "code"
         code.mkdir()
         (code / "budget.py").write_text("def total(values):\n    return sum(values) / len(values)\n", encoding="utf-8")
+        files = home / "Downloads"
+        files.mkdir()
+        for name, data in (("holiday.jpg", b"jpg"), ("receipt.pdf", b"pdf"), ("podcast.mp3", b"mp3"), ("notes.txt", b"notes")):
+            (files / name).write_bytes(data)
         cfg = dict(config.DEFAULTS, code_dir=str(code), speak_replies=False, document_folders=[str(reading)],
+                   file_folders=[str(files)],
                    image_generation_url="http://127.0.0.1:7860")
         with patch.object(config, "APP_DIR", home), patch.object(config, "CONFIG_PATH", home / "config.json"), \
                 patch.object(memory, "APP_DIR", home), patch.object(memory, "DB_PATH", home / "memory.db"):
