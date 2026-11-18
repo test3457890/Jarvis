@@ -75,3 +75,41 @@ function Copy-Item {
     assert result.returncode!=0
     assert (home/'jarvis'/'__main__.py').read_text()=='previous main'
     assert (home/'README.md').read_text()=='previous readme'
+
+
+def test_release_has_no_batch_launcher_and_ships_diagnostics(tmp_path):
+    archive = build(tmp_path)
+    with zipfile.ZipFile(archive) as bundle:
+        names = bundle.namelist()
+    assert not any(name.lower().endswith(('.bat', '.cmd', '.exe', '.vbs')) for name in names)
+    assert 'Jarvis/scripts/check_defender.ps1' in names and 'Jarvis/jarvis/setupwizard.py' in names
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows installer integration')
+def test_windows_installer_creates_direct_shortcut_and_keeps_settings(tmp_path):
+    import shutil
+    home = tmp_path / 'Jarvis'
+    root = Path(__file__).parents[1]
+    shutil.copytree(root / 'jarvis', home / 'jarvis')
+    for name in ('install.ps1', 'requirements.txt'):
+        shutil.copy(root / name, home / name)
+    appdata = tmp_path / 'appdata'
+    (appdata / 'Jarvis').mkdir(parents=True)
+    (appdata / 'Jarvis' / 'config.json').write_text(json.dumps({'honorific': 'Brett', 'user_name': 'Brett T'}))
+    env = {**os.environ, 'APPDATA': str(appdata)}
+    command = ['pwsh', '-NoProfile', '-File', str(home / 'install.ps1'), '-SkipPackages', '-Profile', 'low-memory']
+    result = subprocess.run(command, env=env, capture_output=True, text=True, cwd=home)
+    assert result.returncode == 0, result.stdout + result.stderr
+    saved = json.loads((appdata / 'Jarvis' / 'config.json').read_text())
+    assert saved['honorific'] == 'Brett' and saved['user_name'] == 'Brett T'
+    assert saved['performance_profile'] == 'low-memory' and saved['setup_complete'] is True
+    link = appdata / 'Microsoft' / 'Windows' / 'Start Menu' / 'Programs' / 'Jarvis.lnk'
+    query = ("$l=(New-Object -ComObject WScript.Shell).CreateShortcut('%s'); "
+             "Write-Output $l.TargetPath; Write-Output $l.Arguments" % link)
+    output = subprocess.run(['pwsh', '-NoProfile', '-Command', query], capture_output=True, text=True).stdout
+    assert output.splitlines()[0].lower().endswith('\\.venv\\scripts\\python.exe')
+    assert output.splitlines()[1] == '-m jarvis'
+    # A second run (an upgrade or repair) keeps everything and succeeds.
+    result = subprocess.run(command[:-2], env=env, capture_output=True, text=True, cwd=home)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads((appdata / 'Jarvis' / 'config.json').read_text())['honorific'] == 'Brett'

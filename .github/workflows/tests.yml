@@ -34,18 +34,49 @@ jobs:
             (Join-Path $PWD "upgrade.ps1"), [ref]$tokens, [ref]$errors
           )
           if ($errors.Count) { $errors | Out-String | Write-Error; exit 1 }
-      - name: Check installer syntax
+      - name: Check installer and diagnostic syntax
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $tokens = $null
-          $errors = $null
-          [void][System.Management.Automation.Language.Parser]::ParseFile(
-            (Join-Path $PWD "install.ps1"), [ref]$tokens, [ref]$errors
-          )
-          if ($errors.Count) { $errors | Out-String | Write-Error; exit 1 }
+          foreach ($script in @("install.ps1", "scripts/check_defender.ps1")) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Join-Path $PWD $script), [ref]$tokens, [ref]$errors
+            )
+            if ($errors.Count) { $errors | Out-String | Write-Error; exit 1 }
+          }
       - run: python -m pip install "pytest>=8,<10" "Pillow>=10.4" "pypdf>=5,<7" "python-docx>=1.1,<2"
       - run: python -m pytest -q
+      - run: python -m scripts.package_release
+
+  windows-install:
+    name: Full Windows install and first launch
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Install packages and shortcut without models
+        shell: pwsh
+        run: ./install.ps1 -Profile low-memory
+      - name: Start the HUD and check the first-run wizard
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath ".venv\Scripts\python.exe" -ArgumentList "-m","jarvis","--no-voice","--no-browser" -PassThru
+          try {
+            $ok = $false
+            foreach ($i in 1..30) {
+              Start-Sleep -Seconds 1
+              try { $page = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8765/; $ok = $true; break } catch {}
+            }
+            if (-not $ok) { throw "The HUD did not start." }
+            if ($page.Content -notmatch 'id="wizard"') { throw "The setup wizard is missing from the HUD." }
+          } finally { Stop-Process -Id $process.Id -Force }
       - run: python -m scripts.package_release
 
   hud:

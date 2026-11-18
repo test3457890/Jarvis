@@ -12,9 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 def build(output):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
-    paths = [ROOT / name for name in ('README.md', 'LICENSE', 'requirements.txt', 'install.ps1', 'upgrade.ps1', 'Jarvis.bat')]
+    names = ('README.md', 'LICENSE', 'requirements.txt', 'install.ps1', 'upgrade.ps1', 'CHANGELOG.md', 'AGENTS.md')
+    paths = [ROOT / name for name in names if (ROOT / name).exists()]
     paths += sorted((ROOT / 'jarvis').glob('*.py'))
-    paths += [ROOT / 'jarvis' / 'ui.html', ROOT / 'scripts' / 'benchmark.py']
+    paths += [ROOT / 'jarvis' / 'ui.html', ROOT / 'scripts' / 'benchmark.py', ROOT / 'scripts' / 'check_defender.ps1']
     paths += sorted((ROOT / 'docs').glob('*.md'))
     files = {str(path.relative_to(ROOT)).replace('\\','/'): path.read_bytes() for path in paths}
     manifest = {'version':__version__, 'files':{name:hashlib.sha256(data).hexdigest() for name,data in files.items()}}

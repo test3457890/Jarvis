@@ -9,6 +9,7 @@
 import argparse
 import datetime as dt
 import getpass
+import os
 import re
 import shutil
 import subprocess
@@ -17,7 +18,7 @@ import threading
 import time
 import webbrowser
 
-from . import assistants, config, images, net, nomad, planner, recovery, secure, skills
+from . import assistants, config, images, net, nomad, planner, recovery, secure, setupwizard, skills
 from .brain import Brain
 from .memory import Memory
 
@@ -84,7 +85,8 @@ class App:
                 "assistant": self.cfg.get("assistant", "auto"),
                 "voice_choice": self.cfg.get("voice_choice", "auto"),
                 "piper_available": bool(self.cfg.get("piper_model")),
-                "honorific": self.cfg.get("honorific", "sir")}
+                "honorific": self.cfg.get("honorific", "sir"),
+                "first_run": not self.cfg.get("setup_complete")}
 
     def dashboard(self):
         now = time.time()
@@ -237,6 +239,28 @@ class App:
                 if not changed:
                     raise ValueError("This remembered fact has already been removed. Refresh the list.")
             return {"facts": [{"id": key, "text": text} for key, text in self.memory.all_facts()]}
+
+    def wizard_operation(self, data=None):
+        """First-run setup wizard. GET returns status; POST saves choices or starts downloads."""
+        if data is None:
+            return setupwizard.summary(self.cfg)
+        if self.cfg.get("lockdown"):
+            raise ValueError("Turn off Lockdown to change setup.")
+        action = data.get("action")
+        choices = data.get("choices") or {}
+        if not isinstance(choices, dict):
+            raise ValueError("Expected setup choices.")
+        if action == "plan":
+            return setupwizard.plan(self.cfg, choices)
+        with self.brain._lock, self._settings_lock:
+            if action == "start":
+                setupwizard.start(self.cfg, choices)
+            elif action == "finish":
+                setupwizard.finish_without_downloads(self.cfg, choices)
+            else:
+                raise ValueError("Choose plan, start or finish.")
+        self.emit("toggles", self.state())
+        return setupwizard.summary(self.cfg)
 
     def preview_voice(self):
         if not self.speaker:
@@ -584,7 +608,7 @@ def doctor(cfg):
         line(True, f"Microphone: {sd.query_devices(kind='input')['name']}")
     except Exception as e:
         line(False, "Microphone found", str(e))
-    line(secure.has_secret("canvas_feed_url"), "Canvas connected", "run: Jarvis.bat setup", optional=True)
+    line(secure.has_secret("canvas_feed_url"), "Canvas connected", "run: .venv\\Scripts\\python.exe -m jarvis setup", optional=True)
     line(secure.has_secret("smtp_password"), "Direct email sending", "optional; drafts work without it", optional=True)
     st = nomad.status(cfg)
     found = st["command center"] or st["library"]
@@ -624,6 +648,9 @@ def main(argv=None):
     p.add_argument("--no-browser", action="store_true", help="don't open the HUD window")
     p.add_argument("--profile", choices=tuple(config.PERFORMANCE_PROFILES), help="Save a performance profile")
     args = p.parse_args(argv)
+    # Speech models load from the local cache only. The setup wizard downloads them in a
+    # separate process. This replaces the setting that Jarvis.bat used to provide.
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
     cfg = config.load()
     if args.profile:
         cfg = config.apply_profile(cfg, args.profile)
@@ -658,7 +685,7 @@ def main(argv=None):
         return 0
 
     from .webui import serve
-    app = App(cfg, use_voice=not args.no_voice)
+    app = App(cfg, use_voice=not args.no_voice and cfg.get("voice_enabled", True))
     port = cfg.get("web_port", 8765)
     serve(app, port)
     url = f"http://127.0.0.1:{port}"

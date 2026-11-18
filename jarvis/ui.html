@@ -183,6 +183,27 @@
     .r2 { inset:8px; } .r3 { inset:20px; border-width:4px; } .r4 { inset:32px; } .core { inset:40px; }
     .chat { height:70vh; } .msg { max-width:92%; } .brand small { display:none; }
   }
+  #wizard { width:min(860px, 96vw); max-height:92vh; overflow:auto; color:var(--text); background:var(--bg);
+    border:1px solid var(--line2); border-radius:10px; padding:0; }
+  #wizard::backdrop { background:rgba(0,0,0,.6); }
+  #wizard form { display:grid; gap:12px; padding:18px 22px; }
+  #wizard h2 { margin:0; font-size:20px; color:var(--cyan2); }
+  #wizard fieldset { border:1px solid var(--line); border-radius:8px; display:grid; gap:8px; padding:10px 14px; }
+  #wizard legend { color:var(--cyan2); font-weight:700; padding:0 6px; }
+  #wizard label { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  #wizard textarea, #wizard input[type=text], #wizard input[type=number] { width:100%; min-width:0; padding:6px;
+    font:inherit; color:var(--text); background:var(--panel); border:1px solid var(--line2); border-radius:4px; }
+  #wizard input[type=number] { max-width:9rem; }
+  #wizard table { border-collapse:collapse; width:100%; font-size:14px; }
+  #wizard th, #wizard td { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); }
+  #wizard .note, #wizard .hint { color:var(--dim); font-size:13px; margin:0; }
+  #wizard .warn { color:var(--warn); margin:0; }
+  #wizard .actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
+  #wizard-checks li.bad::before { content:"Needed: "; color:var(--warn); font-weight:700; }
+  #wizard-checks li.optional::before { content:"Optional: "; color:var(--dim); font-weight:700; }
+  #wizard label { justify-content:flex-start; text-align:left; }
+  #wizard input[type=radio], #wizard input[type=checkbox] { flex:0 0 auto; width:auto; margin:0; }
+  #wizard-checks li.good::before { content:"Ready: "; color:var(--ok); font-weight:700; }
 </style>
 </head>
 <body data-state="idle" data-theme="__JARVIS_THEME__" data-mode="__JARVIS_MODE__">
@@ -287,6 +308,7 @@
     <details id="setup-panel" name="assistant-tools">
       <summary>Setup</summary>
       <button id="setup-load" type="button">Load current setup</button>
+      <button id="wizard-open" type="button">Open setup wizard</button>
       <form id="setup-form">
         <label>Performance<select id="setup-profile"><option value="standard">Standard</option><option value="low-memory">Low memory</option></select></label>
         <label>Document folders, one per line<textarea id="setup-folders" rows="3"></textarea></label>
@@ -331,6 +353,50 @@
     <div class="panel"><h2>Project NOMAD</h2><div class="nomad" id="nomad"><span class="empty">Scanning…</span></div></div>
   </aside>
 </div>
+<dialog id="wizard" aria-labelledby="wizard-title">
+  <form id="wizard-form" method="dialog">
+    <h2 id="wizard-title">Set up Jarvis</h2>
+    <p class="note">Choices are saved to your existing settings. Nothing you already configured is removed. You can reopen this from Setup.</p>
+    <fieldset><legend>1. Prerequisites</legend>
+      <ul id="wizard-checks"></ul>
+      <div class="actions"><button type="button" id="wizard-recheck">Check again</button></div>
+    </fieldset>
+    <fieldset><legend>2. Performance profile and models</legend>
+      <label><input type="radio" name="wizard-profile" value="standard" checked> Standard (16 GB memory or more recommended)</label>
+      <label><input type="radio" name="wizard-profile" value="low-memory"> 8 GB low memory (smaller models, shorter context)</label>
+      <label><input type="checkbox" id="wizard-image-model"> Add the optional image lookup model (gemma3:4b)</label>
+      <label>Storage budget in GB <input type="number" id="wizard-budget" min="1" max="2000" step="1" placeholder="No limit"></label>
+      <table aria-describedby="wizard-space"><thead><tr><th scope="col">Download</th><th scope="col">Used for</th><th scope="col">Size</th><th scope="col">Status</th></tr></thead>
+        <tbody id="wizard-plan"></tbody></table>
+      <p id="wizard-space" class="note"></p>
+      <p id="wizard-warnings" class="warn" role="alert"></p>
+      <p id="wizard-cache-note" class="hint"></p>
+    </fieldset>
+    <fieldset><legend>3. Voice and microphone</legend>
+      <label><input type="checkbox" id="wizard-voice" checked> Use voice input and download the speech recognition model</label>
+      <p class="hint">Without voice you can type to Jarvis. Speech replies still use the Windows voice.</p>
+    </fieldset>
+    <fieldset><legend>4. Folders</legend>
+      <label for="wizard-docs">Document folders to search, one per line</label>
+      <textarea id="wizard-docs" rows="2"></textarea>
+      <label for="wizard-files">Folders Jarvis may organise with File tasks, one per line</label>
+      <textarea id="wizard-files" rows="2"></textarea>
+      <p class="hint">File tasks only work inside these folders. Keep them separate from the coding workspace.</p>
+      <label for="wizard-code">Coding workspace</label>
+      <input type="text" id="wizard-code">
+    </fieldset>
+    <fieldset><legend>5. Optional online tools</legend>
+      <label><input type="checkbox" id="wizard-online"> Allow approved online tools (web search, source pages, uploads)</label>
+      <p class="hint">Jarvis stays offline unless this is on. Each online request still needs your approval. Add API keys with python -m jarvis setup.</p>
+    </fieldset>
+    <section aria-live="polite"><ul id="wizard-progress"></ul><p id="wizard-status" role="status"></p></section>
+    <div class="actions">
+      <button type="button" id="wizard-later">Close</button>
+      <button type="button" id="wizard-finish">Finish without downloading</button>
+      <button type="button" id="wizard-start">Download and finish</button>
+    </div>
+  </form>
+</dialog>
 <script>
 const KEY = "__JARVIS_KEY__";
 const H = {'Content-Type':'application/json', 'X-Jarvis-Key':KEY};
@@ -699,7 +765,7 @@ function refresh() {
     list('deadlines', d.deadlines, it => { const li = el('li', it.hours < 0 ? 'urgent' : it.hours < 24 ? 'urgent' : it.hours < 72 ? 'soon' : '');
       const t = el('span', ''); t.textContent = it.title; if (it.course) t.appendChild(el('span', 'course', it.course));
       li.appendChild(t); li.appendChild(el('span', 'when', it.hours < 0 ? 'OVERDUE' : it.when)); return li; },
-      d.canvas ? 'All clear.' : 'No deadlines yet. Run “Jarvis.bat setup” to connect Canvas.');
+      d.canvas ? 'All clear.' : 'No deadlines yet. Open Setup or run “python -m jarvis setup” to connect Canvas.');
     const n = $('nomad'); n.replaceChildren(); const entries = Object.entries(d.nomad || {});
     const nomadUp = d.nomad && (d.nomad['command center'] || d.nomad['library']);
     if (!nomadUp) n.appendChild(el('span', 'empty', 'Not detected on this PC'));
@@ -724,6 +790,111 @@ const cv = $('wave'), cx = cv.getContext('2d'); let ph = 0;
     x ? cx.lineTo(x, y) : cx.moveTo(x, y); }
   cx.stroke(); ph += st === 'speaking' ? 0.35 : 0.08; requestAnimationFrame(draw);
 })();
+// ---- first-run setup wizard
+const GBYTES = 1e9;
+function wizardChoices(accept) {
+  const lines = id => $(id).value.split('\n').map(value => value.trim()).filter(Boolean);
+  const budget = $('wizard-budget').value.trim();
+  return {profile: document.querySelector('input[name=wizard-profile]:checked').value,
+    optional_models: $('wizard-image-model').checked ? ['gemma3:4b'] : [],
+    budget_gb: budget ? Number(budget) : null, voice: $('wizard-voice').checked,
+    document_folders: lines('wizard-docs'), file_folders: lines('wizard-files'),
+    code_dir: $('wizard-code').value.trim() || undefined, online_tools: $('wizard-online').checked,
+    accept_over_budget: !!accept};
+}
+function renderWizardState(state) {
+  const list = $('wizard-progress'); list.replaceChildren();
+  for (const step of state.steps || []) {
+    const pct = step.bytes ? Math.min(100, Math.round(100 * (step.completed || 0) / step.bytes)) : 0;
+    const label = step.status === 'running' ? `downloading ${pct}%` : step.status;
+    list.appendChild(el('li', '', `${step.name}: ${label}${step.error ? ' (' + step.error + ')' : ''}`));
+  }
+  $('wizard-status').textContent = state.running ? 'Downloading. You can keep using Jarvis.' :
+    state.error ? state.error : state.finished ? 'Setup finished.' : '';
+  $('wizard-start').textContent = state.error ? 'Resume setup' : 'Download and finish';
+  $('wizard-start').disabled = !!state.running;
+}
+let wizardTimer = null;
+async function wizardPlan() {
+  try {
+    const plan = await api('/api/wizard', {action:'plan', choices:wizardChoices()});
+    if (plan.error) throw new Error(plan.error);
+    const body = $('wizard-plan'); body.replaceChildren();
+    for (const item of plan.items) {
+      const row = el('tr');
+      row.append(el('td', '', item.name), el('td', '', item.role),
+        el('td', '', (item.estimated ? 'about ' : '') + (item.bytes / GBYTES).toFixed(1) + ' GB'),
+        el('td', '', item.installed ? 'Installed' : 'Will download'));
+      body.appendChild(row);
+    }
+    const free = plan.free_bytes == null ? 'unknown' : (plan.free_bytes / GBYTES).toFixed(1) + ' GB';
+    $('wizard-space').textContent = `New downloads: about ${(plan.needed_bytes / GBYTES).toFixed(1)} GB. ` +
+      `Total for these models: about ${(plan.total_bytes / GBYTES).toFixed(1)} GB. Free space in ${plan.ollama_dir}: ${free}.` +
+      (plan.ollama_reachable ? '' : ' Ollama is not running, so installed models could not be detected.');
+    $('wizard-warnings').textContent = plan.warnings.join(' ');
+    $('wizard-cache-note').textContent = plan.shared_cache_note;
+    return plan;
+  } catch (error) { $('wizard-warnings').textContent = error.message; return null; }
+}
+async function openWizard() {
+  const info = await api('/api/wizard');
+  if (info.error) { add('system', info.error); return; }
+  const checks = $('wizard-checks'); checks.replaceChildren();
+  for (const check of info.checks) {
+    const item = el('li', check.ok ? 'good' : check.optional ? 'optional' : 'bad', check.label + (check.ok || !check.hint ? '' : '. ' + check.hint));
+    checks.appendChild(item);
+  }
+  document.querySelector(`input[name=wizard-profile][value="${info.profile}"]`).checked = true;
+  $('wizard-docs').value = info.document_folders.join('\n');
+  $('wizard-files').value = info.file_folders.join('\n');
+  $('wizard-code').value = info.code_dir || '';
+  $('wizard-voice').checked = info.voice !== false;
+  $('wizard-online').checked = !!info.online_tools;
+  if (info.budget_gb) $('wizard-budget').value = info.budget_gb;
+  renderWizardState(info.state);
+  if (!$('wizard').open) $('wizard').showModal();
+  wizardPlan();
+  if (info.state.running) pollWizard();
+}
+function pollWizard() {
+  clearTimeout(wizardTimer);
+  wizardTimer = setTimeout(async () => {
+    const info = await api('/api/wizard');
+    renderWizardState(info.state);
+    if (info.state.running) pollWizard(); else wizardPlan();
+  }, 1500);
+}
+async function wizardSubmit(action) {
+  let accept = false;
+  if (action === 'start') {
+    const plan = await wizardPlan();
+    if (!plan) return;
+    if (plan.over_budget) {
+      accept = window.confirm(plan.warnings[0] + ' Download anyway?');
+      if (!accept) return;
+    }
+  }
+  const result = await api('/api/wizard', {action, choices:wizardChoices(accept)});
+  if (result.error) { $('wizard-status').textContent = result.error; return; }
+  renderWizardState(result.state);
+  if (action === 'finish') { $('wizard-status').textContent = 'Saved. Download models later from this wizard.'; }
+  else pollWizard();
+}
+for (const id of ['wizard-budget', 'wizard-image-model', 'wizard-voice']) $(id).onchange = wizardPlan;
+for (const input of document.querySelectorAll('input[name=wizard-profile]')) input.onchange = wizardPlan;
+$('wizard-recheck').onclick = openWizard;
+$('wizard-start').onclick = () => wizardSubmit('start');
+$('wizard-finish').onclick = () => wizardSubmit('finish');
+$('wizard-later').onclick = () => {
+  $('wizard').close();
+  try { sessionStorage.setItem('jarvis-wizard-closed', '1'); } catch {}
+};
+$('wizard-open').onclick = openWizard;
+api('/api/state').then(st => {
+  let closed = false;
+  try { closed = sessionStorage.getItem('jarvis-wizard-closed') === '1'; } catch {}
+  if (st.first_run && !closed) openWizard();
+});
 </script>
 </body>
 </html>

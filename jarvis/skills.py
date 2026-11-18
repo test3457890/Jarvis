@@ -127,7 +127,7 @@ def run(ctx: Context, name: str, args: dict, confirmed=False) -> str:
     if s["internet"] and not ctx.cfg.get("allow_internet_tools"):
         return "Internet tools are turned off (offline mode)."
     if s["available"] and not s["available"](ctx.cfg):
-        return f"{name} isn't set up yet. Run 'Jarvis.bat setup'."
+        return f"{name} isn't set up yet. Run 'python -m jarvis setup' from the Jarvis folder."
     allowed = set(s["params"])
     clean = {k: v for k, v in (args or {}).items() if k in allowed}
     harmless = name == "power" and clean.get("action") == "cancel"
