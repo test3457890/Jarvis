@@ -17,7 +17,7 @@ import threading
 import time
 import webbrowser
 
-from . import config, nomad, planner, secure, skills
+from . import assistants, config, nomad, planner, secure, skills
 from .brain import Brain
 from .memory import Memory
 
@@ -73,6 +73,7 @@ class App:
                 "model": (self.cfg.get("coder_model") or self.cfg["model"])
                 if self.cfg.get("mode") == "coding" else self.cfg["model"],
                 "mode": self.cfg.get("mode", "everyday"), "theme": self.cfg.get("theme", "hud"),
+                "assistant": self.cfg.get("assistant", "auto"),
                 "voice_choice": self.cfg.get("voice_choice", "auto"),
                 "piper_available": bool(self.cfg.get("piper_model")),
                 "honorific": self.cfg.get("honorific", "sir")}
@@ -117,7 +118,7 @@ class App:
         return st
 
     def set_preference(self, key, value):
-        choices = {"mode": config.MODES, "theme": config.THEMES,
+        choices = {"mode": config.MODES, "theme": config.THEMES, "assistant": assistants.CHOICES,
                    "voice_choice": ("auto", "windows", "piper")}
         if key not in choices or value not in choices[key]:
             raise ValueError("Unknown setting.")
@@ -247,7 +248,20 @@ class App:
         self.emit("status", "thinking")
         switch = re.fullmatch(r"(?:jarvis[, :]+)?(?:switch to|turn on|use) (everyday|coding|briefing|talk)(?: mode)?[.!?]?",
                               text.strip(), re.IGNORECASE)
-        if switch:
+        assistant_switch = re.fullmatch(
+            r"(?:jarvis[, :]+)?(?:switch to|use) (auto|jarvis|tuki)(?: assistant)?[.!?]?",
+            text.strip(), re.IGNORECASE,
+        )
+        label = None
+        model = None
+        if assistant_switch:
+            try:
+                chosen = assistant_switch[1].lower()
+                self.set_preference("assistant", chosen)
+                answer = "Automatic routing is on." if chosen == "auto" else f"{chosen.title()} is selected."
+            except OSError:
+                answer = "I couldn't save that setting."
+        elif switch:
             mode = switch[1].lower()
             try:
                 self.set_preference("mode", mode)
@@ -255,8 +269,11 @@ class App:
             except OSError:
                 answer = "I couldn't save that setting."
         else:
-            answer = self.brain.ask(text, room_context)
-        self.reply(answer, speak=(via == "voice" or self.cfg.get("speak_replies")))
+            with self.brain._lock:
+                answer = self.brain.ask(text, room_context)
+                label = self.brain.assistant.title()
+                model = self.brain.model_used
+        self.reply(answer, speak=(via == "voice" or self.cfg.get("speak_replies")), assistant=label, model=model)
         if self.speaker:
             self.speaker.wait()
         if via == "voice" and self.listener:
@@ -264,13 +281,13 @@ class App:
         self.emit("status", "listening" if self.listener else "idle")
         return answer
 
-    def reply(self, text, speak):
-        self.emit("reply", text)
+    def reply(self, text, speak, assistant=None, model=None):
+        self.emit("reply", {"text": text, "assistant": assistant, "model": model} if assistant else text)
         if speak and self.speaker and self.cfg.get("speak_replies", True):
             self.emit("status", "speaking")
             spoken = text
-            if spoken.startswith(("Preview only.", "Proposed edit for", "Brave search results.")):
-                spoken = (spoken.split("\n", 1)[0] if not spoken.startswith("Brave") else
+            if spoken.startswith(("Preview only.", "Proposed edit for", "Brave search results.", "Fact-check based")):
+                spoken = (spoken.split("\n", 1)[0] if not spoken.startswith(("Brave", "Fact-check")) else
                           "I've put the search results on screen.")
             elif self.cfg.get("mode") == "coding":
                 spoken = spoken.split("\n\n", 1)[0].split("```", 1)[0].strip()[:350]
@@ -384,7 +401,9 @@ def doctor(cfg):
         models = brain.installed_models()
         line(True, f"Ollama is running ({len(models)} models installed)")
         has = lambda m: any(x == m or x == m + ":latest" for x in models)
-        line(has(cfg["model"]), f"Brain model {cfg['model']}", f"run: ollama pull {cfg['model']}")
+        line(has(cfg["model"]), f"Tuki model {cfg['model']}", f"run: ollama pull {cfg['model']}")
+        everyday = cfg.get("everyday_model") or cfg["model"]
+        line(has(everyday), f"Jarvis model {everyday}", f"run: ollama pull {everyday}", optional=True)
         line(has(cfg["coder_model"]), f"Coding model {cfg['coder_model']}", f"run: ollama pull {cfg['coder_model']}",
              optional=True)
         line(has(cfg["embed_model"]), f"Memory model {cfg['embed_model']}", f"run: ollama pull {cfg['embed_model']}",
@@ -429,7 +448,8 @@ def text_chat(app):
         if text.lower() in ("quit", "exit", "bye"):
             break
         if text:
-            print(f"{name}: {app.handle(text)}\n")
+            answer = app.handle(text)
+            print(f"{app.brain.assistant.title()}: {answer}\n")
 
 
 def main(argv=None):

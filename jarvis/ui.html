@@ -157,6 +157,8 @@
     <div class="prefs">
       <label>Mode <select id="mode"><option value="everyday">Everyday</option><option value="coding">Coding</option>
         <option value="briefing">Briefing</option><option value="talk">Talk</option></select></label>
+      <label>Assistant <select id="assistant"><option value="auto">Auto</option>
+        <option value="jarvis">Jarvis</option><option value="tuki">Tuki</option></select></label>
       <label>Theme <select id="theme"><option value="hud">Sci-fi HUD</option><option value="simple">Simple dark</option>
         <option value="light">Simple light</option></select></label>
       <label>Voice <select id="voice_choice"><option value="auto">Automatic</option>
@@ -259,7 +261,7 @@ function setPending(request) {
   $('pending-text').textContent = request ? 'Jarvis wants to ' + request.text + '.' : '';
 }
 function setToggles(st) {
-  for (const key of ['mode', 'theme', 'voice_choice']) {
+  for (const key of ['mode', 'theme', 'voice_choice', 'assistant']) {
     if (st[key]) $(key).value = st[key];
   }
   if (st.mode) document.body.dataset.mode = st.mode;
@@ -289,7 +291,12 @@ es.onmessage = e => {
   if (ev.kind === 'status') setState(ev.data);
   else if (ev.kind === 'heard') $('heard').textContent = '“' + ev.data + '”';
   else if (ev.kind === 'user') add('user', ev.data.text, ev.data.via === 'voice' ? 'spoken' : 'typed');
-  else if (ev.kind === 'reply') { add('jarvis', ev.data); refresh(); }
+  else if (ev.kind === 'reply') {
+    const reply = ev.data;
+    if (typeof reply === 'string') add('jarvis', reply);
+    else add('jarvis', reply.text, [reply.assistant, reply.model].filter(Boolean).join(' · '));
+    refresh();
+  }
   else if (ev.kind === 'system') add('system', ev.data);
   else if (ev.kind === 'toggles') setToggles(ev.data);
   else if (ev.kind === 'pending') setPending(ev.data);
@@ -297,7 +304,7 @@ es.onmessage = e => {
 es.onerror = () => setState('offline');
 es.onopen = () => { if (document.body.dataset.state === 'offline') setState('idle'); };
 function send(text) { return api('/api/chat', {text}); }
-for (const key of ['mode', 'theme', 'voice_choice']) {
+for (const key of ['mode', 'theme', 'voice_choice', 'assistant']) {
   $(key).onchange = async () => {
     try {
       const state = await api('/api/preferences', {key, value: $(key).value});

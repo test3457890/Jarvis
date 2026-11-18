@@ -21,7 +21,8 @@ if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-Write-Host "== 3/4 AI models (one time: brain 5.2 GB, coder 4.7 GB, memory 0.3 GB)" -ForegroundColor Cyan
+Write-Host "== 3/4 AI models (one time: Jarvis 2.5 GB, Tuki 5.2 GB, coder 4.7 GB, memory 0.3 GB)" -ForegroundColor Cyan
+ollama pull qwen3:4b
 ollama pull $model
 ollama pull $embed
 ollama pull qwen2.5-coder:7b

@@ -127,7 +127,8 @@ class Listener:
         self.paused = threading.Event()
         self._audio = queue.Queue()
         self._stt_lock = threading.Lock()
-        self._wake = re.compile(r"\b(" + "|".join(map(re.escape, cfg["wake_words"])) + r")\b[,.!?]*\s*", re.I)
+        words = tuple(dict.fromkeys([*cfg["wake_words"], "tuki"]))
+        self._wake = re.compile(r"\b(" + "|".join(map(re.escape, words)) + r")\b[,.!?]*\s*", re.I)
 
     def keep_listening_for_follow_up(self):
         self.follow_until = time.time() + self.cfg.get("follow_up_seconds", 8)
@@ -191,7 +192,10 @@ class Listener:
         if m:
             # Keep the whole sentence: "what do you think, Jarvis?" still makes sense.
             rest = (text[:m.start()] + " " + text[m.end():]).strip(" ,.!?")
-            command = text if rest else ""  # "" = just the name was said
+            if m[1].casefold() == "tuki":
+                command = f"Tuki: {rest}"
+            else:
+                command = text if rest else ""  # "" = just the name was said
         elif now < self.follow_until:
             command = text
         else:

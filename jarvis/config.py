@@ -4,6 +4,8 @@ import os
 import tempfile
 from pathlib import Path
 
+from .assistants import CHOICES
+
 APP_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / "Jarvis"
 CONFIG_PATH = APP_DIR / "config.json"
 
@@ -12,6 +14,9 @@ THEMES = ("hud", "simple", "light")
 
 DEFAULTS = {
     "mode": "everyday",
+    "assistant": "auto",
+    "everyday_model": "qwen3:4b",
+    "technical_keep_alive": 0,
     "theme": "hud",
     "voice_choice": "auto",
     "name": "Jarvis",
@@ -98,7 +103,7 @@ def load() -> dict:
     # put your own text in "custom_personality" to replace it.
     cfg["personality"] = cfg.get("custom_personality") or DEFAULTS["personality"]
     cfg.setdefault("custom_personality", "")
-    for key, choices in (("mode", MODES), ("theme", THEMES),
+    for key, choices in (("mode", MODES), ("theme", THEMES), ("assistant", CHOICES),
                          ("voice_choice", ("auto", "windows", "piper"))):
         if cfg.get(key) not in choices:
             cfg[key] = choices[0]

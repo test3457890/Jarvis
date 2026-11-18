@@ -47,6 +47,27 @@ and it's built to pair with [Project NOMAD](https://www.projectnomad.us).
 - Say "Jarvis" anywhere in a sentence, ask follow-ups, and it understands the
   conversation in the room. A British voice is used if Windows has one.
 
+## Jarvis and Tuki
+
+Choose Auto, Jarvis, or Tuki in the Assistant menu. The mode and theme are separate.
+Both assistants share the conversation and voice settings. The HUD shows who answered
+and which local model handled the turn.
+
+| Assistant | Best for | Default Ollama model |
+|---|---|---|
+| Jarvis | Spelling, grammar, reading and summarising, and everyday conversation | `qwen3:4b` |
+| Tuki | Fact-checking, maths, coding, and technical or file tasks | `qwen3:8b`, with the configured coding model for edits |
+
+In Auto, say “Jarvis, proofread this” or “Tuki, fact-check that.” You can type `Jarvis:` or
+`Tuki:` to select one assistant for a message. Fact-checks that need live search show the
+outbound query for approval, then show the returned sources and an assessment of their
+search snippets. Read the original sources for details that the snippets cannot establish.
+
+Existing installs can run `ollama pull qwen3:4b` to add the everyday model. If that model
+is missing, Jarvis temporarily uses the original main model until you install it and
+restart. Both model choices are configurable with `everyday_model` and `model` in
+`config.json`.
+
 ## Modes and themes
 
 Use the Mode menu in the HUD or say “Jarvis, switch to Coding mode.”
