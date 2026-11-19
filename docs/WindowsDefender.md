@@ -31,7 +31,7 @@ the likely causes, from most to least likely, and how to tell them apart on the 
 Run the read-only diagnostic on the affected PC and report the threat name and file:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\check_defender.ps1 -Path "C:\Users\you\Downloads\Jarvis1.2.0.zip"
+powershell -ExecutionPolicy Bypass -File scripts\check_defender.ps1 -Path "C:\Users\you\Downloads\Jarvis1.3.0.zip"
 ```
 
 It does not change Defender settings, add exclusions or remove download markers.

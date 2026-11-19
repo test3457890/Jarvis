@@ -2,7 +2,7 @@
 
 ## Status
 
-No benchmark results are published for 1.2.0. The changes in this release were developed and tested
+No benchmark results are published for 1.3.0. The changes in this release were developed and tested
 in a Linux environment with mocked model responses. They have **not** been measured on an 8 GB
 Windows PC, so this release makes no claim of faster replies or better answer quality.
 
