@@ -10,6 +10,8 @@ See [CHANGELOG.md](CHANGELOG.md), the [capability matrix](docs/Capabilities.md) 
 
 ## Screenshots
 
+[View all 18 screenshots](docs/screenshots/README.md). Includes the planner, setup, mobile layouts, and control audit.
+
 | Boot sequence | HUD | Confirmation banner |
 |---|---|---|
 | ![Boot sequence](docs/screenshots/boot.png) | ![Jarvis HUD](docs/screenshots/hud.png) | ![Confirmation banner](docs/screenshots/confirm.png) |
@@ -20,7 +22,7 @@ See [CHANGELOG.md](CHANGELOG.md), the [capability matrix](docs/Capabilities.md) 
 
 | Setup wizard | File tasks | Multi-file coding preview |
 |---|---|---|
-| ![First-run setup wizard](docs/screenshots/setup-wizard.png) | ![File task preview with confirmation](docs/screenshots/file-tasks.png) | ![TUKI previewing a change to two files](docs/screenshots/coding-diff.png) |
+| ![First-run setup wizard](docs/screenshots/setup-wizard.png) | ![File task preview with confirmation](docs/screenshots/file-tasks.png) | ![Coding workspace control audit](docs/screenshots/audit-coding.png) |
 
 | TUKI voice and confidence | Themes: High contrast, Midnight, Paper | Phone-width layout |
 |---|---|---|
