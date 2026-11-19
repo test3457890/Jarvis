@@ -17,6 +17,8 @@ def build(output):
     paths += sorted((ROOT / 'jarvis').glob('*.py'))
     paths += [ROOT / 'jarvis' / 'ui.html', ROOT / 'scripts' / 'benchmark.py', ROOT / 'scripts' / 'check_defender.ps1']
     paths += sorted((ROOT / 'docs').glob('*.md'))
+    paths += sorted(p for p in (ROOT / 'docs' / 'examples').rglob('*') if p.is_file())
+    paths += [ROOT / 'scripts' / 'measure_document_search.py']
     paths += sorted((ROOT / 'docs' / 'screenshots').glob('*.png'))
     files = {str(path.relative_to(ROOT)).replace('\\','/'): path.read_bytes() for path in paths}
     manifest = {'version':__version__, 'files':{name:hashlib.sha256(data).hexdigest() for name,data in files.items()}}

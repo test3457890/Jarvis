@@ -110,7 +110,11 @@ def build(home):
 
 def audit(app, cfg, code, files, url):
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(executable_path=os.environ.get("JARVIS_CHROME") or None)
+        # Chrome's screen-share picker is auto-answered here, which a real user does by hand.
+        browser = playwright.chromium.launch(
+            executable_path=os.environ.get("JARVIS_CHROME") or None,
+            args=["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream",
+                  "--auto-accept-this-tab-capture"])
         page = browser.new_page(viewport={"width": 1440, "height": 900}, reduced_motion="reduce")
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
@@ -596,6 +600,84 @@ def audit(app, cfg, code, files, url):
             page.locator("#image-file").set_input_files(str(image))
             page.locator("#image-lookup button").click()
             expect(page.locator("#image-status")).to_contain_text("blue rectangle")
+
+        # ---------------------------------------------------------------- screen
+        @check("Screen: choose and ask", "share, preview, ask, discard", "one still shown before sending; answer from vision stub")
+        def _():
+            page.locator("#screen summary").click()
+            expect(page.locator("#screen-ask")).to_be_hidden()
+            page.get_by_role("button", name="Choose a window or screen").click()
+            expect(page.locator("#screen-preview")).to_be_visible(timeout=10000)
+            expect(page.locator("#screen-status")).to_contain_text("Sharing has stopped. Nothing has been sent")
+            assert page.evaluate("document.querySelector('#screen-preview').naturalWidth") > 0
+            page.locator("#screen-question").fill("What is shown?")
+            page.get_by_role("button", name="Ask about this capture").click()
+            expect(page.locator("#screen-answer")).to_have_text("A plain blue rectangle.")
+            page.screenshot(path=OUT / "audit-screen.png")
+            page.get_by_role("button", name="Discard capture").click()
+            expect(page.locator("#screen-preview")).to_be_hidden()
+
+        # ---------------------------------------------------------------- apps and extensions
+        @check("App actions: refuse a shell", "add /bin/sh", "refused with a reason, nothing saved")
+        def _():
+            page.locator("#apps summary").click()
+            page.locator("#apps-name").fill("Shell")
+            page.locator("#apps-program").fill("/bin/sh")
+            page.get_by_role("button", name="Add app action").click()
+            expect(page.locator("#apps-status")).to_contain_text("can run any command")
+            assert not app.cfg.get("app_actions")
+
+        @check("App actions: add, run, stop, remove", "approve sleep, Confirm, Stop", "program starts, then is closed")
+        def _():
+            import shutil as _shutil
+            program = _shutil.which("sleep")
+            assert program, "needs a sleep program"
+            page.locator("#apps-name").fill("Wait")
+            page.locator("#apps-program").fill(program)
+            page.get_by_role("button", name="Add app action").click()
+            expect(page.locator("#apps-list")).to_contain_text("Wait")
+            from jarvis import appactions as _apps
+            with patch.object(_apps, "_command", lambda cfg, name, file="": ({"name": "Wait", "program": program}, [program, "30"])):
+                page.get_by_role("button", name="Run Wait").click()
+                expect(page.locator("#pending")).to_be_visible()
+                page.locator("#p-yes").click()
+                expect(last_reply(page)).to_contain_text("Started Wait.")
+            until(lambda: _apps.running())
+            page.screenshot(path=OUT / "audit-apps.png")
+            expect(page.locator("#apps-stop")).to_be_enabled()
+            page.get_by_role("button", name="Stop app actions").click()
+            expect(page.locator("#apps-status")).to_contain_text("Closed Wait")
+            assert not _apps.running()
+            page.get_by_role("button", name="Remove Wait").click()
+            expect(page.locator("#apps-list")).to_contain_text("No approved app actions")
+
+        @check("Extensions: enable, run tests, disable", "example word-count", "skill registered, tests pass, removed")
+        def _():
+            import shutil as _shutil
+            from jarvis import extensions as _ext, skills as _skills
+            _shutil.copytree(Path(__file__).parents[1] / "docs" / "examples" / "extensions" / "word-count",
+                             _ext.folder() / "word-count")
+            page.locator("#apps summary").click()
+            page.locator("#apps summary").click()
+            expect(page.locator("#ext-list")).to_contain_text("Word count")
+            page.get_by_role("button", name="Enable Word count").click()
+            expect(page.locator("#ext-status")).to_have_text("Enabled.")
+            assert "ext_word_count__count_words" in _skills.SKILLS
+            page.get_by_role("button", name="Run tests for Word count").click()
+            expect(page.locator("#ext-status")).to_contain_text("2 passed, 0 failed")
+            page.get_by_role("button", name="Disable Word count").click()
+            expect(page.locator("#ext-status")).to_have_text("Disabled.")
+            assert "ext_word_count__count_words" not in _skills.SKILLS
+
+        @check("Setup: OCR checkbox", "turn on and save", "ocr_enabled saved")
+        def _():
+            page.locator("#setup-panel summary").click()
+            page.get_by_role("button", name="Load current setup").click()
+            expect(page.locator("#setup-ocr-note")).not_to_have_text("")
+            page.locator("#setup-ocr").check()
+            page.locator("#setup-form button").click()
+            expect(page.locator("#setup-status")).to_contain_text("Saved")
+            until(lambda: json.loads(config.CONFIG_PATH.read_text()).get("ocr_enabled") is True)
 
         # ---------------------------------------------------------------- layout and connection
         @check("Phone layout", "390 px wide", "no sideways scrolling")

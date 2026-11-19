@@ -2,6 +2,20 @@
 
 All notable changes to Jarvis. Each release adds a section here before it is tagged.
 
+## Unreleased (increment 3: voice, screen and integrations)
+- Fixed: elements marked hidden could still show when a layout style set `display:flex`.
+- Voice: "Jarvis, stop" (or "never mind", "cancel") cancels a reply being prepared; more of
+  Whisper's silence hallucinations are ignored. Jarvis still does not listen while speaking, so
+  spoken interruption of playing speech is not offered.
+- Screen panel: choose a window or screen in the browser's picker; Jarvis keeps one still, stops
+  sharing, shows it, and sends it to the local vision model only when you select Ask. Not saved.
+- Approved app actions: programs you add by full path (shells and script hosts refused), optional
+  file from a selected folder, exact command preview, Confirm, Stop app actions, quick-failure reports.
+- Optional local OCR with Tesseract for scanned PDFs and images, with a session cache. Off by default.
+- Extensions: manifest with permissions, typed inputs and outputs, and tests; disabled until the
+  user approves the exact permissions; each call in a separate process. Example in `docs/examples`.
+- Measured document search; no persistent index needed at the current limits.
+
 ## Unreleased (increment 2: coding and performance)
 - Coding picks up to three related files as read-only context (imports, importers, tests, files named
   in the request) and lists them in the preview. `auto_context: false` turns it off.

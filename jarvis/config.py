@@ -38,6 +38,15 @@ DEFAULTS = {
     "storage_budget_gb": None,
     # Folders the user explicitly selected for general file tasks. Separate from code_dir.
     "file_folders": [],
+    # Coding: add related project files as read-only context automatically.
+    "auto_context": True,
+    # Local OCR with Tesseract for scanned PDFs and images in document search. Off by default.
+    "ocr_enabled": False,
+    "tesseract_path": "",
+    # Programs the user approved for app actions: [{"name", "program", "takes_file"}].
+    "app_actions": [],
+    # Extensions the user enabled, with the permissions they approved.
+    "enabled_extensions": {},
     "name": "Jarvis",
     "user_name": "",
     # Local language model served by Ollama (must support tool calling).

@@ -463,6 +463,21 @@ and the tested hardware configuration. `--audio recording.wav --expected "Jarvis
 also measures transcription error rate for that labelled recording. Reports are saved locally.
 
 
+## Screen, app actions, OCR and extensions
+
+- **Screen:** open **Screen**, select **Choose a window or screen**, and pick one in your browser's
+  sharing dialog. Jarvis keeps a single still image, stops sharing straight away and shows it. Ask a
+  question to send it to the local vision model (`vision_model`, for example `gemma3:4b`). Nothing is
+  captured without that dialog, and captures are not saved.
+- **App actions:** in **Apps and extensions**, add a program by its full path, for example Paint.
+  Shells and script hosts such as PowerShell or Python are refused. Each run shows the exact command
+  and waits for Confirm. **Stop app actions** closes what Jarvis started. Files must come from your
+  selected file-task folders.
+- **OCR:** install [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki), then tick the OCR
+  box in Setup. Document search then reads scanned PDF pages and PNG, JPEG and TIFF images on this PC.
+- **Extensions:** see [docs/Extensions.md](docs/Extensions.md). Extensions stay off until you enable
+  them and approve the permissions they declare.
+
 ## What is in this repository
 
 Some people ask about Jarvis "containers". This repository has **no Docker or other containers**.
@@ -478,4 +493,4 @@ Jarvis runs as one Python process on your PC. What exists:
 | Project NOMAD | A separate, optional offline server you install yourself. Its own installer runs its services. Jarvis only checks its ports and searches its Kiwix library | `jarvis/nomad.py` |
 
 Planned, not implemented: code signing, an MSI or MSIX installer, Windows Recycle Bin integration,
-OCR and persistent document indexing.
+a persistent document index, and spoken interruption while Jarvis is speaking.

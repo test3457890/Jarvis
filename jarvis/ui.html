@@ -9,6 +9,8 @@
           --cyan:#4fd8ff; --cyan2:#aef3ff; --text:#d9f4ff; --dim:#6c91a6; --warn:#ffb347; --red:#ff5d6c; --ok:#5dffb0;
           --hud:"Orbitron","Segoe UI",sans-serif; --body:"Rajdhani","Segoe UI",system-ui,sans-serif; }
   * { box-sizing:border-box; }
+  /* Layout rules such as display:flex must never reveal an element marked hidden. */
+  [hidden] { display:none !important; }
   html, body { height:100%; }
   body { margin:0; color:var(--text); font:16px/1.45 var(--body); overflow:hidden;
          background:radial-gradient(ellipse at 50% 0%,#0c2638 0%,#04111b 45%,var(--bg) 80%); }
@@ -229,6 +231,25 @@
   #ft-limits, #ft-status { color:var(--dim); font-size:13px; }
   #ft-history li { margin:4px 0; }
   #pending-text { white-space:pre-wrap; max-height:40vh; overflow:auto; }
+  #screen { border-top:1px solid var(--line); padding:8px 16px; max-height:52%; overflow:auto; }
+  body[data-mode=talk] #screen { display:none; }
+  #screen summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
+  #screen-preview { max-width:100%; max-height:240px; border:2px solid var(--warn); border-radius:6px; display:block; margin:6px 0; }
+  #screen-status, #screen-answer { white-space:pre-wrap; }
+  #screen-status, #screen .hint { color:var(--dim); font-size:13px; }
+  #setup-form label.inline { display:flex; align-items:center; gap:8px; }
+  #setup-form label.inline input { flex:0 0 auto; width:auto; }
+  #setup-panel .hint, #apps .hint { color:var(--dim); font-size:13px; margin:2px 0; }
+  #apps { border-top:1px solid var(--line); padding:8px 16px; max-height:52%; overflow:auto; }
+  body[data-mode=talk] #apps { display:none; }
+  #apps summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
+  #apps h3 { font-size:14px; margin:10px 0 4px; color:var(--cyan2); }
+  #apps li { margin:6px 0; }
+  #apps-form { display:grid; gap:6px; }
+  #apps-form input[type=text] { min-width:0; padding:6px; font-size:14px; }
+  #apps-form label.inline { display:flex; gap:8px; align-items:center; }
+  #apps-form label.inline input { flex:0 0 auto; width:auto; }
+  #apps-status, #ext-status { color:var(--dim); font-size:13px; white-space:pre-wrap; }
 </style>
 </head>
 <body data-state="idle" data-theme="__JARVIS_THEME__" data-mode="__JARVIS_MODE__">
@@ -343,6 +364,8 @@
       <form id="setup-form">
         <label>Performance<select id="setup-profile"><option value="standard">Standard</option><option value="low-memory">Low memory</option></select></label>
         <label>Document folders, one per line<textarea id="setup-folders" rows="3"></textarea></label>
+        <label class="inline"><input type="checkbox" id="setup-ocr"> Read scanned PDFs and images in document search with local OCR (Tesseract)</label>
+        <p id="setup-ocr-note" class="hint"></p>
         <button>Save setup</button>
       </form>
       <p id="setup-status" role="status"></p>
@@ -373,6 +396,43 @@
       <p id="ft-status" role="status"></p>
       <button type="button" id="ft-history-load">Show task history</button>
       <ul id="ft-history"></ul>
+    </details>
+    <details id="screen" name="assistant-tools">
+      <summary>Screen</summary>
+      <p class="hint">Jarvis never captures your screen by itself. Choose a window or screen in your browser's
+        picker; Jarvis takes one still image, stops sharing at once, and shows it here. Nothing is sent
+        until you select Ask. The image goes only to the local vision model on this PC and is not saved.</p>
+      <div class="ft-row">
+        <button type="button" id="screen-capture">Choose a window or screen</button>
+        <button type="button" id="screen-discard" hidden>Discard capture</button>
+      </div>
+      <img id="screen-preview" alt="Captured image that will be sent if you select Ask" hidden>
+      <p id="screen-status" role="status"></p>
+      <form class="ft-row" id="screen-ask" hidden>
+        <input type="text" id="screen-question" aria-label="Question about the capture" maxlength="500"
+          placeholder="What does this error message mean?">
+        <button>Ask about this capture</button>
+      </form>
+      <p id="screen-answer" aria-live="polite"></p>
+    </details>
+    <details id="apps" name="assistant-tools">
+      <summary>Apps and extensions</summary>
+      <h3>Approved app actions</h3>
+      <p class="hint">Only programs you add here can be started, each run shows the exact command and needs
+        Confirm, and files must come from your selected file-task folders. Shells and script hosts are refused.</p>
+      <ul id="apps-list"></ul>
+      <form id="apps-form">
+        <input type="text" id="apps-name" aria-label="Action name" placeholder="Name, for example Open in Paint" maxlength="60" required>
+        <input type="text" id="apps-program" aria-label="Program path" placeholder="Full path, for example C:\Windows\System32\mspaint.exe" required>
+        <label class="inline"><input type="checkbox" id="apps-takes-file"> Opens a file I choose</label>
+        <button>Add app action</button>
+      </form>
+      <button type="button" id="apps-stop">Stop app actions</button>
+      <p id="apps-status" role="status"></p>
+      <h3>Extensions</h3>
+      <p class="hint" id="ext-folder"></p>
+      <ul id="ext-list"></ul>
+      <p id="ext-status" role="status"></p>
     </details>
     <details id="images" name="assistant-tools">
       <summary>Images</summary>
@@ -547,6 +607,7 @@ es.onmessage = e => {
     else add('jarvis', reply.text, [reply.assistant, reply.model].filter(Boolean).join(' · '));
     refresh();
     if ($('file-tasks').open && $('ft-root').options.length) ftBrowse(ft.path);
+    if ($('apps').open) loadApps();
   }
   else if (ev.kind === 'stream') {
     $('stream-draft').textContent = ev.data;
@@ -661,15 +722,20 @@ $('setup-load').onclick = async () => {
     if (result.error) throw new Error(result.error);
     $('setup-profile').value = result.profile;
     $('setup-folders').value = result.document_folders.join('\n');
+    $('setup-ocr').checked = !!result.ocr_enabled;
+    $('setup-ocr-note').textContent = result.ocr_available ? 'Tesseract was found on this PC.' :
+      'Tesseract was not found. Install Tesseract OCR for Windows, then turn this on.';
   } catch (error) { $('setup-status').textContent = error.message; }
 };
 $('setup-form').onsubmit = async event => {
   event.preventDefault();
   try {
     const result = await api('/api/setup', {profile:$('setup-profile').value,
-      document_folders:$('setup-folders').value.split('\n').map(value => value.trim()).filter(Boolean)});
+      document_folders:$('setup-folders').value.split('\n').map(value => value.trim()).filter(Boolean),
+      ocr_enabled:$('setup-ocr').checked});
     if (result.error) throw new Error(result.error);
-    $('setup-status').textContent = 'Saved. Restart Jarvis for voice changes. Run install.ps1 -Profile ' + result.profile + ' to download missing models.';
+    $('setup-status').textContent = 'Saved. Restart Jarvis for voice changes. Open the setup wizard to download any missing models.' +
+      (result.ocr_enabled && !result.ocr_available ? ' OCR is on but Tesseract was not found, so scanned pages are still skipped.' : '');
   } catch (error) { $('setup-status').textContent = error.message; }
 };
 $('memory-export').onclick = async () => {
@@ -1071,6 +1137,150 @@ $('ft-history-load').onclick = async () => {
   } catch (error) { ftStatus(error.message); }
 };
 $('file-tasks').addEventListener('toggle', () => { if ($('file-tasks').open) ftLoadRoots(); });
+// ---- screen understanding: one user-chosen still image, never captured silently
+let screenImage = null;
+function screenReset(message) {
+  screenImage = null;
+  $('screen-preview').hidden = true; $('screen-preview').removeAttribute('src');
+  $('screen-ask').hidden = true; $('screen-discard').hidden = true;
+  $('screen-status').textContent = message || '';
+}
+$('screen-capture').onclick = async () => {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    return screenReset('This browser cannot share a window. Save a screenshot and use Images, Describe an image.');
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({video:true, audio:false});
+  } catch (error) {
+    return screenReset(error.name === 'NotAllowedError' ? 'Sharing was cancelled. Nothing was captured.' :
+      'Could not capture: ' + error.message);
+  }
+  try {
+    const track = stream.getVideoTracks()[0];
+    const video = document.createElement('video');
+    video.muted = true; video.srcObject = stream;
+    await video.play();
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(video.videoWidth * scale); canvas.height = Math.round(video.videoHeight * scale);
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    const url = canvas.toDataURL('image/png');
+    screenImage = url.split(',')[1];
+    $('screen-preview').src = url; $('screen-preview').hidden = false;
+    $('screen-ask').hidden = false; $('screen-discard').hidden = false;
+    $('screen-status').textContent = `Captured one image of "${track.label || 'the selected source'}" at ` +
+      new Date().toLocaleTimeString() + '. Sharing has stopped. Nothing has been sent.';
+  } catch (error) {
+    screenReset('Could not capture: ' + error.message);
+  } finally {
+    stream.getTracks().forEach(track => track.stop());
+  }
+};
+$('screen-discard').onclick = () => { screenReset('Capture discarded.'); $('screen-answer').textContent = ''; };
+$('screen-ask').onsubmit = async event => {
+  event.preventDefault();
+  if (!screenImage) return;
+  $('screen-status').textContent = 'Sending the capture to the local vision model...';
+  try {
+    const result = await api('/api/images/lookup', {image: screenImage, question: $('screen-question').value, source: 'screen'});
+    if (result.error) throw new Error(result.error);
+    $('screen-answer').textContent = result.text;
+    $('screen-status').textContent = 'Answered by the local vision model. The capture was not saved.';
+  } catch (error) { $('screen-status').textContent = error.message; }
+};
+// ---- approved app actions and extensions
+let appState = {actions: [], roots: []};
+function appsStatus(text) { $('apps-status').textContent = text; }
+function renderApps(state) {
+  appState = state;
+  const list = $('apps-list'); list.replaceChildren();
+  for (const action of state.actions) {
+    const item = el('li', '', action.name + ' (' + action.program + ') ');
+    let file = null;
+    if (action.takes_file) {
+      file = el('input'); file.type = 'text'; file.placeholder = 'File inside a selected folder';
+      file.setAttribute('aria-label', 'File for ' + action.name); item.appendChild(file);
+    }
+    const run = el('button', '', 'Run'); run.type = 'button';
+    run.setAttribute('aria-label', 'Run ' + action.name);
+    run.onclick = async () => {
+      const result = await api('/api/apps', {action:'run', name:action.name, file: file ? '0:' + file.value.trim() : ''});
+      if (result.error) return appsStatus(result.error);
+      if (result.pending) { setPending(result.pending); appsStatus('Review the exact command in the authorisation banner.'); }
+      else appsStatus(result.message);
+    };
+    const remove = el('button', '', 'Remove'); remove.type = 'button';
+    remove.setAttribute('aria-label', 'Remove ' + action.name);
+    remove.onclick = () => saveApps(state.actions.filter(other => other.name !== action.name), 'Removed.');
+    item.append(run, remove);
+    list.appendChild(item);
+  }
+  if (!state.actions.length) list.appendChild(el('li', '', 'No approved app actions yet.'));
+  const running = (state.running || []).map(item => item.name);
+  $('apps-stop').disabled = !running.length;
+  $('apps-stop').title = running.length ? 'Close: ' + running.join(', ') : 'Nothing started by Jarvis is running';
+}
+async function loadApps() {
+  const result = await api('/api/apps');
+  if (result.error) return appsStatus(result.error);
+  renderApps(result);
+}
+async function saveApps(actions, message) {
+  const result = await api('/api/apps', {action:'save', actions});
+  if (result.error) return appsStatus(result.error);
+  renderApps(result); appsStatus(message);
+}
+$('apps-form').onsubmit = event => {
+  event.preventDefault();
+  saveApps([...appState.actions, {name:$('apps-name').value.trim(), program:$('apps-program').value.trim(),
+    takes_file:$('apps-takes-file').checked}], 'Added. Each run still needs your confirmation.')
+    .then(() => { if (!$('apps-status').textContent.startsWith('Added')) return; $('apps-form').reset(); });
+};
+$('apps-stop').onclick = async () => {
+  const result = await api('/api/apps', {action:'stop'});
+  if (result.error) return appsStatus(result.error);
+  appsStatus(result.stopped.length ? 'Closed ' + result.stopped.join(', ') + '.' : 'Nothing started by Jarvis was running.');
+  loadApps();
+};
+function extStatus(text) { $('ext-status').textContent = text; }
+function renderExtensions(rows) {
+  const list = $('ext-list'); list.replaceChildren();
+  for (const ext of rows) {
+    if (!ext.valid) { list.appendChild(el('li', '', `${ext.id}: invalid manifest. ${ext.error}`)); continue; }
+    const permissions = ext.permissions.length ? ext.permissions.map(p => p.meaning).join('; ') : 'no permissions';
+    const item = el('li', '', `${ext.name} ${ext.version}: ${ext.description} Needs: ${permissions}.` +
+      (ext.network_hosts.length ? ' Hosts: ' + ext.network_hosts.join(', ') + '.' : '') +
+      ` Tools: ${ext.tools.map(t => t.name + (t.risky ? ' (asks first)' : '')).join(', ')}.` +
+      (ext.needs_new_approval ? ' It now asks for more permissions and is off until you approve again.' : '') + ' ');
+    const toggle = el('button', '', ext.enabled ? 'Disable' : 'Enable'); toggle.type = 'button';
+    toggle.setAttribute('aria-label', (ext.enabled ? 'Disable ' : 'Enable ') + ext.name);
+    toggle.onclick = async () => {
+      if (!ext.enabled && !window.confirm(`Enable ${ext.name}? It will be allowed: ${permissions}. Extensions run as your Windows user. Only enable extensions you trust.`)) return;
+      const result = await api('/api/extensions', ext.enabled ? {action:'disable', id:ext.id} :
+        {action:'enable', id:ext.id, permissions:ext.permissions.map(p => p.name)});
+      if (result.error) return extStatus(result.error);
+      renderExtensions(result.extensions); extStatus(ext.enabled ? 'Disabled.' : 'Enabled.');
+    };
+    const test = el('button', '', 'Run its tests'); test.type = 'button';
+    test.disabled = !ext.enabled;
+    test.setAttribute('aria-label', 'Run tests for ' + ext.name);
+    test.onclick = async () => {
+      const result = await api('/api/extensions', {action:'test', id:ext.id});
+      extStatus(result.error || `${result.passed} passed, ${result.failed} failed\n${result.details.join('\n')}`);
+    };
+    item.append(toggle, test); list.appendChild(item);
+  }
+  if (!rows.length) list.appendChild(el('li', '', 'No extensions installed.'));
+}
+async function loadExtensions() {
+  const result = await api('/api/extensions');
+  if (result.error) return extStatus(result.error);
+  $('ext-folder').textContent = 'Put extension folders in ' + result.folder + '. Nothing loads until you enable it here.';
+  renderExtensions(result.extensions);
+}
+$('apps').addEventListener('toggle', () => { if ($('apps').open) { loadApps(); loadExtensions(); } });
 </script>
 </body>
 </html>
