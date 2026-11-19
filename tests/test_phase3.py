@@ -132,7 +132,7 @@ def test_app_action_needs_confirmation_and_can_be_stopped(isolated_app, program,
     monkeypatch.setattr(appactions, "STARTUP_CHECK_SECONDS", 0.3)
     appactions.save_actions(cfg, [{"name": "Wait", "program": program}])
     message = skills.run(ctx, "run_app_action", {"name": "Wait"})
-    assert "NOT DONE YET" in message and program in ctx.pending["preview"]
+    assert "NOT DONE YET" in message and str(Path(program).resolve()) in ctx.pending["preview"]
     assert not appactions.running()
     # The real program ignores extra arguments here, so start it with a duration via a wrapper action.
     monkeypatch.setattr(appactions, "_command", lambda cfg, name, file="": ({"name": "Wait", "program": program}, [program, "30"]))
