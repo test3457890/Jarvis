@@ -8,6 +8,10 @@ Download the Windows source ZIP and checksum from [Jarvis v1.3.0](https://github
 
 See [CHANGELOG.md](CHANGELOG.md), the [capability matrix](docs/Capabilities.md) and the [HUD control report](docs/ControlReport.md).
 
+For the November 2026 owner/Claude hardware pass, use the [Windows verification checklist](docs/Windows%20Verification.md).
+Automated HTTP/model fixtures and existing screenshot examples do not establish
+real Ollama, NOMAD, audio, image-generation or Windows hardware behavior.
+
 ## Screenshots
 
 [View all 18 screenshots](docs/screenshots/README.md). Includes the planner, setup, mobile layouts, and control audit.

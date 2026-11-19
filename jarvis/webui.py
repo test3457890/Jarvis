@@ -13,6 +13,7 @@ from pathlib import Path
 from . import assistants, config, images
 
 UI_FILE = Path(__file__).with_name("ui.html")
+REQUEST_BODY_TIMEOUT = 10
 
 
 class EventBus:
@@ -54,6 +55,7 @@ def serve(app, port: int):
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(body)
 
@@ -138,13 +140,22 @@ def serve(app, port: int):
             if not self._host_ok() or not self._authed():
                 return self._json({"error": "forbidden"}, 403)
             try:
-                length = int(self.headers.get("Content-Length") or 0)
+                lengths = self.headers.get_all("Content-Length", [])
+                if len(lengths) != 1 or self.headers.get("Transfer-Encoding"):
+                    return self._json({"error": "one content length required; transfer encoding is unsupported"}, 400)
+                length = int(lengths[0])
                 limit = images.MAX_UPLOAD_JSON if self.path == "/api/images/lookup" else 100_000
                 if not 0 <= length <= limit:
                     return self._json({"error": "invalid content length"}, 400)
-                data = json.loads(self.rfile.read(length) or b"{}")
+                self.connection.settimeout(REQUEST_BODY_TIMEOUT)
+                body = self.rfile.read(length)
+                if len(body) != length:
+                    return self._json({"error": "incomplete request body"}, 400)
+                data = json.loads(body or b"{}")
                 if not isinstance(data, dict):
                     return self._json({"error": "expected a JSON object"}, 400)
+            except TimeoutError:
+                return self._json({"error": "request body timed out"}, 408)
             except ValueError:
                 return self._json({"error": "bad json"}, 400)
             if self.path == "/api/chat":
