@@ -27,8 +27,13 @@ See [CHANGELOG.md](CHANGELOG.md), the [capability matrix](docs/Capabilities.md) 
 |---|---|---|
 | ![TUKI voice preview and a labelled answer](docs/screenshots/tuki-voice.png) | ![Three new themes](docs/screenshots/themes.png) | ![HUD at 390 px wide](docs/screenshots/mobile.png) |
 
+| Screen capture audit | App actions audit | Extension and OCR controls |
+|---|---|---|
+| ![Synthetic screen frame shown before a local vision question](docs/screenshots/audit-screen.png) | ![Approved app action controls in the HUD audit](docs/screenshots/audit-apps.png) | [See the 54-control report](docs/ControlReport.md) |
+
 Screenshots use synthetic conversation, sample files and stubbed model replies, captured by
-`python -m scripts.capture_hud`.
+`python -m scripts.capture_hud` and `python -m scripts.hud_control_audit`. The audit screen
+image is a browser-generated test frame, not an example of real screen recognition.
 
 ## What it does
 

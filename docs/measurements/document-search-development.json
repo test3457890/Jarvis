@@ -1,0 +1,15 @@
+{
+  "files": 220,
+  "note": "search covers up to 200 documents per request",
+  "search_seconds": {
+    "needle phrase": 0.056,
+    "ledger canyon": 0.133,
+    "missingword": 0.061
+  },
+  "ocr": {
+    "scanned_pages": 5,
+    "first_search_seconds": 0.511,
+    "repeat_search_seconds": 0.006,
+    "found": true
+  }
+}
