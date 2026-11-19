@@ -48,6 +48,7 @@ the Standard and the 8 GB low-memory profile:
 ## Document search (measured in the development container, not on Windows)
 
 `python -m scripts.measure_document_search --ocr` on 2 CPUs, Linux, Python 3.13, local disk:
+The [sample measurement output](measurements/document-search-development.json) records one run.
 
 | Measure | Result |
 |---|---|
