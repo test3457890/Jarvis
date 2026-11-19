@@ -2,7 +2,9 @@
 
 All notable changes to Jarvis. Each release adds a section here before it is tagged.
 
-## Unreleased (increment 3: voice, screen and integrations)
+## 1.3.0
+
+### Voice, screen and integrations
 - Fixed: elements marked hidden could still show when a layout style set `display:flex`.
 - Voice: "Jarvis, stop" (or "never mind", "cancel") cancels a reply being prepared; more of
   Whisper's silence hallucinations are ignored. Jarvis still does not listen while speaking, so
@@ -14,9 +16,11 @@ All notable changes to Jarvis. Each release adds a section here before it is tag
 - Optional local OCR with Tesseract for scanned PDFs and images, with a session cache. Off by default.
 - Extensions: manifest with permissions, typed inputs and outputs, and tests; disabled until the
   user approves the exact permissions; each call in a separate process. Example in `docs/examples`.
+  Declared `network_hosts` are shown for review but are not an enforced allowlist. An extension's
+  tests run only after it is enabled.
 - Measured document search; no persistent index needed at the current limits.
 
-## Unreleased (increment 2: coding and performance)
+### Coding and performance
 - Coding picks up to three related files as read-only context (imports, importers, tests, files named
   in the request) and lists them in the preview. `auto_context: false` turns it off.
 - Coding context is sized to the performance profile: 12,000 characters on Standard, 4,096 on the
@@ -29,7 +33,7 @@ All notable changes to Jarvis. Each release adds a section here before it is tag
 - `scripts/benchmark.py` measures time to first sentence and peak memory, and `--coding` runs a
   three-task coding suite that asks before running generated code. No real results recorded yet.
 
-## Increment 1: control inventory and reliability
+### Control inventory and reliability
 - Fixed: the HUD's approval-banner function was named `confirm`, which replaced the browser's
   `window.confirm`. Every "Are you sure?" prompt (delete a remembered fact, restore a backup, clear
   conversation history, download above the storage budget) went ahead without asking. Present since
