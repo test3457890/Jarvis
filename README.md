@@ -1,9 +1,8 @@
-# J.A.R.V.I.S. — your offline personal assistant
+# Jarvis
 
-A movie-style AI assistant that runs entirely on your own PC. The brain (`qwen3:8b`),
-speech, voice, memory and planner are all local. It works with the internet unplugged,
-and it can use [Project NOMAD](https://www.projectnomad.us) as an optional offline
-knowledge library.
+Jarvis is an offline-first AI assistant for Windows. It runs local Ollama models for everyday work and TUKI technical tasks, with voice controls, a weekly planner, document search, and a coding workspace with reviewable edits. Local tools work offline after setup. Web search and other online services require separate configuration.
+
+Download the Windows source ZIP and checksum from [Jarvis v1.3.0](https://github.com/test3457890/Jarvis/releases/tag/v1.3.0). See the [release notes](docs/ReleaseNotes.md) for what changed and the [capability matrix](docs/Capabilities.md) for requirements and testing status.
 
 [Install Jarvis](#install-once) · [First launch](#first-launch-setup-wizard) · [File tasks](#file-tasks-in-selected-folders) · [Jarvis and TUKI](#jarvis-and-tuki) · [Project NOMAD](#project-nomad-integration) · [What is in this repository](#what-is-in-this-repository)
 
@@ -206,8 +205,7 @@ Keys are entered through hidden prompts and stored with Windows DPAPI.
 - **Nothing happens without your "yes":** calls, texts, sending email, running code,
   shutting down, and emptying the Recycle Bin all show exactly what will happen and wait
   for you to say yes or click Confirm.
-- **Hidden-instruction protection:** text from files, Canvas and the library is fenced
-  off. If it tries to give Jarvis orders, code (not the AI) blocks it and warns you.
+- **Hidden-instruction screening:** Jarvis treats text from files, Canvas and the library as untrusted. It checks for known instruction patterns and blocks content when the checks flag it.
 - **Encrypted secrets:** your Canvas link, token and email password are locked to your
   Windows account (DPAPI). They're never stored in plain text.
 - **This PC only:** the HUD listens only on 127.0.0.1, needs a per-session key, and
@@ -234,7 +232,7 @@ Licensed under the [Apache License 2.0](LICENSE).
 
 1. Install [Python 3.12](https://www.python.org/downloads/) with "Add Python to PATH", and
    [Ollama](https://ollama.com/download).
-2. Extract the release ZIP to a short path such as `Documents\Jarvis`. Windows can't load some of
+2. Download the packaged ZIP and checksum from [Releases](https://github.com/test3457890/Jarvis/releases). Verify the ZIP using the published SHA-256, then extract it to a short path such as `Documents\Jarvis`. Windows can't load some of
    the voice libraries from very long paths.
 3. In that folder run:
 
