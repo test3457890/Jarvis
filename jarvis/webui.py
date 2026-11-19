@@ -125,6 +125,10 @@ def serve(app, port: int):
                 self._json(app.settings_operation())
             elif self.path == "/api/wizard":
                 self._json(app.wizard_operation())
+            elif self.path == "/api/apps":
+                self._json(app.apps_operation())
+            elif self.path == "/api/extensions":
+                self._json(app.extensions_operation())
             elif self.path == "/api/dashboard":
                 self._json(app.dashboard())
             else:
@@ -170,6 +174,13 @@ def serve(app, port: int):
                 except OSError:
                     return self._json({"error": "The local image backend failed or is unavailable. Check the setup."}, 502)
                 self._json(output)
+            elif self.path in ("/api/apps", "/api/extensions"):
+                try:
+                    operation = app.apps_operation if self.path == "/api/apps" else app.extensions_operation
+                    result = operation(data)
+                except (ValueError, TypeError, OSError) as error:
+                    return self._json({"error": str(error)}, 400)
+                self._json(result)
             elif self.path == "/api/files":
                 try:
                     result = app.files_operation(data)

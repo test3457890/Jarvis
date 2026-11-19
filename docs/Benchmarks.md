@@ -44,3 +44,17 @@ the Standard and the 8 GB low-memory profile:
 - Model quality depends on the installed Ollama models. Smaller low-memory models produce weaker
   patches and are more likely to return a SEARCH block that does not match. Jarvis then saves nothing.
 - Unloading models after each reply (low-memory profile) saves memory and adds load time.
+
+## Document search (measured in the development container, not on Windows)
+
+`python -m scripts.measure_document_search --ocr` on 2 CPUs, Linux, Python 3.13, local disk:
+
+| Measure | Result |
+|---|---|
+| Search 200 text files and 20 text PDFs (search stops at 200 documents) | 0.07 to 0.16 s per query |
+| OCR of 5 scanned PDF pages, first search | 0.59 s |
+| Same OCR search again (session cache) | 0.003 s |
+
+A persistent index was not added: searches at the current 200-document limit already finish in
+well under a second here. Re-measure on the Windows PC. If searches there take more than a
+second, or the limit is raised, an index becomes worth adding.

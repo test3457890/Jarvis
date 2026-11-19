@@ -285,22 +285,38 @@ class Listener:
             segs, _ = self.model.transcribe(audio, language="en", beam_size=1, vad_filter=False,
                                             condition_on_previous_text=False)
             text = " ".join(s.text for s in segs if s.no_speech_prob < 0.7).strip()
-        if not text or re.fullmatch(r"[\W_]*(thank you|thanks for watching|you)?[\W_]*", text, re.I):
-            return  # whisper's usual hallucinations on silence
-        now = time.time()
+        command = self.interpret(text, time.time())
+        if command is not None:
+            self.on_command(command, self.room_context())
+
+    def interpret(self, text, now):
+        """Turn one transcribed sentence into a command, or None to ignore it."""
+        if not text or _HALLUCINATION.fullmatch(text):
+            return None  # whisper's usual output on silence or noise
         self.room.append((now, text))
         self.on_event("heard", text)
         m = self._wake.search(text)
         if m:
             # Keep the whole sentence: "what do you think, Jarvis?" still makes sense.
             rest = (text[:m.start()] + " " + text[m.end():]).strip(" ,.!?")
-            if m[1].casefold() == "tuki":
+            if _STOP_PHRASE.fullmatch(rest):
+                command = "stop"
+            elif m[1].casefold() == "tuki":
                 command = f"Tuki: {rest}"
             else:
                 command = text if rest else ""  # "" = just the name was said
         elif now < self.follow_until:
-            command = text
+            command = "stop" if _STOP_PHRASE.fullmatch(text.strip(" ,.!?")) else text
         else:
-            return
+            return None
         self.follow_until = 0
-        self.on_command(command, self.room_context())
+        return command
+
+
+# Whisper often invents these on silence or background noise.
+_HALLUCINATION = re.compile(
+    r"[\W_]*(?:thank you(?: (?:so much|very much))?|thanks for watching|you|bye|"
+    r"please subscribe|subtitles by[\w .-]*|\[(?:music|silence|blank_audio)\])?[\W_]*", re.I)
+# "Jarvis, stop" cancels a reply that is still being prepared. Jarvis does not listen while it
+# speaks (that avoids hearing itself), so this cannot interrupt speech already playing.
+_STOP_PHRASE = re.compile(r"(?:please )?(?:stop|cancel|never ?mind|be quiet|that's enough|enough)(?: please)?", re.I)

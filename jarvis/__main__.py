@@ -18,7 +18,7 @@ import threading
 import time
 import webbrowser
 
-from . import assistants, config, filejobs, images, net, nomad, planner, recovery, secure, setupwizard, skills
+from . import appactions, assistants, config, documents, extensions, filejobs, images, net, nomad, planner, recovery, secure, setupwizard, skills
 from .brain import Brain
 from .memory import Memory
 
@@ -39,6 +39,10 @@ class App:
         self._image_job = threading.Lock()
         self.brain.ctx.on_images = lambda cards: self.emit("image_results", cards)
         self.memory.embed = self.brain.embed
+        try:
+            extensions.register(cfg)
+        except Exception as error:  # A broken extension folder must not stop Jarvis.
+            print(f"[extensions] {error}")
         self.brain.ctx.on_pending = lambda p: self.emit(
             "pending", {"text": p["preview"], "id": p["id"]} if p else None)
         self.speaker = None
@@ -154,6 +158,9 @@ class App:
             raise ValueError("An image task is already running.")
         try:
             if kind == "lookup":
+                if data.get("source") == "screen":
+                    # The user chose and previewed this capture. Record that it was sent, not its content.
+                    secure.audit("screen_capture_described", {"question_chars": len(str(data.get("question") or ""))})
                 return images.describe(self.cfg, data.get("image"), data.get("question"))
             return images.generate(self.cfg, data.get("prompt"), data.get("quality"))
         finally:
@@ -198,11 +205,15 @@ class App:
                     updated["document_folders"] = folders
                 if "file_folders" in data:
                     updated = setupwizard.apply_choices(updated, {"file_folders": data["file_folders"]})
+                if "ocr_enabled" in data:
+                    updated["ocr_enabled"] = bool(data["ocr_enabled"])
                 config.save(updated)
                 self.cfg.update(updated)
             return {"profile": self.cfg.get("performance_profile", "standard"),
                     "document_folders": self.cfg.get("document_folders", []),
                     "file_folders": self.cfg.get("file_folders", []),
+                    "ocr_enabled": bool(self.cfg.get("ocr_enabled")),
+                    "ocr_available": bool(documents.tesseract_path({**self.cfg, "ocr_enabled": True})),
                     "model": self.cfg["model"], "coder_model": self.cfg.get("coder_model")}
 
     def recovery_operation(self, data=None):
@@ -282,6 +293,50 @@ class App:
                 return {"message": message,
                         "pending": {"text": ctx.pending["preview"], "id": ctx.pending["id"]} if ctx.pending else None}
         raise ValueError("Unknown file task action.")
+
+    def apps_operation(self, data=None):
+        """Approved app actions. Running one always goes through the confirmation banner."""
+        if data is None:
+            return {"actions": appactions.actions(self.cfg), "running": appactions.running(),
+                    "roots": [str(root) for root in filejobs.folder_roots(self.cfg)]}
+        action = data.get("action")
+        if action == "stop":
+            return {"stopped": appactions.stop_all(), "running": appactions.running()}
+        if self.cfg.get("lockdown") or self.cfg.get("mode") == "talk":
+            raise ValueError("App actions are unavailable in Talk or Lockdown.")
+        with self.brain._lock, self._settings_lock:
+            if action == "save":
+                items = data.get("actions")
+                if not isinstance(items, list):
+                    raise ValueError("Expected a list of app actions.")
+                appactions.save_actions(self.cfg, items)
+                return self.apps_operation()
+            if action == "run":
+                ctx = self.brain.ctx
+                message = skills.run(ctx, "run_app_action", {"name": str(data.get("name", "")),
+                                                            "file": str(data.get("file", ""))})
+                return {"message": message,
+                        "pending": {"text": ctx.pending["preview"], "id": ctx.pending["id"]} if ctx.pending else None}
+        raise ValueError("Choose save, run or stop.")
+
+    def extensions_operation(self, data=None):
+        if data is None:
+            return {"extensions": extensions.status(self.cfg), "folder": str(extensions.folder()),
+                    "permissions": extensions.PERMISSIONS}
+        if self.cfg.get("lockdown"):
+            raise ValueError("Turn off Lockdown to change extensions.")
+        ext_id = str(data.get("id", ""))
+        with self.brain._lock, self._settings_lock:
+            if data.get("action") == "enable":
+                rows = extensions.set_enabled(self.cfg, ext_id, True, data.get("permissions"))
+            elif data.get("action") == "disable":
+                rows = extensions.set_enabled(self.cfg, ext_id, False)
+            elif data.get("action") == "test":
+                passed, failed, details = extensions.run_tests(self.cfg, ext_id)
+                return {"passed": passed, "failed": failed, "details": details}
+            else:
+                raise ValueError("Choose enable, disable or test.")
+        return {"extensions": rows}
 
     def wizard_operation(self, data=None):
         """First-run setup wizard. GET returns status; POST saves choices or starts downloads."""

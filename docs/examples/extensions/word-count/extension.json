@@ -1,0 +1,21 @@
+{
+  "id": "word-count",
+  "name": "Word count",
+  "version": "1.0.0",
+  "description": "Count words and characters in a piece of text. Needs no permissions.",
+  "entry": "main.py",
+  "permissions": [],
+  "tools": [
+    {
+      "name": "count_words",
+      "description": "Count the words and characters in text the user provides.",
+      "inputs": {"text": {"type": "string", "description": "Text to count", "required": true}},
+      "outputs": {"words": "integer", "characters": "integer"},
+      "risky": false
+    }
+  ],
+  "tests": [
+    {"tool": "count_words", "input": {"text": "one two three"}, "expect": {"words": 3, "characters": 13}},
+    {"tool": "count_words", "input": {"text": ""}, "expect": {"words": 0}}
+  ]
+}
