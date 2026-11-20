@@ -18,15 +18,19 @@ def _norm_port(scheme: str, port: int | None) -> int:
 
 
 def _parse_endpoint(url: str) -> tuple[str, str, int] | None:
+    if not isinstance(url, str) or any(ord(char) < 33 for char in url):
+        return None
     try:
         p = urllib.parse.urlparse(url)
+        port = p.port
+        host = (p.hostname or "").lower()
     except ValueError:
         return None
     scheme = (p.scheme or "").lower()
-    host = (p.hostname or "").lower()
-    if scheme not in ("http", "https") or not host:
+    if (scheme not in ("http", "https") or not host or p.username is not None
+            or p.password is not None or port == 0):
         return None
-    return scheme, host, _norm_port(scheme, p.port)
+    return scheme, host, _norm_port(scheme, port)
 
 
 def local_image_endpoint(value):
@@ -91,8 +95,9 @@ def check_url(url: str, cfg: dict, purpose: str = "") -> str:
     """Validate that url is on the allowlist; fail closed and audit otherwise."""
     ep = _parse_endpoint(url)
     if not ep or ep not in allowed_endpoints(cfg):
-        secure.audit("network_blocked", {"url": str(url)[:200], "purpose": purpose})
-        raise NetworkBlockedError(f"Blocked outbound request (not on allowlist): {url}")
+        # URLs can contain private calendar tokens, credentials and query text.
+        secure.audit("network_blocked", {"endpoint": list(ep) if ep else "invalid", "purpose": purpose})
+        raise NetworkBlockedError("Blocked outbound request (not on allowlist).")
     return url
 
 
