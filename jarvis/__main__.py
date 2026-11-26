@@ -116,9 +116,10 @@ class App:
             config.save(self.cfg)
         elif what == "mic" and self.listener:
             if self.listener.paused.is_set():
-                self.listener.paused.clear()
+                self.listener.resume()
             else:
-                self.listener.paused.set()
+                self.listener.pause()
+                self.emit("heard", "")
         elif what == "internet":
             self.cfg["allow_internet_tools"] = not self.cfg.get("allow_internet_tools")
             config.save(self.cfg)
@@ -207,12 +208,22 @@ class App:
                     updated = setupwizard.apply_choices(updated, {"file_folders": data["file_folders"]})
                 if "ocr_enabled" in data:
                     updated["ocr_enabled"] = bool(data["ocr_enabled"])
+                for key, limit in config.VOICE_LIMITS.items():
+                    if key in data:
+                        value = data[key]
+                        if type(value) is not int or not 0 <= value <= limit:
+                            raise ValueError(f"Invalid {key} option.")
+                        updated[key] = value
                 config.save(updated)
                 self.cfg.update(updated)
+                if self.listener and not updated["room_context_seconds"]:
+                    self.listener.clear_context()
             return {"profile": self.cfg.get("performance_profile", "standard"),
                     "document_folders": self.cfg.get("document_folders", []),
                     "file_folders": self.cfg.get("file_folders", []),
                     "ocr_enabled": bool(self.cfg.get("ocr_enabled")),
+                    "follow_up_seconds": self.cfg.get("follow_up_seconds", 8),
+                    "room_context_seconds": self.cfg.get("room_context_seconds", 120),
                     "ocr_available": bool(documents.tesseract_path({**self.cfg, "ocr_enabled": True})),
                     "model": self.cfg["model"], "coder_model": self.cfg.get("coder_model")}
 

@@ -51,6 +51,35 @@ def test_follow_up_window_and_stop(listener):
     assert listener.interpret("unrelated chatter", now) is None
 
 
+def test_pausing_mic_discards_context_and_inflight_transcription(listener):
+    now = time.time()
+    assert listener.interpret("nearby conversation", now) is None
+    listener.keep_listening_for_follow_up()
+    generation = listener._generation
+    listener.pause()
+    assert listener.room_context() == "" and listener.follow_until == 0
+    assert listener.interpret("Jarvis, respond", now) is None
+    listener.resume()
+    commands = []
+    listener.on_command = lambda *args: commands.append(args)
+    listener.model = SimpleNamespace(transcribe=lambda *args, **kwargs: (
+        [SimpleNamespace(text="Jarvis, respond", no_speech_prob=0)], None))
+    listener._handle(object(), generation)
+    assert not commands
+    assert listener.interpret("Jarvis, respond", now) == "Jarvis, respond"
+
+
+def test_context_and_followups_can_be_disabled(listener):
+    listener.cfg["room_context_seconds"] = 0
+    listener.cfg["follow_up_seconds"] = 0
+    listener.keep_listening_for_follow_up()
+    assert listener.follow_until == 0
+    now = time.time()
+    assert listener.interpret("private conversation", now) is None
+    assert listener.interpret("Jarvis, hello", now) == "Jarvis, hello"
+    assert listener.room_context() == "" and not listener.room
+
+
 # ------------------------------------------------------------------ OCR
 def _scanned_pdf(path, words):
     from PIL import Image, ImageDraw, ImageFont

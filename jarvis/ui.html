@@ -366,6 +366,9 @@
         <label>Document folders, one per line<textarea id="setup-folders" rows="3"></textarea></label>
         <label class="inline"><input type="checkbox" id="setup-ocr"> Read scanned PDFs and images in document search with local OCR (Tesseract)</label>
         <p id="setup-ocr-note" class="hint"></p>
+        <label>Follow-up listening<select id="setup-follow-up"><option value="0">Off</option><option value="8">8 seconds</option><option value="20">20 seconds</option></select></label>
+        <label>Nearby conversation context<select id="setup-room-context"><option value="0">Off</option><option value="30">30 seconds</option><option value="120">2 minutes</option></select></label>
+        <p class="hint">Context stays in memory only. Turning it off or pausing the mic clears the temporary context. Pause Mic to stop Jarvis processing nearby speech.</p>
         <button>Save setup</button>
       </form>
       <p id="setup-status" role="status"></p>
@@ -723,6 +726,16 @@ $('setup-load').onclick = async () => {
     $('setup-profile').value = result.profile;
     $('setup-folders').value = result.document_folders.join('\n');
     $('setup-ocr').checked = !!result.ocr_enabled;
+    for (const [id, value] of [['setup-follow-up', result.follow_up_seconds],
+                               ['setup-room-context', result.room_context_seconds]]) {
+      const select = $(id);
+      select.querySelector('[data-custom]')?.remove();
+      if (![...select.options].some(option => option.value === String(value))) {
+        const option = new Option(value + ' seconds (current)', String(value));
+        option.dataset.custom = 'true'; select.add(option);
+      }
+      select.value = String(value);
+    }
     $('setup-ocr-note').textContent = result.ocr_available ? 'Tesseract was found on this PC.' :
       'Tesseract was not found. Install Tesseract OCR for Windows, then turn this on.';
   } catch (error) { $('setup-status').textContent = error.message; }
@@ -732,9 +745,11 @@ $('setup-form').onsubmit = async event => {
   try {
     const result = await api('/api/setup', {profile:$('setup-profile').value,
       document_folders:$('setup-folders').value.split('\n').map(value => value.trim()).filter(Boolean),
-      ocr_enabled:$('setup-ocr').checked});
+      ocr_enabled:$('setup-ocr').checked,
+      follow_up_seconds:Number($('setup-follow-up').value),
+      room_context_seconds:Number($('setup-room-context').value)});
     if (result.error) throw new Error(result.error);
-    $('setup-status').textContent = 'Saved. Restart Jarvis for voice changes. Open the setup wizard to download any missing models.' +
+    $('setup-status').textContent = 'Saved. Listening and context options apply now. Open the setup wizard to download any missing models.' +
       (result.ocr_enabled && !result.ocr_available ? ' OCR is on but Tesseract was not found, so scanned pages are still skipped.' : '');
   } catch (error) { $('setup-status').textContent = error.message; }
 };

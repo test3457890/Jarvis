@@ -224,19 +224,38 @@ class Listener:
         self.on_command = on_command
         self.on_event = on_event
         self.model = load_whisper(cfg)
-        self.room = collections.deque()  # (time, text)
+        self.room = collections.deque(maxlen=128)  # bounded, temporary (time, text)
         self.follow_until = 0.0
         self.paused = threading.Event()
+        self._generation = 0
         self._audio = queue.Queue()
         self._stt_lock = threading.Lock()
         words = tuple(dict.fromkeys([*cfg["wake_words"], "tuki"]))
         self._wake = re.compile(r"\b(" + "|".join(map(re.escape, words)) + r")\b[,.!?]*\s*", re.I)
 
     def keep_listening_for_follow_up(self):
-        self.follow_until = time.time() + self.cfg.get("follow_up_seconds", 8)
+        seconds = self.cfg.get("follow_up_seconds", 8)
+        self.follow_until = time.time() + seconds if seconds and not self.paused.is_set() else 0
+
+    def clear_context(self):
+        self.room.clear()
+
+    def pause(self):
+        self.paused.set()
+        self._generation += 1
+        self.clear_context()
+        self.follow_until = 0
+
+    def resume(self):
+        self._generation += 1
+        self.paused.clear()
 
     def room_context(self) -> str:
-        cutoff = time.time() - self.cfg.get("room_context_seconds", 120)
+        seconds = self.cfg.get("room_context_seconds", 120)
+        if not seconds or self.paused.is_set():
+            self.clear_context()
+            return ""
+        cutoff = time.time() - seconds
         while self.room and self.room[0][0] < cutoff:
             self.room.popleft()
         return "\n".join(t for _, t in list(self.room)[:-1])
@@ -278,23 +297,30 @@ class Listener:
                 in_speech, speech = False, []
                 pre.clear()
                 if len(audio) > RATE * 0.4:
-                    threading.Thread(target=self._handle, args=(audio,), daemon=True).start()
+                    threading.Thread(target=self._handle, args=(audio, self._generation), daemon=True).start()
 
-    def _handle(self, audio):
+    def _handle(self, audio, generation=None):
+        if self.paused.is_set() or (generation is not None and generation != self._generation):
+            return
         with self._stt_lock:
             segs, _ = self.model.transcribe(audio, language="en", beam_size=1, vad_filter=False,
                                             condition_on_previous_text=False)
             text = " ".join(s.text for s in segs if s.no_speech_prob < 0.7).strip()
+        if self.paused.is_set() or (generation is not None and generation != self._generation):
+            return
         command = self.interpret(text, time.time())
         if command is not None:
             self.on_command(command, self.room_context())
 
     def interpret(self, text, now):
         """Turn one transcribed sentence into a command, or None to ignore it."""
-        if not text or _HALLUCINATION.fullmatch(text):
+        if self.paused.is_set() or not text or _HALLUCINATION.fullmatch(text):
             return None  # whisper's usual output on silence or noise
-        self.room.append((now, text))
-        self.on_event("heard", text)
+        if self.cfg.get("room_context_seconds", 120):
+            cutoff = now - self.cfg["room_context_seconds"]
+            while self.room and self.room[0][0] < cutoff:
+                self.room.popleft()
+            self.room.append((now, text))
         m = self._wake.search(text)
         if m:
             # Keep the whole sentence: "what do you think, Jarvis?" still makes sense.
@@ -309,6 +335,7 @@ class Listener:
             command = "stop" if _STOP_PHRASE.fullmatch(text.strip(" ,.!?")) else text
         else:
             return None
+        self.on_event("heard", text)
         self.follow_until = 0
         return command
 
