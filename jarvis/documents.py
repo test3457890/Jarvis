@@ -3,6 +3,7 @@ import io
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import tempfile
 import threading
@@ -137,6 +138,14 @@ def search_documents(ctx, query):
     folders = roots(ctx.cfg)
     if not folders:
         return 'Choose document folders in Jarvis setup first.'
+    if ctx.cfg.get('document_index_enabled'):
+        from . import docindex
+        try:
+            return docindex.search(ctx.cfg, query)
+        except ImportError:
+            return 'Install document readers with: .venv\\Scripts\\python.exe -m pip install -r requirements.txt'
+        except (OSError, sqlite3.Error):
+            return 'Local document index is unavailable. Turn it off in Setup to search without an index.'
     tesseract = tesseract_path(ctx.cfg)
     allowed = EXTENSIONS | (IMAGE_EXTENSIONS if tesseract else set())
     terms = set(re.findall(r'\w+', query.casefold()))

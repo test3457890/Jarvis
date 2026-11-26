@@ -398,6 +398,12 @@ up to 200 documents, 3,000 directory entries, 200 PDF pages per document, and 50
 characters per document. Files larger than 10 MiB and unreadable files are skipped. Narrow the
 selected folders if the search limit is reached. Document search works locally with Internet off.
 
+Setup also offers an optional local document index. When enabled, `/docs` updates changed
+documents before searching, retains extracted text from selected folders in
+`%APPDATA%\Jarvis\documents-index.sqlite3`, and removes deleted files from results.
+Changing document folders or turning the index off deletes the index file. The indexed
+search still obeys the existing folder, file count, file size and extraction limits.
+
 Use Review remembered facts to edit or delete individual facts. Deletion requires confirmation.
 Export remembered facts downloads a JSON copy to your browser's download folder. These controls
 manage remembered facts. The saved conversation history is separate, and prior conversation
@@ -510,4 +516,4 @@ Jarvis runs as one Python process on your PC. What exists:
 | Project NOMAD | A separate, optional offline server you install yourself. Its own installer runs its services. Jarvis only checks its ports and searches its Kiwix library | `jarvis/nomad.py` |
 
 Planned, not implemented: code signing, an MSI or MSIX installer, Windows Recycle Bin integration,
-a persistent document index, and spoken interruption while Jarvis is speaking.
+and spoken interruption while Jarvis is speaking.

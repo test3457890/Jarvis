@@ -56,6 +56,6 @@ The [sample measurement output](measurements/document-search-development.json) r
 | OCR of 5 scanned PDF pages, first search | 0.59 s |
 | Same OCR search again (session cache) | 0.003 s |
 
-A persistent index was not added: searches at the current 200-document limit already finish in
+A persistent index was not added in this historical measurement: searches at the current 200-document limit already finish in
 well under a second here. Re-measure on the Windows PC. If searches there take more than a
 second, or the limit is raised, an index becomes worth adding.

@@ -37,6 +37,7 @@ browser HUD (ui.html) <-> webui.py (127.0.0.1, session key) <-> App (__main__.py
 | `memory.py`, `recovery.py` | SQLite memory, facts, history, backup and restore |
 | `planner.py` | Tasks, calendar, Canvas feed, weekly plan |
 | `documents.py` | Search inside selected PDF, Word, text and Markdown files; optional Tesseract OCR |
+| `docindex.py` | Optional SQLite full-text index of explicitly selected documents; removed when disabled |
 | `net.py`, `online.py` | Fail-closed network allowlist, web search, source pages, uploads |
 | `secure.py` | DPAPI secrets, audit log, injection fencing |
 | `images.py`, `nomad.py`, `comms.py` | Images, Project NOMAD, email/calls/texts |
@@ -89,7 +90,7 @@ See `docs/Capabilities.md` for what is working, optional, untested on hardware o
 - No hard per-app storage quota is possible in shared Ollama or Hugging Face caches.
 - No benchmark results yet on an 8 GB Windows PC (`docs/Benchmarks.md`).
 - File tasks do not empty `.Jarvis Recycle`; the user removes it in Explorer.
-- Windows Recycle Bin integration and a persistent document index are not implemented.
+- Windows Recycle Bin integration is not implemented. The optional document index needs Windows lifecycle testing.
 - No spoken interruption while Jarvis is speaking; the microphone is muted during speech.
 - Extensions run as the Windows user; permissions are declared and approved, not sandboxed.
 
