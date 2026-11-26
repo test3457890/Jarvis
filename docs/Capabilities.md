@@ -32,6 +32,7 @@ models or audio but has not been verified with real models, a microphone or spea
 | Documents | Search in PDF, Word, text, Markdown | Working | `tests/test_documents_and_memory.py` |
 | Documents | Local OCR (Tesseract) for scanned PDFs and images, session cache | Optional | Needs Tesseract; real Tesseract test on Linux CI when installed |
 | Documents | Optional local SQLite full-text index | Working in automated tests; Windows file lifecycle untested | On by explicit Setup choice; `tests/test_document_index.py` |
+| Research | Local model comparison of selected document excerpts, with original source sections attached | Working with stubbed model; real answer quality untested | `/research-docs`, `tests/test_document_research.py` |
 | Planner | Tasks, weekly plan, Canvas feed | Working | `tests/test_week_planner.py` |
 | Memory | Facts, history, backup and restore | Working | unit tests, HUD audit |
 | Online | Brave search, source pages, GitHub upload | Optional | Needs keys; mocked in tests |

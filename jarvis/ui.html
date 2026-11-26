@@ -342,6 +342,7 @@
       <form id="document-search">
         <input id="document-query" aria-label="Search inside documents" placeholder="Words to find in selected document folders" maxlength="500" required>
         <button>Search documents</button>
+        <button id="document-research" type="button">Research selected docs</button>
       </form>
       <div class="memory-actions">
         <button id="memory-refresh" type="button">Review remembered facts</button>
@@ -661,6 +662,10 @@ $('document-search').onsubmit = event => {
   event.preventDefault();
   const query = $('document-query').value.trim();
   if (query) send('/docs ' + query);
+};
+$('document-research').onclick = () => {
+  const question = $('document-query').value.trim();
+  if (question) send('/research-docs ' + question);
 };
 function renderMemories(facts) {
   $('memory-list').replaceChildren();

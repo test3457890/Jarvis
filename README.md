@@ -404,6 +404,12 @@ documents before searching, retains extracted text from selected folders in
 Changing document folders or turning the index off deletes the index file. The indexed
 search still obeys the existing folder, file count, file size and extraction limits.
 
+Use `/research-docs your question` or **Research selected docs** under Documents and
+memory to compare matching excerpts with the local model. The response includes the
+original numbered file and section excerpts for checking. If the model is unavailable,
+Jarvis shows the excerpts without a summary. This reads only selected local folders;
+the existing `/check` command handles explicitly approved public web sources.
+
 Use Review remembered facts to edit or delete individual facts. Deletion requires confirmation.
 Export remembered facts downloads a JSON copy to your browser's download folder. These controls
 manage remembered facts. The saved conversation history is separate, and prior conversation
