@@ -410,6 +410,15 @@ original numbered file and section excerpts for checking. If the model is unavai
 Jarvis shows the excerpts without a summary. This reads only selected local folders;
 the existing `/check` command handles explicitly approved public web sources.
 
+Under Documents and memory, add a daily document check with a query and local time.
+Checks run while Jarvis is open, over only the document folders you selected. The first
+run records matching excerpts without notifying; later runs notify when those matches
+change. Pause, resume, or delete each check in the same panel. The last run and status
+are saved locally in `memory.db`. If Jarvis is closed at the scheduled time, the check
+runs after it is next opened that day; paused checks never run. A document that trips
+the instruction injection screen does not generate a change notification. Search
+permissions set to Ask or Off prevent unattended checks.
+
 Use Review remembered facts to edit or delete individual facts. Deletion requires confirmation.
 Export remembered facts downloads a JSON copy to your browser's download folder. These controls
 manage remembered facts. The saved conversation history is separate, and prior conversation
