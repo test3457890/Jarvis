@@ -644,7 +644,18 @@ es.onmessage = e => {
   }
   else if (ev.kind === 'system') add('system', ev.data);
   else if (ev.kind === 'toggles') setToggles(ev.data);
-  else if (ev.kind === 'pending') setPending(ev.data);
+  else if (ev.kind === 'pending') {
+    if (ev.data) setPending(ev.data);
+    else {
+      // A previous confirmation's clear event can arrive after a newer
+      // preview response. Reconcile with the server before hiding it.
+      const seen = pendingId;
+      api('/api/state').then(st => {
+        if (st.pending) setPending(st.pending);
+        else if (pendingId === seen) setPending(null);
+      }).catch(() => {});
+    }
+  }
   else if (ev.kind === 'image_results') showImageResults(ev.data);
 };
 es.onerror = () => setState('offline');
