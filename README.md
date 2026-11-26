@@ -7,6 +7,7 @@ Download the Windows source ZIP and checksum from [Jarvis v1.3.0](https://github
 [Install Jarvis](#install-once) · [First launch](#first-launch-setup-wizard) · [File tasks](#file-tasks-in-selected-folders) · [Jarvis and TUKI](#jarvis-and-tuki) · [Project NOMAD](#project-nomad-integration) · [What is in this repository](#what-is-in-this-repository)
 
 See [CHANGELOG.md](CHANGELOG.md), the [capability matrix](docs/Capabilities.md) and the [HUD control report](docs/ControlReport.md).
+For future features and the comparison with other assistants, see the [master development plan](docs/Master%20Development%20Plan.md).
 
 For the November 2026 owner/Claude hardware pass, use the [Windows verification checklist](docs/Windows%20Verification.md).
 Automated HTTP/model fixtures and existing screenshot examples do not establish
@@ -308,6 +309,7 @@ Use the **Jarvis** Start menu shortcut for voice plus the HUD. From the Jarvis f
 | `python -m jarvis setup` | Your name, Canvas link, email and API keys (encrypted), voices |
 | `python -m jarvis --text` | Type in the terminal |
 | `python -m jarvis doctor` | Check everything |
+| `python -m jarvis voice-check` | Record four seconds after you press Enter, show the local transcription, and play a test reply. Confirm the speaker worked by listening. |
 | `python -m jarvis briefing` | Hear today's briefing |
 
 Try saying: "Jarvis, plan my week." "What's falling behind?" "Email Professor Lee
