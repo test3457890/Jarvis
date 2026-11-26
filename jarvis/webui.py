@@ -123,6 +123,8 @@ def serve(app, port: int):
                 self._json(app.memory_operation())
             elif self.path == "/api/watches":
                 self._json(app.watches_operation())
+            elif self.path == "/api/repository":
+                self._json(app.repository_operation())
             elif self.path == "/api/recovery":
                 self._json(app.recovery_operation())
             elif self.path == "/api/setup":
@@ -223,6 +225,12 @@ def serve(app, port: int):
                 try:
                     result = app.watches_operation(data)
                 except (ValueError, TypeError) as error:
+                    return self._json({"error": str(error)}, 400)
+                self._json(result)
+            elif self.path == "/api/repository":
+                try:
+                    result = app.repository_operation(data)
+                except (ValueError, TypeError, OSError) as error:
                     return self._json({"error": str(error)}, 400)
                 self._json(result)
             elif self.path == "/api/voice-preview":

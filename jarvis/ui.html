@@ -239,6 +239,10 @@
   #screen-status, #screen .hint { color:var(--dim); font-size:13px; }
   #setup-form label.inline { display:flex; align-items:center; gap:8px; }
   #setup-form label.inline input { flex:0 0 auto; width:auto; }
+  #repository-select { display:grid; min-width:0; }
+  #repository-select label { display:grid; min-width:0; gap:6px; }
+  #repository-path { width:100%; min-width:0; box-sizing:border-box; }
+  #repository-status { overflow-wrap:anywhere; }
   #setup-panel .hint, #apps .hint { color:var(--dim); font-size:13px; margin:2px 0; }
   #apps { border-top:1px solid var(--line); padding:8px 16px; max-height:52%; overflow:auto; }
   body[data-mode=talk] #apps { display:none; }
@@ -382,6 +386,13 @@
         <button>Save setup</button>
       </form>
       <p id="setup-status" role="status"></p>
+      <form id="repository-select">
+        <label>Existing local Git repository for Coding mode<input id="repository-path" type="text" placeholder="C:\\Users\\you\\Projects\\MyApp" maxlength="1000" required></label>
+        <button>Select repository</button>
+        <button id="repository-reset" type="button">Use Jarvis Code folder</button>
+      </form>
+      <p id="repository-status" role="status"></p>
+      <p class="hint">Only this folder is granted for coding. Review the full diff before Apply; test and build commands still require confirmation. Jarvis will not run Git commands automatically.</p>
     </details>
     <details id="file-tasks" name="assistant-tools">
       <summary>File tasks</summary>
@@ -633,7 +644,18 @@ es.onmessage = e => {
   }
   else if (ev.kind === 'system') add('system', ev.data);
   else if (ev.kind === 'toggles') setToggles(ev.data);
-  else if (ev.kind === 'pending') setPending(ev.data);
+  else if (ev.kind === 'pending') {
+    if (ev.data) setPending(ev.data);
+    else {
+      // A previous confirmation's clear event can arrive after a newer
+      // preview response. Reconcile with the server before hiding it.
+      const seen = pendingId;
+      api('/api/state').then(st => {
+        if (st.pending) setPending(st.pending);
+        else if (pendingId === seen) setPending(null);
+      }).catch(() => {});
+    }
+  }
   else if (ev.kind === 'image_results') showImageResults(ev.data);
 };
 es.onerror = () => setState('offline');
@@ -807,6 +829,19 @@ $('setup-form').onsubmit = async event => {
       (result.ocr_enabled && !result.ocr_available ? ' OCR is on but Tesseract was not found, so scanned pages are still skipped.' : '');
   } catch (error) { $('setup-status').textContent = error.message; }
 };
+async function repository(data) {
+  try {
+    const result = await api('/api/repository', data);
+    if (result.error) throw new Error(result.error);
+    $('repository-path').value = result.path;
+    $('repository-status').textContent = (result.is_repository ? 'Selected Git repository: ' : 'Coding workspace: ') + result.path +
+      '. ' + result.files.length + (result.files_truncated ? '+ listed files.' : ' listed files.') +
+      (result.test_command ? ' Test command (approval required): ' + result.test_command : ' No test command detected.');
+  } catch (error) { $('repository-status').textContent = error.message || 'Could not select repository.'; }
+}
+$('repository-select').onsubmit = event => { event.preventDefault(); repository({action:'select', path:$('repository-path').value}); };
+$('repository-reset').onclick = () => repository({action:'reset'});
+repository();
 $('memory-export').onclick = async () => {
   try {
     const result = await api('/api/memory');

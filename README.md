@@ -424,6 +424,16 @@ Export remembered facts downloads a JSON copy to your browser's download folder.
 manage remembered facts. The saved conversation history is separate, and prior conversation
 can still contain a fact you deleted. Backup, restore, and conversation deletion are available in the same panel.
 
+## Existing Git repository in Coding mode
+
+In Setup, choose an existing local Git repository as the Coding mode workspace. Jarvis
+lists bounded project files and detected test commands without running Git. Coding
+edits are confined to that selected folder, reject links and `.git` metadata, and
+still need full diff review and Apply. Tests and builds require confirmation of the
+detected command. Use Jarvis Code folder to return to the default workspace; undo
+records are kept separately for each workspace. This does not clone, commit, push,
+or upload the repository.
+
 ## File tasks in selected folders
 
 Open **File tasks** below the chat. It works only inside folders you chose for file tasks in the
