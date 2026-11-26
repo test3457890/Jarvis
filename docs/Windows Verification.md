@@ -21,6 +21,7 @@ completed hardware verification. This pass adds no new screenshots.
 | Coding/files | In disposable selected folders preview/apply/undo multi-file fixes; confirm tests separately; deny outside paths, links and overwrites; interrupt/resume jobs; ensure changed files block undo. | Not tested |
 | Memory/documents | PDF/Word/text searches, opt-in OCR, remembered fact edits/deletion, separate conversation clearing, backup/restore/rescue backup with synthetic content. | Not tested |
 | Document index | Turn on the optional index, search selected files, edit and delete one, remove a selected folder, then turn the index off. Confirm stale results disappear and `%APPDATA%\Jarvis\documents-index.sqlite3` is removed when disabled. | Not tested |
+| Document research | With two disposable local sources, run `/research-docs` and check that numbered excerpts match the actual file sections; try with Ollama unavailable and with a malicious instruction in a source. Do not infer research quality from stubbed answers. | Not tested |
 | Planner | Add/edit/complete tasks, Plan my week, View week, all-day/free events, deadline buffers, export and optional private Canvas sync. | Not tested |
 | Images/screen | Opt-in screen picker/cancel, still preview before Ask, local vision lookup, invalid/oversized images, Draft/Balanced/High generation and download with actual local backends. | Not tested |
 | NOMAD | Service panel with server absent/present; actual Kiwix content search and sources; no assumption that Jarvis installs NOMAD. Keep real server addresses local. | Not tested |

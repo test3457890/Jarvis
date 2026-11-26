@@ -443,6 +443,13 @@ def audit(app, cfg, code, files, url):
             page.get_by_role("button", name="Search documents").click()
             expect(last_reply(page)).to_contain_text("navigation.txt")
 
+        @check("Documents: local research", "research selected documents", "model summary and original source shown")
+        def _():
+            page.locator("#document-query").fill("compass")
+            page.get_by_role("button", name="Research selected docs").click()
+            expect(last_reply(page)).to_contain_text("Local document research")
+            expect(last_reply(page)).to_contain_text("navigation.txt")
+
         @check("Memory: review, edit, export, delete", "full cycle", "edit stored, export downloads, delete removes")
         def _():
             app.memory.remember("I prefer morning study")
