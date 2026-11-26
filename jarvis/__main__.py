@@ -18,7 +18,7 @@ import threading
 import time
 import webbrowser
 
-from . import appactions, assistants, config, documents, extensions, filejobs, images, net, nomad, planner, recovery, secure, setupwizard, skills
+from . import appactions, assistants, config, documents, extensions, filejobs, images, net, nomad, planner, recovery, secure, setupwizard, skills, watchchecks
 from .brain import Brain
 from .memory import Memory
 
@@ -29,6 +29,7 @@ class App:
         self.cfg = cfg
         self.bus = EventBus()
         self.memory = Memory()
+        watchchecks.init_db(self.memory)
         self.brain = Brain(cfg, self.memory)
         self._settings_lock = threading.Lock()
         self._turn_lock = threading.Lock()
@@ -256,6 +257,16 @@ class App:
                     raise ValueError("Choose Backup or confirm a selected restore.")
             return {**result, "backups": recovery.list_backups()}
 
+    def watches_operation(self, data=None):
+        if data is None:
+            return watchchecks.list_watches(self.memory)
+        if data.get('action') == 'add':
+            if not self.cfg.get('document_folders'):
+                raise ValueError('Choose document folders in Setup first.')
+            if skills.permission_level(self.cfg, 'search_documents') != 'allowed':
+                raise ValueError('Allow automatic document search in skill permissions first.')
+        return watchchecks.operate(self.memory, data)
+
     def memory_operation(self, data=None):
         with self.brain._lock:
             if data is not None:
@@ -429,6 +440,7 @@ class App:
             try:
                 for text in self.memory.pop_due_reminders():
                     self.notify(f"Reminder: {text}")
+                watchchecks.run_due(self.memory, self.cfg, lambda message: self.notify(message, speak=False))
                 self._event_heads_up()
                 self._deadline_nudges()
                 self._daily_briefing()

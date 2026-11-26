@@ -344,6 +344,14 @@
         <button>Search documents</button>
         <button id="document-research" type="button">Research selected docs</button>
       </form>
+      <form id="watch-create">
+        <input id="watch-query" aria-label="Daily document check query" placeholder="Words to check daily" maxlength="500" required>
+        <input id="watch-time" aria-label="Daily check time on this computer" type="time" value="09:00" required>
+        <button>Add daily check</button>
+      </form>
+      <p>Checks run while Jarvis is open, using your computer's local time and selected folders. The first run sets a baseline. Changed matches appear here without reading them aloud.</p>
+      <button id="watch-refresh" type="button">Review daily checks</button>
+      <div id="watch-status" role="status"></div><div id="watch-list"></div>
       <div class="memory-actions">
         <button id="memory-refresh" type="button">Review remembered facts</button>
         <button id="memory-export" type="button">Export remembered facts</button>
@@ -667,6 +675,44 @@ $('document-research').onclick = () => {
   const question = $('document-query').value.trim();
   if (question) send('/research-docs ' + question);
 };
+function renderWatches(watches) {
+  $('watch-list').replaceChildren();
+  $('watch-status').textContent = watches.length ? '' : 'No daily document checks.';
+  for (const watch of watches) {
+    const row = el('div', 'memory-row');
+    row.appendChild(el('span', '', `${watch.query} at ${watch.daily_time} | ${watch.enabled ? 'Active' : 'Paused'} | Last run: ${watch.last_date || 'Never'} | ${watch.status}`));
+    for (const [label, action] of [[watch.enabled ? 'Pause' : 'Resume', watch.enabled ? 'pause' : 'resume'], ['Delete', 'delete']]) {
+      const button = el('button', '', label); button.type = 'button';
+      button.onclick = async () => {
+        try {
+          const result = await api('/api/watches', {action, id:watch.id});
+          if (result.error) throw new Error(result.error);
+          renderWatches(result);
+        } catch (error) { $('watch-status').textContent = error.message || 'Could not update the check.'; }
+      };
+      row.appendChild(button);
+    }
+    $('watch-list').appendChild(row);
+  }
+}
+async function refreshWatches() {
+  try {
+    const result = await api('/api/watches');
+    if (result.error) throw new Error(result.error);
+    renderWatches(result);
+  } catch (error) { $('watch-status').textContent = error.message || 'Could not load checks.'; }
+}
+$('watch-refresh').onclick = refreshWatches;
+$('watch-create').onsubmit = async event => {
+  event.preventDefault();
+  try {
+    const result = await api('/api/watches', {action:'add', query:$('watch-query').value, daily_time:$('watch-time').value});
+    if (result.error) throw new Error(result.error);
+    $('watch-query').value = '';
+    renderWatches(result);
+  } catch (error) { $('watch-status').textContent = error.message || 'Could not add check.'; }
+};
+refreshWatches();
 function renderMemories(facts) {
   $('memory-list').replaceChildren();
   $('memory-status').textContent = facts.length ? 'Remembered facts. Edits apply to future recall.' : 'No remembered facts.';

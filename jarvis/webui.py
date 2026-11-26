@@ -121,6 +121,8 @@ def serve(app, port: int):
                 self._json(app.state())
             elif self.path == "/api/memory":
                 self._json(app.memory_operation())
+            elif self.path == "/api/watches":
+                self._json(app.watches_operation())
             elif self.path == "/api/recovery":
                 self._json(app.recovery_operation())
             elif self.path == "/api/setup":
@@ -214,6 +216,12 @@ def serve(app, port: int):
             elif self.path == "/api/memory":
                 try:
                     result = app.memory_operation(data)
+                except (ValueError, TypeError) as error:
+                    return self._json({"error": str(error)}, 400)
+                self._json(result)
+            elif self.path == "/api/watches":
+                try:
+                    result = app.watches_operation(data)
                 except (ValueError, TypeError) as error:
                     return self._json({"error": str(error)}, 400)
                 self._json(result)
