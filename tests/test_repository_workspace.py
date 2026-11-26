@@ -1,6 +1,4 @@
 """A selected repository stays inside the coding grant and keeps per-root undo."""
-from unittest.mock import patch
-
 import pytest
 
 from jarvis import coder, planner
@@ -65,8 +63,7 @@ def test_selected_repo_rejects_file_task_overlap(isolated_app, monkeypatch):
     (repository / '.git').mkdir()
     cfg['file_folders'] = [str(home)]
     monkeypatch.setattr(App, '_watchdog', lambda _: None)
-    with patch('jarvis.voice.Speaker', side_effect=RuntimeError('test')):
-        app = App(cfg, use_voice=False)
+    app = App(cfg, use_voice=False)
     try:
         with pytest.raises(ValueError, match='separate'):
             app.repository_operation({'action':'select', 'path':str(repository)})
