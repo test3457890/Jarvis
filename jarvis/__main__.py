@@ -208,12 +208,21 @@ class App:
                     updated = setupwizard.apply_choices(updated, {"file_folders": data["file_folders"]})
                 if "ocr_enabled" in data:
                     updated["ocr_enabled"] = bool(data["ocr_enabled"])
+                if "document_index_enabled" in data:
+                    if type(data["document_index_enabled"]) is not bool:
+                        raise ValueError("Choose whether to enable the local document index.")
+                    updated["document_index_enabled"] = data["document_index_enabled"]
                 for key, limit in config.VOICE_LIMITS.items():
                     if key in data:
                         value = data[key]
                         if type(value) is not int or not 0 <= value <= limit:
                             raise ValueError(f"Invalid {key} option.")
                         updated[key] = value
+                if (not updated["document_index_enabled"] or
+                    updated.get("document_folders") != self.cfg.get("document_folders") or
+                    updated.get("ocr_enabled") != self.cfg.get("ocr_enabled")):
+                    from . import docindex
+                    docindex.delete()
                 config.save(updated)
                 self.cfg.update(updated)
                 if self.listener and not updated["room_context_seconds"]:
@@ -222,6 +231,7 @@ class App:
                     "document_folders": self.cfg.get("document_folders", []),
                     "file_folders": self.cfg.get("file_folders", []),
                     "ocr_enabled": bool(self.cfg.get("ocr_enabled")),
+                    "document_index_enabled": bool(self.cfg.get("document_index_enabled")),
                     "follow_up_seconds": self.cfg.get("follow_up_seconds", 8),
                     "room_context_seconds": self.cfg.get("room_context_seconds", 120),
                     "ocr_available": bool(documents.tesseract_path({**self.cfg, "ocr_enabled": True})),

@@ -364,6 +364,7 @@
       <form id="setup-form">
         <label>Performance<select id="setup-profile"><option value="standard">Standard</option><option value="low-memory">Low memory</option></select></label>
         <label>Document folders, one per line<textarea id="setup-folders" rows="3"></textarea></label>
+        <label class="inline"><input type="checkbox" id="setup-index"> Keep a local search index of selected documents. Uncheck to delete it.</label>
         <label class="inline"><input type="checkbox" id="setup-ocr"> Read scanned PDFs and images in document search with local OCR (Tesseract)</label>
         <p id="setup-ocr-note" class="hint"></p>
         <label>Follow-up listening<select id="setup-follow-up"><option value="0">Off</option><option value="8">8 seconds</option><option value="20">20 seconds</option></select></label>
@@ -726,6 +727,7 @@ $('setup-load').onclick = async () => {
     $('setup-profile').value = result.profile;
     $('setup-folders').value = result.document_folders.join('\n');
     $('setup-ocr').checked = !!result.ocr_enabled;
+    $('setup-index').checked = !!result.document_index_enabled;
     for (const [id, value] of [['setup-follow-up', result.follow_up_seconds],
                                ['setup-room-context', result.room_context_seconds]]) {
       const select = $(id);
@@ -746,6 +748,7 @@ $('setup-form').onsubmit = async event => {
     const result = await api('/api/setup', {profile:$('setup-profile').value,
       document_folders:$('setup-folders').value.split('\n').map(value => value.trim()).filter(Boolean),
       ocr_enabled:$('setup-ocr').checked,
+      document_index_enabled:$('setup-index').checked,
       follow_up_seconds:Number($('setup-follow-up').value),
       room_context_seconds:Number($('setup-room-context').value)});
     if (result.error) throw new Error(result.error);

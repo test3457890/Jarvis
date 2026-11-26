@@ -90,6 +90,8 @@ DEFAULTS = {
     "github_upload_branch": "main",
     "notes_dir": str(APP_DIR / "notes"),
     "document_folders": [],
+    # Optional local search index. Off unless explicitly enabled in Setup.
+    "document_index_enabled": False,
     "search_folders": [
         str(Path.home() / "Documents"),
         str(Path.home() / "Desktop"),
