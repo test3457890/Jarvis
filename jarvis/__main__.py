@@ -729,6 +729,39 @@ def doctor(cfg):
     return 0 if ok else 1
 
 
+def voice_check(cfg):
+    """Exercise real input, transcription and output without storing the recording."""
+    print("Jarvis voice check: a four-second microphone sample stays on this PC.")
+    try:
+        input("Press Enter when ready to speak (Ctrl+C to cancel): ")
+    except (EOFError, KeyboardInterrupt):
+        print("\nVoice check cancelled.")
+        return 1
+    try:
+        import sounddevice as sd
+        from .voice import RATE, Speaker, load_whisper
+
+        audio = sd.rec(4 * RATE, samplerate=RATE, channels=1, dtype="float32")
+        sd.wait()
+        model = load_whisper(cfg)
+        segments, _ = model.transcribe(audio[:, 0], language="en", beam_size=1,
+                                        vad_filter=False, condition_on_previous_text=False)
+        heard = " ".join(part.text for part in segments if part.no_speech_prob < 0.7).strip()
+        if not heard:
+            print("No speech recognized. Check the input device and microphone permission.")
+            return 1
+        print(f"Recognized: {heard}")
+        print("Playing a test reply now.")
+        speaker = Speaker(cfg)
+        speaker.say("Jarvis voice check complete.")
+        speaker.wait()
+        print("If you heard the reply, input and output are ready. This command cannot verify audio quality.")
+        return 0
+    except Exception as exc:
+        print(f"Voice check failed: {type(exc).__name__}: {exc}")
+        return 1
+
+
 def text_chat(app):
     name = app.cfg.get("name", "Jarvis")
     print(f"{name} is ready. Type your message (or 'quit').\n")
@@ -747,7 +780,7 @@ def text_chat(app):
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="jarvis", description="Offline personal assistant")
-    p.add_argument("command", nargs="?", default="run", choices=["run", "doctor", "briefing", "setup"])
+    p.add_argument("command", nargs="?", default="run", choices=["run", "doctor", "voice-check", "briefing", "setup"])
     p.add_argument("--text", action="store_true", help="chat in the terminal instead of by voice")
     p.add_argument("--no-voice", action="store_true", help="don't use the microphone")
     p.add_argument("--mode", choices=config.MODES, help="Start in this mode")
@@ -771,6 +804,8 @@ def main(argv=None):
 
     if args.command == "doctor":
         return doctor(cfg)
+    if args.command == "voice-check":
+        return voice_check(cfg)
     if args.command == "setup":
         return setup(cfg)
     if args.command == "briefing":
