@@ -2,6 +2,7 @@
 its own workspace folder (Documents\\Jarvis Code). Running code always asks first."""
 import ctypes
 import difflib
+import hashlib
 import json
 import ctypes.wintypes as wt
 from dataclasses import dataclass
@@ -56,7 +57,7 @@ def _safe_path(cfg, filename) -> Path:
     root = code_dir(cfg).resolve()
     relative = PureWindowsPath(filename)
     if relative.anchor or ".." in relative.parts or any(
-        ":" in part or _reserved_name(part) for part in relative.parts
+        ":" in part or _reserved_name(part) or part.casefold() == '.git' for part in relative.parts
     ):
         raise ValueError("Use a relative path inside the code folder.")
     walk = root
@@ -233,6 +234,8 @@ _SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "b
 def project_root(cfg, path):
     """The top-level project folder in the workspace that holds path (or the workspace)."""
     root = code_dir(cfg).resolve()
+    if (root / '.git').exists():
+        return root
     relative = path.resolve().relative_to(root)
     return root / relative.parts[0] if len(relative.parts) > 1 else root
 
@@ -249,13 +252,14 @@ def project_files(root):
     found, scanned = [], 0
     for current, dirs, names in os.walk(root, followlinks=False):
         dirs[:] = sorted(d for d in dirs if d not in _SKIP_DIRS and not d.startswith(".")
-                         and not os.path.islink(os.path.join(current, d)))
+                         and not os.path.islink(os.path.join(current, d))
+                         and not getattr(os.path, 'isjunction', lambda p: False)(os.path.join(current, d)))
         for name in sorted(names):
             scanned += 1
             if scanned > _MAX_SCAN:
                 return found, True
             path = Path(current) / name
-            if name.endswith(".bak") or path.is_symlink():
+            if name == '.git' or name.endswith(".bak") or path.is_symlink():
                 continue
             found.append(path.relative_to(root).as_posix())
     return found, False
@@ -654,6 +658,20 @@ def apply_proposal(ctx):
 _UNDO_KEY = "code-undo"
 
 
+def _undo_key(ctx):
+    root = str(code_dir(ctx.cfg).resolve()).casefold()
+    return _UNDO_KEY + ':' + hashlib.sha256(root.encode('utf-8')).hexdigest()[:24]
+
+
+def preserve_legacy_undo(ctx):
+    """Move the previous single-workspace undo record before switching workspaces."""
+    from . import planner
+    record = planner.kv_get(ctx.memory, _UNDO_KEY)
+    if record:
+        planner.kv_set(ctx.memory, _undo_key(ctx), record)
+        planner.kv_set(ctx.memory, _UNDO_KEY, None)
+
+
 def _remember_undo(ctx, proposal):
     """Keep the last applied edit on disk so /undo still works after Jarvis restarts."""
     import base64
@@ -662,7 +680,7 @@ def _remember_undo(ctx, proposal):
                "original": None if c.original is None else base64.b64encode(c.original).decode()}
               for c in proposal.changes]
     try:
-        planner.kv_set(ctx.memory, _UNDO_KEY, record)
+        planner.kv_set(ctx.memory, _undo_key(ctx), record)
     except Exception as error:  # Undo still works in this session.
         print(f"[coder] Could not save undo information: {error}")
 
@@ -670,7 +688,7 @@ def _remember_undo(ctx, proposal):
 def _restore_undo(ctx):
     import base64
     from . import planner
-    record = planner.kv_get(ctx.memory, _UNDO_KEY)
+    record = planner.kv_get(ctx.memory, _undo_key(ctx)) or planner.kv_get(ctx.memory, _UNDO_KEY)
     if not record:
         return None
     changes = []
@@ -696,6 +714,7 @@ def undo_proposal(ctx):
             _replace_file(change.path, change.original)
     ctx.applied_code = None
     from . import planner
+    planner.kv_set(ctx.memory, _undo_key(ctx), None)
     planner.kv_set(ctx.memory, _UNDO_KEY, None)
     return "Restored the previous version of " + ", ".join(change.path.name for change in proposal.changes) + "."
 
@@ -768,8 +787,8 @@ def run_project_tests(ctx, filename=""):
 @skill("List files in the code folder.")
 def list_code(ctx):
     root = code_dir(ctx.cfg)
-    files = [str(f.relative_to(root)) for f in root.rglob("*") if f.is_file() and not f.name.endswith(".bak")]
-    return f"Code folder {root}:\n" + ("\n".join(sorted(files)[:50]) or "(empty)")
+    files, limited = project_files(root)
+    return f"Code folder {root}:\n" + ("\n".join(files[:50]) or "(empty)") + ("\nFile list limited." if limited else "")
 
 
 def _run_preview(ctx, filename, args=""):

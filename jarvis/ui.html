@@ -382,6 +382,13 @@
         <button>Save setup</button>
       </form>
       <p id="setup-status" role="status"></p>
+      <form id="repository-select">
+        <label>Existing local Git repository for Coding mode<input id="repository-path" type="text" placeholder="C:\\Users\\you\\Projects\\MyApp" maxlength="1000" required></label>
+        <button>Select repository</button>
+        <button id="repository-reset" type="button">Use Jarvis Code folder</button>
+      </form>
+      <p id="repository-status" role="status"></p>
+      <p class="hint">Only this folder is granted for coding. Review the full diff before Apply; test and build commands still require confirmation. Jarvis will not run Git commands automatically.</p>
     </details>
     <details id="file-tasks" name="assistant-tools">
       <summary>File tasks</summary>
@@ -807,6 +814,19 @@ $('setup-form').onsubmit = async event => {
       (result.ocr_enabled && !result.ocr_available ? ' OCR is on but Tesseract was not found, so scanned pages are still skipped.' : '');
   } catch (error) { $('setup-status').textContent = error.message; }
 };
+async function repository(data) {
+  try {
+    const result = await api('/api/repository', data);
+    if (result.error) throw new Error(result.error);
+    $('repository-path').value = result.path;
+    $('repository-status').textContent = (result.is_repository ? 'Selected Git repository: ' : 'Coding workspace: ') + result.path +
+      '. ' + result.files.length + (result.files_truncated ? '+ listed files.' : ' listed files.') +
+      (result.test_command ? ' Test command (approval required): ' + result.test_command : ' No test command detected.');
+  } catch (error) { $('repository-status').textContent = error.message || 'Could not select repository.'; }
+}
+$('repository-select').onsubmit = event => { event.preventDefault(); repository({action:'select', path:$('repository-path').value}); };
+$('repository-reset').onclick = () => repository({action:'reset'});
+repository();
 $('memory-export').onclick = async () => {
   try {
     const result = await api('/api/memory');

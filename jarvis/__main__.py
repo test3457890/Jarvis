@@ -267,6 +267,49 @@ class App:
                 raise ValueError('Allow automatic document search in skill permissions first.')
         return watchchecks.operate(self.memory, data)
 
+    def repository_operation(self, data=None):
+        """Explicitly grant one existing local Git repository as the coding workspace."""
+        from pathlib import Path
+        from . import coder
+        with self.brain._lock, self._settings_lock:
+            if data is not None:
+                if self.cfg.get('lockdown'):
+                    raise ValueError('Turn off Lockdown to change the coding workspace.')
+                if data.get('action') not in ('select', 'reset'):
+                    raise ValueError('Choose select or reset.')
+                if data['action'] == 'select':
+                    value = data.get('path')
+                    if not isinstance(value, str) or not value.strip() or len(value) > 1000:
+                        raise ValueError('Enter an existing local repository folder.')
+                    path = Path(value).expanduser()
+                    if not path.is_absolute() or not path.is_dir() or path.is_symlink() or getattr(os.path, 'isjunction', lambda p: False)(path):
+                        raise ValueError('Choose an existing absolute repository folder, not a link.')
+                    path = path.resolve()
+                    marker = path / '.git'
+                    if not marker.is_dir() and not (marker.is_file() and marker.stat().st_size < 1000 and
+                                                    marker.read_text(encoding='utf-8', errors='replace').startswith('gitdir: ')):
+                        raise ValueError('This folder is not a Git repository or worktree.')
+                    for item in self.cfg.get('file_folders', []):
+                        other = Path(item).resolve()
+                        if path == other or path in other.parents or other in path.parents:
+                            raise ValueError('Keep the coding repository separate from file-task folders.')
+                else:
+                    path = Path(config.DEFAULTS['code_dir']).expanduser().resolve()
+                if str(path) != str(coder.code_dir(self.cfg).resolve()):
+                    coder.preserve_legacy_undo(self.brain.ctx)
+                    config.save({**self.cfg, 'code_dir': str(path)})
+                    self.cfg['code_dir'] = str(path)
+                    self.brain.ctx.code_proposal = None
+                    self.brain.ctx.applied_code = None
+                    self.brain.ctx.last_test_output = ''
+                    self.brain.ctx.last_test_root = ''
+                    self.brain.ctx.last_test_file = ''
+                    self.brain.ctx.pending = None
+                    self.brain.ctx.on_pending(None)
+            root = coder.code_dir(self.cfg).resolve()
+            summary = coder.project_context(self.cfg, root)
+            return {'path': str(root), 'is_repository': (root / '.git').exists(), **summary}
+
     def memory_operation(self, data=None):
         with self.brain._lock:
             if data is not None:
