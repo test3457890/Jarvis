@@ -18,6 +18,7 @@ models or audio but has not been verified with real models, a microphone or spea
 | Chat | Answer quality and speed with real models | Untested on hardware | `docs/Benchmarks.md` |
 | Voice | Spoken replies, separate TUKI voice | Untested on hardware | Voice selection unit tests only |
 | Voice | Wake word and microphone input | Untested on hardware | |
+| Voice | Configurable follow-up and temporary room context; pause clears context and ignores pending transcription | Working in unit tests; untested on microphone hardware | Setup controls, `tests/test_phase3.py` |
 | Voice | Opt-in local `voice-check` diagnostic | Working with stubbed audio; untested on Windows hardware | Requires microphone, local Whisper model and audible speaker confirmation |
 | Voice | "Jarvis, stop" cancels a reply still being prepared; wider hallucination filter | Working (unit tests); untested with a microphone | `tests/test_phase3.py` |
 | Voice | Spoken interruption while Jarvis is speaking | Not implemented | Jarvis mutes its microphone while speaking to avoid hearing itself; reliable barge-in needs echo cancellation |

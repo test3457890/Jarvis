@@ -14,6 +14,7 @@ CONFIG_PATH = APP_DIR / "config.json"
 MODES = ("everyday", "coding", "briefing", "talk")
 THEMES = ("hud", "simple", "light", "contrast", "midnight", "paper")
 VOICE_CHOICES = ("auto", "windows", "piper")
+VOICE_LIMITS = {"follow_up_seconds": 60, "room_context_seconds": 600}
 
 DEFAULTS = {
     "mode": "everyday",
@@ -151,6 +152,9 @@ def load() -> dict:
                          ("voice_choice", VOICE_CHOICES), ("tuki_voice_choice", VOICE_CHOICES)):
         if cfg.get(key) not in choices:
             cfg[key] = choices[0]
+    for key, limit in VOICE_LIMITS.items():
+        if type(cfg.get(key)) is not int or not 0 <= cfg[key] <= limit:
+            cfg[key] = DEFAULTS[key]
     save(cfg)  # writes any new default keys
     Path(cfg["notes_dir"]).mkdir(parents=True, exist_ok=True)
     return cfg

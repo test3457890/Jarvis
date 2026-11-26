@@ -139,6 +139,12 @@ Set the local Piper model path in `python -m jarvis setup` and select Piper in t
 `/fix budget.py | handle empty input | rules.txt` to select a target and an optional related file.
 Use `/diff`, `/apply`, or `/undo`, or the corresponding HUD buttons.
 
+In Setup, choose the follow-up listening window (off, 8 or 20 seconds) and how much
+nearby conversation Jarvis may keep as temporary context (off, 30 seconds or 2 minutes).
+Turning context off or pausing Mic clears that temporary context. A paused mic discards
+incoming speech; it does not close the operating system's input stream. Jarvis still
+requires a wake word when follow-ups are off.
+
 ## Weekly planner
 
 Open Planner below the chat, enter a task, and select Plan my week. Choose View week

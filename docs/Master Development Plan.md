@@ -110,4 +110,5 @@ Consider dictation, specialist agents, smart-home/music integrations, mobile acc
 ## Current delivery record
 
 - Added `python -m jarvis voice-check`: after an explicit Enter, records four seconds locally, transcribes with the configured local Whisper model, displays recognized text and attempts a spoken reply. No audio file is written. CI can validate control flow with fake audio; only a Windows microphone and speaker test can validate the real path.
+- Added Setup controls for follow-up and temporary room context (V02/V08), including a zero-context choice. Pausing Mic clears temporary context and prevents an in-progress transcription from issuing a command after pause/resume. Unit tested; real Windows microphone behavior remains to verify.
 - All other entries in this plan remain proposals. No bulk connector, agent, voice, marketplace or model feature is represented as implemented by this document.

@@ -168,6 +168,10 @@ def test_setup_preserves_secrets_and_validates_folders(isolated_app, monkeypatch
     app = App(cfg,use_voice=False)
     result=app.settings_operation({'profile':'low-memory','document_folders':[str(home)]})
     assert result['profile']=='low-memory' and app.cfg['num_ctx']==2048
+    result=app.settings_operation({'follow_up_seconds':15,'room_context_seconds':0})
+    assert result['follow_up_seconds']==15 and result['room_context_seconds']==0
+    with pytest.raises(ValueError):
+        app.settings_operation({'follow_up_seconds':True})
     with pytest.raises(ValueError):
         app.settings_operation({'document_folders':[str(home/'missing')]})
     app.memory.db.close()
