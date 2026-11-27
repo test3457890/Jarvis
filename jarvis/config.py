@@ -111,6 +111,8 @@ DEFAULTS = {
     "max_planned_minutes_per_day": 240,
     "default_task_minutes": 60,
     "briefing_time": "08:00",
+    "briefing_enabled": True,
+    "briefing_speak": True,
     "event_heads_up_minutes": 15,
     # Project NOMAD (https://www.projectnomad.us). Change the host if NOMAD runs on another machine.
     "nomad_url": "http://127.0.0.1:8080",

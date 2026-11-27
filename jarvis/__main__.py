@@ -216,6 +216,15 @@ class App:
                     if type(data["document_index_enabled"]) is not bool:
                         raise ValueError("Choose whether to enable the local document index.")
                     updated["document_index_enabled"] = data["document_index_enabled"]
+                if "briefing_time" in data:
+                    if not isinstance(data["briefing_time"], str) or not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', data["briefing_time"]):
+                        raise ValueError('Choose a daily briefing time in HH:MM format.')
+                    updated["briefing_time"] = data["briefing_time"]
+                for key in ('briefing_enabled', 'briefing_speak'):
+                    if key in data:
+                        if type(data[key]) is not bool:
+                            raise ValueError('Choose whether the daily briefing is on and spoken.')
+                        updated[key] = data[key]
                 for key, limit in config.VOICE_LIMITS.items():
                     if key in data:
                         value = data[key]
@@ -236,6 +245,9 @@ class App:
                     "file_folders": self.cfg.get("file_folders", []),
                     "ocr_enabled": bool(self.cfg.get("ocr_enabled")),
                     "document_index_enabled": bool(self.cfg.get("document_index_enabled")),
+                    "briefing_time": self.cfg.get("briefing_time", "08:00"),
+                    "briefing_enabled": bool(self.cfg.get("briefing_enabled", True)),
+                    "briefing_speak": bool(self.cfg.get("briefing_speak", True)),
                     "follow_up_seconds": self.cfg.get("follow_up_seconds", 8),
                     "room_context_seconds": self.cfg.get("room_context_seconds", 120),
                     "ocr_available": bool(documents.tesseract_path({**self.cfg, "ocr_enabled": True})),
@@ -530,13 +542,14 @@ class App:
                             + ("Shall I find time for it?" if level == 1 else "This is your final warning."))
 
     def _daily_briefing(self):
+        if not self.cfg.get('briefing_enabled', True):
+            return
         hh, mm = map(int, self.cfg.get("briefing_time", "08:00").split(":"))
         now = dt.datetime.now()
         today = now.date().isoformat()
         if now.time() >= dt.time(hh, mm) and planner.kv_get(self.memory, "last_briefing") != today:
             planner.kv_set(self.memory, "last_briefing", today)
-            if now.hour < 13:
-                self.notify(skills.briefing(self.brain.ctx))
+            self.notify(skills.briefing(self.brain.ctx), speak=self.cfg.get('briefing_speak', True))
 
     def _sir(self):
         h = self.cfg.get("honorific")
