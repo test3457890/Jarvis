@@ -2,7 +2,7 @@
 
 This checks every one of the 44 IDs in the master plan. Code presence and fixture/CI success do not establish real hardware, account access or model quality. No overall completion percentage is claimed.
 
-PR #37 and #38 passed their four CI jobs. PR #39 passed all four after the provider-form phone-layout fix at fe60a5c. The feed/weather increment has 325 local tests passing and 6 platform-specific skips; its own remote CI is pending publication.
+PR #37 and #38 passed their four CI jobs. PR #39 passed all four after the provider-form phone-layout fix at fe60a5c. PR #40 passed all four at 0d5d8fd, including the feed/weather browser checks. The subsequent named-voice fixes have 327 local tests passing and 6 platform-specific skips; their own remote CI must be checked separately.
 
 | ID | Capability | Status | Actual scope and remaining work |
 |---|---|---|---|

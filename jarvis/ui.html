@@ -736,7 +736,13 @@ function setToggles(st) {
   }
   $('tuki_voice_choice').querySelector('[value=piper]').disabled = !st.tuki_piper_available;
   for (const key of ['sapi_voice_contains', 'tuki_sapi_voice_contains']) {
-    if (st[key] !== undefined) $(key).value = st[key];
+    if (st[key] !== undefined) {
+      const value = st[key];
+      if (value && ![...$(key).options].some(option => option.value === value)) {
+        $(key).add(new Option(value + ' (refresh to check availability)', value));
+      }
+      $(key).value = value;
+    }
   }
   if (st.mode) document.body.dataset.mode = st.mode;
   if (st.theme) document.body.dataset.theme = st.theme;

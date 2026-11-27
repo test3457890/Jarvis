@@ -188,6 +188,24 @@ def audit(app, cfg, code, files, url):
             page.locator("#compact-view").click()
             assert app.cfg["mode"] == mode
 
+        @check("Saved system voice names", "select exact voices and reload", "stored names remain selected after inventory loads")
+        def _():
+            from jarvis import voice
+            with patch.object(voice, 'installed_voice_names', lambda:['Audit George', 'Audit Zira']):
+                page.locator('#refresh-voices').click()
+                until(lambda: page.locator('#sapi_voice_contains option').count() == 3)
+                page.locator('#sapi_voice_contains').select_option('Audit George')
+                until(lambda: cfg['sapi_voice_contains'] == 'Audit George')
+                page.locator('#tuki_sapi_voice_contains').select_option('Audit George')
+                until(lambda: cfg['tuki_sapi_voice_contains'] == 'Audit George')
+                page.reload()
+                page.wait_for_function('es.readyState === EventSource.OPEN')
+                expect(page.locator('#sapi_voice_contains')).to_have_value('Audit George')
+                expect(page.locator('#tuki_sapi_voice_contains')).to_have_value('Audit George')
+                page.locator('#sapi_voice_contains').select_option('')
+                page.locator('#tuki_sapi_voice_contains').select_option('')
+                until(lambda: not cfg['sapi_voice_contains'] and not cfg['tuki_sapi_voice_contains'])
+
         @check("Local provider settings", "save local settings, reject remote URL, restore Ollama", "explicit local model shown and no remote configuration accepted")
         def _():
             page.locator("#setup-panel summary").first.click()

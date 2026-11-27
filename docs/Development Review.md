@@ -55,6 +55,12 @@ The next branch adds a numeric-loopback-only chat-completions adapter with a sel
 
 ## Approved feed and weather follow-up
 
+A subsequent voice-picker review found two control issues: the first state update selected a saved name before that option existed, and an explicit TUKI name could be overridden by the automatic distinct-voice rule. The fixes preserve named selections while the inventory loads, honor explicit installed choices, and retain distinct automatic fallbacks. Unit and HUD regression checks cover both paths; actual Windows playback remains unverified.
+
 PR #39 at `fe60a5ce91c337b3ec992e1fc5f9a93020ab0bb2` passed all four GitHub CI jobs. Its initial browser run found a phone-width overflow in the new provider form; the form was changed to a constrained grid, and the full rerun passed, including the 390-pixel layout check.
 
 The next increment adds approved manual RSS/Atom reads and NWS forecasts for explicitly supplied coordinates. These adapters use the existing public-IP-pinned, no-redirect HTTPS reader with narrow content types. Fixture tests cover XML limits, exact approval, injection rejection, coordinate validation, forecast destination confinement and refusal to invent missing readings. Live publisher/NWS verification remains outstanding. No subscriptions or automatic external polling are claimed.
+
+## Verification checkpoint
+
+PR #40 at `0d5d8fd21a3e4e47db6c67659add9724d61d1536` passed all four CI jobs, including the feed/weather browser checks. The later named-voice fixes pass 327 local tests with 6 platform-only skips, JavaScript syntax, the DOM interaction harness and source packaging. Their own CI result must be checked separately. No new versioned release, merge or real microphone/model verification is implied by these results.

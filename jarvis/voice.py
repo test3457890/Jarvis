@@ -66,6 +66,20 @@ def installed_voice_names():
         return []
 
 
+def assistant_voice(voices, cfg, assistant):
+    jarvis, matched = pick_voice(voices, voice_profile(cfg, "jarvis")["preferences"])
+    if assistant != "tuki":
+        return jarvis, matched
+    wanted = cfg.get("tuki_sapi_voice_contains", "").lower()
+    if wanted:
+        # An explicit installed choice can intentionally match Jarvis. Distinct
+        # fallback applies only to Automatic or a choice that is unavailable.
+        selected, matched = pick_voice(voices, (wanted,))
+        if matched:
+            return selected, True
+    return pick_voice(voices, voice_profile(cfg, "tuki")["preferences"], avoid=jarvis.id if jarvis else None)
+
+
 class Speaker:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -143,11 +157,7 @@ class Speaker:
 
     def _apply_profile(self, engine, profile):
         voices = engine.getProperty("voices")
-        jarvis, _ = pick_voice(voices, voice_profile(self.cfg, "jarvis")["preferences"])
-        if profile["avoid_jarvis"]:
-            voice, _ = pick_voice(voices, profile["preferences"], avoid=jarvis.id if jarvis else None)
-        else:
-            voice = jarvis
+        voice, _ = assistant_voice(voices, self.cfg, profile["assistant"])
         if voice is not None:
             engine.setProperty("voice", voice.id)
         engine.setProperty("rate", profile["rate"])
@@ -165,7 +175,9 @@ class Speaker:
         jarvis, _ = pick_voice(voices, voice_profile(self.cfg, "jarvis")["preferences"])
         if assistant != "tuki":
             return f"Windows voice {jarvis.name}" if jarvis else "Windows voice"
-        voice, matched = pick_voice(voices, profile["preferences"], avoid=jarvis.id if jarvis else None)
+        voice, matched = assistant_voice(voices, self.cfg, assistant)
+        if voice and matched and self.cfg.get("tuki_sapi_voice_contains"):
+            return f"Windows voice {voice.name}"
         if voice is None or (jarvis and voice.id == jarvis.id):
             return "the Jarvis voice at a different speed, because only one Windows voice is installed"
         return f"Windows voice {voice.name}" + ("" if matched else " (the closest available)")

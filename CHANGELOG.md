@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve saved named voices while the HUD loads its installed-voice inventory. Explicit TUKI choices now take priority even if the owner chooses the same voice as Jarvis; Automatic still prefers a different voice.
+
 - Approved manual RSS/Atom reads with bounded XML parsing, publisher links and reported dates.
 - Approved NWS coordinate/forecast reads with destination confinement and validation of actual response fields.
 - Keep provider settings within the phone-width layout; the regression found by the browser audit is fixed.
