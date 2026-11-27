@@ -119,6 +119,9 @@ def serve(app, port: int):
                 return self._json({"error": "forbidden"}, 403)
             if self.path == "/api/state":
                 self._json(app.state())
+            elif self.path == "/api/voices":
+                from .voice import installed_voice_names
+                self._json({"voices": installed_voice_names()})
             elif self.path == "/api/memory":
                 self._json(app.memory_operation())
             elif self.path == "/api/watches":

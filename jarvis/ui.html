@@ -276,9 +276,12 @@
         <option value="midnight">Midnight</option><option value="paper">Paper</option></select></label>
       <label>Voice <select id="voice_choice"><option value="auto">Automatic</option>
         <option value="windows">Windows</option><option value="piper">Piper</option></select></label>
+      <label>Jarvis system voice <select id="sapi_voice_contains"><option value="">Automatic</option></select></label>
       <button id="voice-preview" type="button">Try voice</button>
       <label>TUKI voice <select id="tuki_voice_choice"><option value="auto">Automatic, different from Jarvis</option>
         <option value="windows">Windows voice</option><option value="piper">Local Piper voice</option></select></label>
+      <label>TUKI system voice <select id="tuki_sapi_voice_contains"><option value="">Automatic</option></select></label>
+      <button id="refresh-voices" type="button">List installed voices</button>
       <button id="tuki-voice-preview" type="button">Try TUKI voice</button>
       <small class="assistant-name">__JARVIS_TUKI_NAME__ · __JARVIS_TUKI_FULL_NAME__</small>
     </div>
@@ -619,6 +622,9 @@ function setToggles(st) {
     if (st[key]) $(key).value = st[key];
   }
   $('tuki_voice_choice').querySelector('[value=piper]').disabled = !st.tuki_piper_available;
+  for (const key of ['sapi_voice_contains', 'tuki_sapi_voice_contains']) {
+    if (st[key] !== undefined) $(key).value = st[key];
+  }
   if (st.mode) document.body.dataset.mode = st.mode;
   if (st.theme) document.body.dataset.theme = st.theme;
   $('voice_choice').querySelector('[value=piper]').disabled = !st.piper_available;
@@ -646,7 +652,7 @@ function setToggles(st) {
   if (st.model) $('model').textContent = st.model;
   if (st.pending !== undefined) setPending(st.pending);
 }
-api('/api/state').then(st => { setToggles(st); setState(st.status); });
+api('/api/state').then(st => { setToggles(st); setState(st.status); loadInstalledVoices(); });
 const es = new EventSource('/api/events?key=' + encodeURIComponent(KEY));
 es.onmessage = e => {
   const ev = JSON.parse(e.data);
@@ -696,7 +702,8 @@ async function send(text) {
   } catch { add('system', 'Could not reach Jarvis. Check the HUD connection.'); }
   return false;
 }
-for (const key of ['mode', 'theme', 'voice_choice', 'assistant', 'tuki_voice_choice']) {
+for (const key of ['mode', 'theme', 'voice_choice', 'assistant', 'tuki_voice_choice',
+                   'sapi_voice_contains', 'tuki_sapi_voice_contains']) {
   $(key).onchange = async () => {
     try {
       const state = await api('/api/preferences', {key, value: $(key).value});
@@ -707,6 +714,21 @@ for (const key of ['mode', 'theme', 'voice_choice', 'assistant', 'tuki_voice_cho
     } catch { add('system', 'The setting could not be changed.'); }
   };
 }
+async function loadInstalledVoices() {
+  try {
+    const response = await api('/api/voices');
+    if (response.error) throw Error(response.error);
+    for (const key of ['sapi_voice_contains', 'tuki_sapi_voice_contains']) {
+      const current = $(key).value;
+      $(key).replaceChildren(new Option('Automatic', ''));
+      for (const name of response.voices || []) $(key).add(new Option(name, name));
+      if (current && !(response.voices || []).includes(current)) $(key).add(new Option(current + ' (unavailable)', current));
+      $(key).value = current;
+    }
+    if (!(response.voices || []).length) add('system', 'No system voices were found. Install a Windows voice and refresh this list.');
+  } catch { add('system', 'Could not list installed system voices.'); }
+}
+$('refresh-voices').onclick = loadInstalledVoices;
 for (const [id, assistant] of [['voice-preview', 'jarvis'], ['tuki-voice-preview', 'tuki']]) {
   $(id).onclick = () => api('/api/voice-preview', {assistant}).then(state => {
     if (state.error) add('system', state.error);

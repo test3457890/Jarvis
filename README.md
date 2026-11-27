@@ -134,6 +134,11 @@ least 4.5:1 contrast (7:1 for body text in High contrast). Use the Voice toggle 
 responses, the Mic toggle to pause listening, and Try voice to hear a sample. Jarvis can use a
 Windows voice such as George if installed, or a local Piper voice such as `en_GB-alan-medium`.
 Set the local Piper model path in `python -m jarvis setup` and select Piper in the HUD.
+The HUD can list installed system voices and select a named voice for Jarvis and
+TUKI separately. Choose Automatic to restore the built-in preference order. A
+named British voice appears only if it is installed in Windows. Try voice plays
+a sample and reports the actual voice used; Piper selection uses the separate
+local model paths in Setup.
 
 `python -m jarvis --mode talk --theme simple` opens a minimal talk view. For coding, type
 `/fix budget.py | handle empty input | rules.txt` to select a target and an optional related file.

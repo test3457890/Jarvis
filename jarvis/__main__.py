@@ -90,6 +90,8 @@ class App:
                 "assistant": self.cfg.get("assistant", "auto"),
                 "voice_choice": self.cfg.get("voice_choice", "auto"),
                 "tuki_voice_choice": self.cfg.get("tuki_voice_choice", "auto"),
+                "sapi_voice_contains": self.cfg.get("sapi_voice_contains", ""),
+                "tuki_sapi_voice_contains": self.cfg.get("tuki_sapi_voice_contains", ""),
                 "tuki_piper_available": bool(self.cfg.get("tuki_piper_model")),
                 "piper_available": bool(self.cfg.get("piper_model")),
                 "honorific": self.cfg.get("honorific", "sir"),
@@ -179,6 +181,16 @@ class App:
     def set_preference(self, key, value):
         choices = {"mode": config.MODES, "theme": config.THEMES, "assistant": assistants.CHOICES,
                    "voice_choice": config.VOICE_CHOICES, "tuki_voice_choice": config.VOICE_CHOICES}
+        if key in ("sapi_voice_contains", "tuki_sapi_voice_contains"):
+            from .voice import installed_voice_names
+            if not isinstance(value, str) or (value and value not in installed_voice_names()):
+                raise ValueError("Choose an installed system voice or Automatic.")
+            with self.brain._lock, self._settings_lock:
+                config.save({**self.cfg, key: value})
+                self.cfg[key] = value
+                state = self.state()
+            self.emit("toggles", state)
+            return state
         if key not in choices or value not in choices[key]:
             raise ValueError("Unknown setting.")
         if key == "voice_choice" and value == "piper" and not self.cfg.get("piper_model"):

@@ -41,6 +41,10 @@ def voice_profile(cfg, assistant="jarvis"):
 
 def pick_voice(voices, preferences, avoid=None):
     """Return (voice, matched) from installed voices. voices have .id and .name."""
+    if preferences:
+        for voice in voices:
+            if voice.name.casefold() == preferences[0].casefold() and voice.id != avoid:
+                return voice, True
     for preference in preferences:
         for voice in voices:
             if preference in voice.name.lower() and voice.id != avoid:
@@ -49,6 +53,16 @@ def pick_voice(voices, preferences, avoid=None):
         if voice.id != avoid:
             return voice, False
     return (voices[0] if voices else None), False
+
+
+def installed_voice_names():
+    """Read installed system voice names for the local HUD only."""
+    try:
+        import pyttsx3
+        voices = pyttsx3.init().getProperty("voices")
+        return list(dict.fromkeys(v.name[:120] for v in voices[:64] if isinstance(v.name, str)))
+    except Exception:
+        return []
 
 
 class Speaker:
