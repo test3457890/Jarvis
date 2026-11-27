@@ -28,6 +28,7 @@ completed hardware verification. This pass adds no new screenshots.
 | Document research | With two disposable local sources, run `/research-docs` and check that numbered excerpts match the actual file sections; try with Ollama unavailable and with a malicious instruction in a source. Do not infer research quality from stubbed answers. | Not tested |
 | Combined research | With disposable local notes and one public page, run `/research-all question | https://source-url`, check the URL approval, compare the actual local and public excerpts, cancel once, then try an injected source. Confirm no local excerpt leaves the configured Ollama endpoint. | Not tested |
 | GitHub repository read | Configure a disposable repository and least-privilege token, run `/repo`, cancel once, then approve. Confirm the README matches the repository, no commit is made, and offline and Lockdown modes prevent access. Try a private repository only with authorized read scope. | Not tested |
+| System voice picker | In HUD, list installed voices, choose a real British voice for Jarvis and a distinct voice for TUKI, preview both aloud, restart and verify choices. Remove or disable one voice and check fallback reporting. | Not tested |
 | Daily document checks | Choose a disposable document folder, add a 1-minute-ahead query, check first-run baseline, edit a match before the next day, then verify one HUD notification. Pause/resume/delete and restart Jarvis to check saved state. Try with an unsafe document and search permission Ask. Schedule uses the PC's local clock and runs only while Jarvis is open. | Not tested |
 | Planner | Add/edit/complete tasks, Plan my week, View week, all-day/free events, deadline buffers, export and optional private Canvas sync. | Not tested |
 | Daily briefing | Choose a time a minute ahead and turn speech off, observe one HUD digest with no sound, then use Read briefing to replay. Turn speech on and verify real output next day; disable the automatic digest and confirm no scheduled notification. | Not tested |
@@ -43,3 +44,12 @@ control audit for repeatable fixture coverage and the table above for real hardw
 Full production dependency vulnerability resolution, code signing and device-specific
 model/audio performance are still separate release work. Never infer safety from
 a fixture-only green check or disable protections to make installation succeed.
+
+## Manual input, compact layout and local workflows
+
+- Hold and release the record button and Ctrl+Shift+Space with the HUD focused. Verify the local transcript appears without sending, editing works, and Use in message preserves existing text.
+- Record while pausing Mic, pressing Stop/Escape, changing input mode, and switching windows. Confirm no cancelled text appears later. Hold longer than 25 seconds and verify automatic completion. Check the speech model unavailable error.
+- Select Hold to record only and verify nearby wake phrases do not run commands or create room context. The input stream remains open; this setting controls processing.
+- Toggle Compact view, reload, test all approval controls, inspect at 200% zoom and navigate with a keyboard and screen reader.
+- Save a local workflow with tasks, schedule, calculation and a disposable document query. Decline a preview, then run it. Check each actual result, export JSON, Stop and resume, restart and resume, and delete results. Disable a step or set it to Ask and verify the run blocks.
+- Status for all these Windows hardware checks: Not tested.

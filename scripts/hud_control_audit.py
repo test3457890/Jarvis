@@ -176,6 +176,84 @@ def audit(app, cfg, code, files, url):
             page.wait_for_timeout(400)
             expect(page.locator("#wizard")).to_be_hidden()
 
+        @check("Compact view", "toggle, reload, return to full view", "view is saved without changing assistant mode")
+        def _():
+            mode = app.cfg["mode"]
+            page.locator("#compact-view").click()
+            expect(page.locator("body")).to_have_attribute("data-compact", "true")
+            expect(page.locator(".col.left")).to_be_hidden()
+            page.reload()
+            page.wait_for_function("es.readyState === EventSource.OPEN")
+            expect(page.locator("body")).to_have_attribute("data-compact", "true")
+            page.locator("#compact-view").click()
+            assert app.cfg["mode"] == mode
+
+        @check("Manual voice preview", "hold, release, review, copy to message, cancel", "transcript never submits itself")
+        def _():
+            import numpy as np
+            from types import SimpleNamespace
+            from jarvis import voice
+            with patch.object(voice, "load_whisper", lambda cfg: SimpleNamespace(transcribe=lambda *a, **kw:
+                    ([SimpleNamespace(text="review this transcript", no_speech_prob=0)], None))):
+                app.listener = voice.Listener(cfg, None, lambda *a: (_ for _ in ()).throw(AssertionError("dictation executed")), app.emit)
+            try:
+                page.evaluate("api('/api/state').then(setToggles)")
+                page.locator("#voice_input_mode").select_option("manual")
+                until(lambda: cfg["voice_input_mode"] == "manual")
+                count = page.locator("#log .user").count()
+                button = page.locator("#record-voice")
+                button.hover()
+                page.mouse.down()
+                until(lambda: app.listener._manual is not None)
+                app.listener._receive(np.ones((16000, 1), dtype="float32"))
+                page.mouse.up()
+                expect(page.locator("#dictation-text")).to_have_value("review this transcript")
+                assert page.locator("#log .user").count() == count
+                page.locator("#dictation-use").click()
+                expect(page.locator("#q")).to_have_value("review this transcript")
+                assert page.locator("#log .user").count() == count
+                page.locator("#q").fill("")
+                page.keyboard.down("Control")
+                page.keyboard.down("Shift")
+                page.keyboard.down("Space")
+                until(lambda: app.listener._manual is not None)
+                page.keyboard.press("Escape")
+                page.keyboard.up("Space")
+                page.keyboard.up("Shift")
+                page.keyboard.up("Control")
+                until(lambda: app.listener._manual is None)
+                expect(page.locator("#dictation")).to_be_hidden()
+            finally:
+                app.listener.cancel_manual()
+                app.listener = None
+                page.evaluate("api('/api/state').then(setToggles)")
+
+        @check("Local workflows", "save, preview, run, export and delete", "real calculation result and persisted completion")
+        def _():
+            page.locator("#workflows summary").first.click()
+            page.locator("#workflow-name").fill("Audit calculation")
+            page.locator("#workflow-kind").select_option("calculate")
+            page.locator("#workflow-value").fill("12 * 3")
+            page.locator("#workflow-add-step").click()
+            page.locator("#workflow-create button").last.click()
+            expect(page.locator("#workflow-list")).to_contain_text("Audit calculation")
+            answers["accept"] = False
+            page.get_by_role("button", name="Review and run", exact=True).click()
+            assert not app.workflows_operation()["runs"]
+            answers["accept"] = True
+            page.get_by_role("button", name="Review and run", exact=True).click()
+            expect(page.locator("#workflow-runs")).to_contain_text("completed (1/1 steps)")
+            page.locator("#workflow-runs summary").click()
+            expect(page.locator("#workflow-runs pre")).to_contain_text("12 * 3 = 36")
+            with page.expect_download() as downloaded:
+                page.get_by_role("button", name="Export results", exact=True).click()
+            assert downloaded.value.suggested_filename.startswith("Jarvis-Workflow-")
+            page.get_by_role("button", name="Delete results", exact=True).click()
+            expect(page.locator("#workflow-runs")).to_be_empty()
+            page.get_by_role("button", name="Delete workflow", exact=True).click()
+            expect(page.locator("#workflow-list")).to_be_empty()
+            page.locator("#workflows summary").first.click()
+
         # ---------------------------------------------------------------- header controls
         @check("Mode menu", "select each mode", "body, app state and saved config change; Talk hides tools")
         def _():

@@ -18,7 +18,7 @@ import threading
 import time
 import webbrowser
 
-from . import appactions, assistants, config, connections, documents, extensions, filejobs, images, net, nomad, planner, recovery, secure, setupwizard, skills, watchchecks
+from . import appactions, assistants, config, connections, documents, extensions, filejobs, images, net, nomad, planner, recovery, secure, setupwizard, skills, watchchecks, workflows
 from .brain import Brain
 from .memory import Memory
 
@@ -31,6 +31,9 @@ class App:
         self.memory = Memory()
         watchchecks.init_db(self.memory)
         self.brain = Brain(cfg, self.memory)
+        workflows.init_db(self.memory)
+        self._workflow_cancelled = threading.Event()
+        self._workflow_lock = threading.Lock()
         self._settings_lock = threading.Lock()
         self._turn_lock = threading.Lock()
         self._stream_spoken = 0
@@ -78,6 +81,7 @@ class App:
         return {"status": self.status, "speak_replies": bool(self.cfg.get("speak_replies")),
                 "mic_on": bool(self.listener and not self.listener.paused.is_set()),
                 "voice_available": self.listener is not None, "voice_error": self.voice_error,
+                "voice_input_mode": self.cfg.get("voice_input_mode", "wake"),
                 "lockdown": bool(self.cfg.get("lockdown")),
                 "internet": bool(self.cfg.get("allow_internet_tools")),
                 "web_search": bool(self.cfg.get("allow_web_search") and secure.has_secret("brave_search_key")),
@@ -90,6 +94,8 @@ class App:
                 "assistant": self.cfg.get("assistant", "auto"),
                 "voice_choice": self.cfg.get("voice_choice", "auto"),
                 "tuki_voice_choice": self.cfg.get("tuki_voice_choice", "auto"),
+                "sapi_voice_contains": self.cfg.get("sapi_voice_contains", ""),
+                "tuki_sapi_voice_contains": self.cfg.get("tuki_sapi_voice_contains", ""),
                 "tuki_piper_available": bool(self.cfg.get("tuki_piper_model")),
                 "piper_available": bool(self.cfg.get("piper_model")),
                 "honorific": self.cfg.get("honorific", "sir"),
@@ -178,7 +184,18 @@ class App:
 
     def set_preference(self, key, value):
         choices = {"mode": config.MODES, "theme": config.THEMES, "assistant": assistants.CHOICES,
-                   "voice_choice": config.VOICE_CHOICES, "tuki_voice_choice": config.VOICE_CHOICES}
+                   "voice_choice": config.VOICE_CHOICES, "tuki_voice_choice": config.VOICE_CHOICES,
+                   "voice_input_mode": ("wake", "manual")}
+        if key in ("sapi_voice_contains", "tuki_sapi_voice_contains"):
+            from .voice import installed_voice_names
+            if not isinstance(value, str) or (value and value not in installed_voice_names()):
+                raise ValueError("Choose an installed system voice or Automatic.")
+            with self.brain._lock, self._settings_lock:
+                config.save({**self.cfg, key: value})
+                self.cfg[key] = value
+                state = self.state()
+            self.emit("toggles", state)
+            return state
         if key not in choices or value not in choices[key]:
             raise ValueError("Unknown setting.")
         if key == "voice_choice" and value == "piper" and not self.cfg.get("piper_model"):
@@ -188,6 +205,11 @@ class App:
         with self.brain._lock, self._settings_lock:
             config.save({**self.cfg, key: value})
             self.cfg[key] = value
+            if key == "voice_input_mode" and self.listener:
+                paused = self.listener.paused.is_set()
+                self.listener.pause()
+                if not paused:
+                    self.listener.resume()
             if key == "mode" and value == "talk" and self.brain.ctx.pending:
                 self.brain.confirm_pending(False)
             state = self.state()
@@ -211,12 +233,81 @@ class App:
 
     def stop(self):
         self.brain.cancelled.set()
+        self._workflow_cancelled.set()
+        if self.listener:
+            self.listener.cancel_manual()
         if self.speaker:
             self.speaker.stop()
         self.brain.ctx.pending = None
         self.emit("pending", None)
         self.emit("stream", "")
         return {"ok": True}
+
+    def dictation_operation(self, data):
+        if not self.listener:
+            raise ValueError("Voice input is unavailable. Check microphone setup first.")
+        action = data.get("action")
+        if action == "start":
+            return self.listener.begin_manual()
+        if action == "finish" and isinstance(data.get("id"), str):
+            return self.listener.finish_manual(data["id"])
+        if action == "cancel":
+            self.listener.cancel_manual()
+            return {"ok": True}
+        raise ValueError("Choose start, finish or cancel recording.")
+
+    def workflows_operation(self, data=None):
+        with self._workflow_lock:
+            if data is not None:
+                action = data.get("action")
+                key = data.get("id")
+                if action == "save":
+                    workflows.save_template(self.memory, data.get("name"), data.get("steps"))
+                elif action in ("delete", "delete_run") and data.get("confirmed") is True:
+                    workflows.delete(self.memory, "workflows" if action == "delete" else "workflow_runs", key)
+                elif action in ("run", "resume"):
+                    if self.cfg.get("lockdown"):
+                        raise ValueError("Turn off Lockdown before running a workflow.")
+                    if data.get("confirmed") is not True:
+                        raise ValueError("Review every step and confirm the workflow preview.")
+                    if not isinstance(key, str):
+                        raise ValueError("Choose a saved workflow or run.")
+                    if not self._turn_lock.acquire(blocking=False):
+                        raise ValueError("Jarvis is working. Use Stop and wait for the current task to end.")
+                    run_id = None
+                    try:
+                        if action == "run":
+                            run_id = workflows.create_run(self.memory, key, data.get("revision"))
+                        else:
+                            run = workflows.get_run(self.memory, key)
+                            if run["state"] not in ("cancelled", "interrupted", "failed", "blocked"):
+                                raise ValueError("Only an interrupted or blocked run can be resumed.")
+                            if data.get("revision") != run["revision"]:
+                                raise ValueError("Review the current run preview before resuming.")
+                            run_id = key
+                            workflows.update(self.memory, run_id, state="running", error="")
+                        self._workflow_cancelled.clear()
+                        self.emit("status", "working")
+                        threading.Thread(target=self._run_workflow, args=(run_id,), daemon=True).start()
+                    except BaseException:
+                        if run_id:
+                            workflows.update(self.memory, run_id, state="failed", error="Could not start the workflow worker.")
+                        self._turn_lock.release()
+                        raise
+                else:
+                    raise ValueError("Choose a workflow action and confirm deletion or execution.")
+            return {"templates": workflows.list_templates(self.memory), "runs": workflows.list_runs(self.memory)}
+
+    def _run_workflow(self, run_id):
+        try:
+            # Recovery and model operations already share this lock. A restore cannot
+            # replace the run database halfway through a workflow step.
+            with self.brain._lock:
+                workflows.execute(self.memory, self.cfg, run_id, self._workflow_cancelled,
+                                  lambda: self.emit("workflow", {"id": run_id}))
+        finally:
+            self._turn_lock.release()
+            self.emit("status", "listening" if self.listener else "idle")
 
     def _stream_reply(self, text):
         self.emit("stream", text)

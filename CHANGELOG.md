@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Local hold-to-record with a focused-page shortcut, manual input mode, editable transcript preview, capture limits and cancellation.
+- Saved compact HUD view, skip link and reduced-motion handling.
+- Confirmed local workflows with fixed read tools, persisted step checkpoints, Stop/resume, JSON export and result deletion.
+- Tests cover cancellation races, workflow recovery, permission enforcement, stale previews and HTTP session boundaries. Windows microphone, screen-reader and real-model verification remain outstanding.
+
 All notable changes to Jarvis. Each release adds a section here before it is tagged.
 
 ## 1.3.0

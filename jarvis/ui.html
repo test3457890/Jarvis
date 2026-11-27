@@ -258,9 +258,31 @@
   #apps-form label.inline { display:flex; gap:8px; align-items:center; }
   #apps-form label.inline input { flex:0 0 auto; width:auto; }
   #apps-status, #ext-status { color:var(--dim); font-size:13px; white-space:pre-wrap; }
+  :focus-visible { outline:3px solid var(--cyan2); outline-offset:3px; }
+  .skip-link { position:fixed; left:8px; top:-80px; z-index:100; padding:10px; background:var(--bg); }
+  .skip-link:focus { top:8px; }
+  #dictation { flex:0 0 auto; max-height:36vh; overflow:auto; margin:10px 0; padding:10px; border:1px solid var(--line); }
+  #dictation-text { width:100%; box-sizing:border-box; min-height:90px; font:inherit; }
+  #record-voice { touch-action:none; user-select:none; }
+  #record-voice[aria-pressed=true] { outline:3px solid var(--cyan2); }
+  #workflows { padding:8px 16px; overflow:auto; max-height:40vh; }
+  #workflows input { width:100%; min-width:0; font:inherit; }
+  #workflows label { display:block; margin:6px 0; }
+  #workflows form { display:block; }
+  #workflow-list { overflow-wrap:anywhere; }
+  #workflow-runs pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:320px; overflow:auto; }
+  body[data-compact=true] { overflow:auto; }
+  body[data-compact=true] .app { display:flex; flex-direction:column; height:auto; min-height:100%; max-width:700px; margin:auto; }
+  body[data-compact=true] .col, body[data-compact=true] .brand small,
+  body[data-compact=true] .assistant-name { display:none; }
+  body[data-compact=true] header { flex-wrap:wrap; gap:8px; }
+  body[data-compact=true] .chat { min-height:60vh; flex-shrink:0; }
+  body[data-compact=true] #log { min-height:180px; max-height:40vh; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
 </style>
 </head>
 <body data-state="idle" data-theme="__JARVIS_THEME__" data-mode="__JARVIS_MODE__">
+<a class="skip-link" href="#q">Skip to message</a>
 <div class="grid"></div>
 <div id="boot"><pre id="bootlog"></pre></div>
 <div class="app">
@@ -276,13 +298,17 @@
         <option value="midnight">Midnight</option><option value="paper">Paper</option></select></label>
       <label>Voice <select id="voice_choice"><option value="auto">Automatic</option>
         <option value="windows">Windows</option><option value="piper">Piper</option></select></label>
+      <label>Jarvis system voice <select id="sapi_voice_contains"><option value="">Automatic</option></select></label>
       <button id="voice-preview" type="button">Try voice</button>
       <label>TUKI voice <select id="tuki_voice_choice"><option value="auto">Automatic, different from Jarvis</option>
         <option value="windows">Windows voice</option><option value="piper">Local Piper voice</option></select></label>
+      <label>TUKI system voice <select id="tuki_sapi_voice_contains"><option value="">Automatic</option></select></label>
+      <button id="refresh-voices" type="button">List installed voices</button>
       <button id="tuki-voice-preview" type="button">Try TUKI voice</button>
       <small class="assistant-name">__JARVIS_TUKI_NAME__ · __JARVIS_TUKI_FULL_NAME__</small>
     </div>
     <div class="toggles">
+      <button id="compact-view" type="button" aria-pressed="false">Compact view</button>
       <button id="t-speak" title="Speak replies out loud">Voice</button>
       <button id="t-mic" title="Pause or resume listening">Mic</button>
       <button id="t-internet" title="Allow or block online tools">Internet</button>
@@ -307,6 +333,9 @@
   <section class="panel chat">
     <div class="chat-tools">
       <span id="activity" role="status"></span>
+      <label>Voice input <select id="voice_input_mode"><option value="wake">Wake word</option><option value="manual">Hold to record only</option></select></label>
+      <button id="record-voice" type="button" aria-pressed="false" aria-describedby="dictation-help">Hold to record</button>
+      <span id="dictation-help">Ctrl+Shift+Space while this page is focused. Release to review. Escape cancels.</span>
       <button id="stop-reply" type="button">Stop</button>
       <span id="response-timing"></span>
       <button id="briefing" type="button">Read briefing</button>
@@ -329,6 +358,13 @@
       </div>
     </div>
     <div id="log" role="log" aria-label="Conversation"></div>
+    <section id="dictation" hidden aria-label="Review recorded speech">
+      <p id="dictation-status" role="status"></p>
+      <label for="dictation-text">Transcript preview</label><textarea id="dictation-text" maxlength="4000"></textarea>
+      <button id="dictation-use" type="button">Use in message</button>
+      <button id="dictation-copy" type="button">Copy transcript</button>
+      <button id="dictation-discard" type="button">Discard recording</button>
+    </section>
     <div id="stream-draft" aria-label="Reply draft" hidden></div>
     <div id="pending"><b>AWAITING YOUR AUTHORISATION</b><p id="pending-text"></p>
       <button class="yes" id="p-yes">Confirm</button><button class="no" id="p-no">Cancel</button></div>
@@ -374,6 +410,23 @@
       <p id="backup-status" role="status"></p>
       <p id="memory-status" role="status"></p>
       <div id="memory-list"></div>
+    </details>
+    <details id="workflows" name="assistant-tools">
+      <summary>Local workflows and results</summary>
+      <p>Save up to 10 local read steps. Review all steps before running. Stop cancels at a step checkpoint. Saved results stay on this PC and are included in database backups.</p>
+      <form id="workflow-create">
+        <label>Name<input id="workflow-name" maxlength="80" required></label>
+        <label>Step<select id="workflow-kind"><option value="documents">Search selected documents</option>
+          <option value="schedule">Read saved schedule</option><option value="tasks">Read open tasks</option>
+          <option value="behind">Review deadlines</option><option value="calculate">Calculate</option></select></label>
+        <label>Value<input id="workflow-value" maxlength="500" placeholder="Document query, expression, or today / tomorrow / week"></label>
+        <button id="workflow-add-step" type="button">Add step</button>
+        <ol id="workflow-steps"></ol>
+        <button>Save workflow</button>
+      </form>
+      <button id="workflow-refresh" type="button">Refresh workflows and results</button>
+      <p id="workflow-status" role="status"></p>
+      <div id="workflow-list"></div><div id="workflow-runs"></div>
     </details>
     <details id="setup-panel" name="assistant-tools">
       <summary>Setup</summary>
@@ -615,10 +668,13 @@ function setPending(request) {
   $('pending-text').textContent = request ? 'Jarvis wants to ' + request.text + '.' : '';
 }
 function setToggles(st) {
-  for (const key of ['mode', 'theme', 'voice_choice', 'assistant', 'tuki_voice_choice']) {
+  for (const key of ['mode', 'theme', 'voice_choice', 'assistant', 'tuki_voice_choice', 'voice_input_mode']) {
     if (st[key]) $(key).value = st[key];
   }
   $('tuki_voice_choice').querySelector('[value=piper]').disabled = !st.tuki_piper_available;
+  for (const key of ['sapi_voice_contains', 'tuki_sapi_voice_contains']) {
+    if (st[key] !== undefined) $(key).value = st[key];
+  }
   if (st.mode) document.body.dataset.mode = st.mode;
   if (st.theme) document.body.dataset.theme = st.theme;
   $('voice_choice').querySelector('[value=piper]').disabled = !st.piper_available;
@@ -641,16 +697,19 @@ function setToggles(st) {
   $('t-speak').classList.toggle('off', !st.speak_replies);
   $('t-mic').classList.toggle('off', !st.mic_on); $('t-mic').disabled = !st.voice_available;
   $('t-mic').title = st.voice_available ? 'Pause or resume listening' : 'Voice input unavailable: ' + (st.voice_error || 'starting');
+  $('record-voice').disabled = !st.voice_available || !st.mic_on;
   $('t-lock').classList.toggle('lock-on', !!st.lockdown);
   $('t-lock').textContent = st.lockdown ? 'Lockdown ON' : 'Lockdown';
   if (st.model) $('model').textContent = st.model;
   if (st.pending !== undefined) setPending(st.pending);
 }
-api('/api/state').then(st => { setToggles(st); setState(st.status); });
+api('/api/state').then(st => { setToggles(st); setState(st.status); loadInstalledVoices(); });
 const es = new EventSource('/api/events?key=' + encodeURIComponent(KEY));
 es.onmessage = e => {
   const ev = JSON.parse(e.data);
   if (ev.kind === 'status') setState(ev.data);
+  else if (ev.kind === 'dictation') showDictation(ev.data);
+  else if (ev.kind === 'workflow' && $('workflows').open) loadWorkflows();
   else if (ev.kind === 'heard') $('heard').textContent = '“' + ev.data + '”';
   else if (ev.kind === 'user') add('user', ev.data.text, ev.data.via === 'voice' ? 'spoken' : 'typed');
   else if (ev.kind === 'reply') {
@@ -696,7 +755,8 @@ async function send(text) {
   } catch { add('system', 'Could not reach Jarvis. Check the HUD connection.'); }
   return false;
 }
-for (const key of ['mode', 'theme', 'voice_choice', 'assistant', 'tuki_voice_choice']) {
+for (const key of ['mode', 'theme', 'voice_choice', 'assistant', 'tuki_voice_choice',
+                   'sapi_voice_contains', 'tuki_sapi_voice_contains', 'voice_input_mode']) {
   $(key).onchange = async () => {
     try {
       const state = await api('/api/preferences', {key, value: $(key).value});
@@ -707,6 +767,21 @@ for (const key of ['mode', 'theme', 'voice_choice', 'assistant', 'tuki_voice_cho
     } catch { add('system', 'The setting could not be changed.'); }
   };
 }
+async function loadInstalledVoices() {
+  try {
+    const response = await api('/api/voices');
+    if (response.error) throw Error(response.error);
+    for (const key of ['sapi_voice_contains', 'tuki_sapi_voice_contains']) {
+      const current = $(key).value;
+      $(key).replaceChildren(new Option('Automatic', ''));
+      for (const name of response.voices || []) $(key).add(new Option(name, name));
+      if (current && !(response.voices || []).includes(current)) $(key).add(new Option(current + ' (unavailable)', current));
+      $(key).value = current;
+    }
+    if (!(response.voices || []).length) add('system', 'No system voices were found. Install a Windows voice and refresh this list.');
+  } catch { add('system', 'Could not list installed system voices.'); }
+}
+$('refresh-voices').onclick = loadInstalledVoices;
 for (const [id, assistant] of [['voice-preview', 'jarvis'], ['tuki-voice-preview', 'tuki']]) {
   $(id).onclick = () => api('/api/voice-preview', {assistant}).then(state => {
     if (state.error) add('system', state.error);
@@ -715,6 +790,158 @@ for (const [id, assistant] of [['voice-preview', 'jarvis'], ['tuki-voice-preview
 }
 $('stop-reply').onclick = () => api('/api/stop', {}).catch(() => add('system', 'Could not reach Jarvis.'));
 document.addEventListener('keydown', event => { if (event.key === 'Escape') $('stop-reply').click(); });
+// Recording always ends in a preview. It never submits recognised speech as a command.
+let recordingId = null, recordHeld = false, recordStarting = false, recordCancelled = false;
+function showDictation(data) {
+  $('dictation').hidden = data.state === 'cancelled';
+  $('record-voice').setAttribute('aria-pressed', data.state === 'recording');
+  $('dictation-use').disabled = data.state !== 'preview' || !data.text;
+  $('dictation-copy').disabled = data.state !== 'preview' || !data.text;
+  $('dictation-text').readOnly = data.state !== 'preview';
+  $('dictation-text').value = data.text || '';
+  $('dictation-status').textContent = data.error || ({recording:'Recording locally, up to 25 seconds. Release to review.',
+    transcribing:'Transcribing on this PC...', preview:'Review the transcript before using it.'}[data.state] || 'Recording cancelled.');
+  if (data.state === 'preview' || data.state === 'cancelled') { recordingId = null; recordHeld = false; }
+}
+async function startRecording() {
+  if (recordStarting || recordingId || $('record-voice').disabled || !$('dictation').hidden) return;
+  recordHeld = true; recordStarting = true; recordCancelled = false;
+  try {
+    const result = await api('/api/dictation', {action:'start'});
+    if (result.error) throw Error(result.error);
+    recordingId = result.id;
+    if (recordCancelled) await api('/api/dictation', {action:'cancel'});
+    else if (!recordHeld) await finishRecording();
+  } catch (error) { add('system', error.message || 'Could not start recording.'); recordHeld = false; }
+  finally { recordStarting = false; }
+}
+async function finishRecording() {
+  recordHeld = false;
+  if (!recordingId) return;
+  const id = recordingId;
+  try {
+    const result = await api('/api/dictation', {action:'finish', id});
+    if (result.error) throw Error(result.error);
+  } catch (error) { add('system', error.message || 'Could not end recording. Use Stop to cancel.'); }
+}
+async function discardRecording() {
+  recordCancelled = true; recordHeld = false;
+  showDictation({state:'cancelled'});
+  try { await api('/api/dictation', {action:'cancel'}); }
+  catch { add('system', 'Could not reach Jarvis. Recording ends automatically within 25 seconds.'); }
+}
+$('record-voice').addEventListener('pointerdown', event => {
+  if (event.button !== 0) return;
+  event.preventDefault(); $('record-voice').setPointerCapture(event.pointerId); startRecording();
+});
+$('record-voice').addEventListener('pointerup', finishRecording);
+$('record-voice').addEventListener('pointercancel', discardRecording);
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') { if (recordStarting || recordingId || !$('dictation').hidden) discardRecording(); return; }
+  if (event.code === 'Space' && (event.ctrlKey && event.shiftKey || document.activeElement === $('record-voice'))) {
+    event.preventDefault(); if (!event.repeat) startRecording();
+  }
+});
+document.addEventListener('keyup', event => { if (event.code === 'Space' && recordHeld) finishRecording(); });
+window.addEventListener('blur', () => { if (recordHeld || recordStarting) discardRecording(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && (recordHeld || recordStarting)) discardRecording(); });
+$('dictation-discard').onclick = discardRecording;
+$('dictation-use').onclick = () => {
+  const text = $('dictation-text').value.trim();
+  if ($('q').value.trim()) { $('dictation-status').textContent = 'Your message already contains text. Copy the transcript or clear the message first.'; return; }
+  $('q').value = text; $('q').focus(); discardRecording();
+};
+$('dictation-copy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('dictation-text').value); $('dictation-status').textContent = 'Transcript copied.'; }
+  catch { $('dictation-status').textContent = 'Select the transcript and copy it with Ctrl+C.'; }
+};
+function compactView(enabled) {
+  document.body.dataset.compact = String(enabled);
+  $('compact-view').setAttribute('aria-pressed', enabled);
+  $('compact-view').textContent = enabled ? 'Full view' : 'Compact view';
+  try { localStorage.setItem('jarvis-compact', String(enabled)); } catch {}
+}
+try { compactView(localStorage.getItem('jarvis-compact') === 'true'); } catch {}
+$('compact-view').onclick = () => compactView(document.body.dataset.compact !== 'true');
+const workflowSteps = [];
+function workflowStepText(step) {
+  const label = {documents:'Search selected documents', schedule:'Read saved schedule', tasks:'Read open tasks',
+    behind:'Review deadlines', calculate:'Calculate'}[step.kind] || step.kind;
+  return label + (step.value ? ': ' + step.value : '');
+}
+function renderWorkflowSteps() {
+  $('workflow-steps').replaceChildren();
+  workflowSteps.forEach((step, index) => {
+    const row = el('li', '', workflowStepText(step) + ' '), remove = el('button', '', 'Remove step ' + (index + 1));
+    remove.type = 'button'; remove.onclick = () => { workflowSteps.splice(index, 1); renderWorkflowSteps(); };
+    row.appendChild(remove); $('workflow-steps').appendChild(row);
+  });
+}
+$('workflow-add-step').onclick = () => {
+  if (workflowSteps.length >= 10) { $('workflow-status').textContent = 'A workflow can have at most 10 steps.'; return; }
+  workflowSteps.push({kind:$('workflow-kind').value, value:$('workflow-value').value.trim()});
+  $('workflow-value').value = ''; renderWorkflowSteps();
+};
+async function workflowRequest(data) {
+  const result = await api('/api/workflows', data);
+  if (result.error) throw Error(result.error);
+  return result;
+}
+async function workflowAction(data) {
+  try { await workflowRequest(data); await loadWorkflows(); }
+  catch (error) { $('workflow-status').textContent = error.message || 'Workflow action failed.'; }
+}
+async function loadWorkflows() {
+  try {
+    const result = await workflowRequest();
+    $('workflow-list').replaceChildren(); $('workflow-runs').replaceChildren();
+    $('workflow-status').textContent = `${result.templates.length} saved workflows, ${result.runs.length} saved runs.`;
+    for (const template of result.templates) {
+      const row = el('div'), name = el('h3', '', template.name), steps = el('ol');
+      template.steps.forEach(step => steps.appendChild(el('li', '', workflowStepText(step))));
+      const run = el('button', '', 'Review and run'), remove = el('button', '', 'Delete workflow');
+      run.type = remove.type = 'button';
+      run.onclick = () => {
+        if (window.confirm(`Run ${template.name}?\n\n${template.steps.map((s,i) => `${i+1}. ${workflowStepText(s)}`).join('\n')}\n\nLocal reads only. Results will be saved on this PC.`))
+          workflowAction({action:'run', id:template.id, revision:template.revision, confirmed:true});
+      };
+      remove.onclick = () => { if (window.confirm('Delete this workflow? Saved runs remain available.')) workflowAction({action:'delete', id:template.id, confirmed:true}); };
+      row.append(name, steps, run, remove); $('workflow-list').appendChild(row);
+    }
+    for (const run of result.runs) {
+      const row = el('details'), summary = el('summary', '', `${run.name}: ${run.state} (${run.cursor}/${run.steps.length} steps)`);
+      row.append(summary, el('p', '', run.error));
+      run.results.forEach(result => row.appendChild(el('pre', '', `Step ${result.step}: ${result.kind}\n${result.text}`)));
+      if (['cancelled','interrupted','blocked','failed'].includes(run.state)) {
+        const resume = el('button', '', 'Review and resume'); resume.type = 'button';
+        resume.onclick = () => {
+          if (window.confirm(`Resume ${run.name} from step ${run.cursor+1}?\n\n${run.steps.slice(run.cursor).map(workflowStepText).join('\n')}\n\nCompleted steps will not repeat.`))
+            workflowAction({action:'resume', id:run.id, revision:run.revision, confirmed:true});
+        };
+        row.appendChild(resume);
+      }
+      const download = el('button', '', 'Export results'), remove = el('button', '', 'Delete results');
+      download.type = remove.type = 'button';
+      download.onclick = () => {
+        const url = URL.createObjectURL(new Blob([JSON.stringify(run, null, 2)], {type:'application/json'}));
+        const link = el('a'); link.href = url; link.download = 'Jarvis-Workflow-' + run.id + '.json'; link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      };
+      remove.disabled = run.state === 'running';
+      remove.onclick = () => { if (window.confirm('Delete these saved results? Exported files and older backups remain until you remove them.')) workflowAction({action:'delete_run', id:run.id, confirmed:true}); };
+      row.append(download, remove); $('workflow-runs').appendChild(row);
+    }
+  } catch (error) { $('workflow-status').textContent = error.message || 'Could not load workflows.'; }
+}
+$('workflow-create').onsubmit = async event => {
+  event.preventDefault();
+  try {
+    await workflowRequest({action:'save', name:$('workflow-name').value, steps:workflowSteps});
+    workflowSteps.length = 0; renderWorkflowSteps(); $('workflow-name').value = ''; await loadWorkflows();
+  } catch (error) { $('workflow-status').textContent = error.message || 'Could not save workflow.'; }
+};
+$('workflow-refresh').onclick = loadWorkflows;
+$('workflows').addEventListener('toggle', () => { if ($('workflows').open) loadWorkflows(); });
 $('briefing').onclick = () => send('/briefing');
 $('document-search').onsubmit = event => {
   event.preventDefault();

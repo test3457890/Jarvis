@@ -134,6 +134,11 @@ least 4.5:1 contrast (7:1 for body text in High contrast). Use the Voice toggle 
 responses, the Mic toggle to pause listening, and Try voice to hear a sample. Jarvis can use a
 Windows voice such as George if installed, or a local Piper voice such as `en_GB-alan-medium`.
 Set the local Piper model path in `python -m jarvis setup` and select Piper in the HUD.
+The HUD can list installed system voices and select a named voice for Jarvis and
+TUKI separately. Choose Automatic to restore the built-in preference order. A
+named British voice appears only if it is installed in Windows. Try voice plays
+a sample and reports the actual voice used; Piper selection uses the separate
+local model paths in Setup.
 
 `python -m jarvis --mode talk --theme simple` opens a minimal talk view. For coding, type
 `/fix budget.py | handle empty input | rules.txt` to select a target and an optional related file.
@@ -144,6 +149,42 @@ nearby conversation Jarvis may keep as temporary context (off, 30 seconds or 2 m
 Turning context off or pausing Mic clears that temporary context. A paused mic discards
 incoming speech; it does not close the operating system's input stream. Jarvis still
 requires a wake word when follow-ups are off.
+
+## Deliberate voice input and compact view
+
+Choose Hold to record only in Voice input to disable wake-word and room processing.
+Hold Hold to record, or hold Ctrl+Shift+Space while the HUD page is focused, then
+release to transcribe locally. Recording ends automatically after 25 seconds.
+Review and edit the transcript, then choose Use in message or Copy transcript.
+Using a transcript fills an empty message box; select Send yourself. Existing text is
+never replaced. Stop, Escape, losing page focus, or pausing Mic cancels an active capture.
+Raw samples stay in memory and are discarded after transcription or cancellation.
+The operating system input stream remains open while Mic is paused or manual input is idle.
+This is a page shortcut, not a system-wide hotkey or automatic dictation into other apps.
+
+Compact view hides the side dashboards and keeps conversation and approval controls
+available. It is saved in this browser independently of mode and theme. Keyboard focus
+outlines, a Skip to message link and reduced-motion support are included. This is a
+compact browser layout, not a tray application or always-on-top native window.
+
+## Local workflows and results
+
+Open Local workflows and results, name a workflow, add up to ten steps and save it.
+Supported steps search selected documents, read the saved schedule or open tasks,
+review deadlines, and calculate arithmetic. Schedule values are `today`, `tomorrow`
+or `week`. Task and deadline steps take no value. These steps do not contact online
+services, change your files, or run model-generated code. Each run requires a full
+step preview and confirmation. A tool configured to Ask or Off blocks the workflow;
+run that step directly to use its individual approval flow.
+
+Progress is saved after each completed step. Stop cancels at a checkpoint; an ongoing
+local document read or OCR may finish before cancellation is observed. After a restart,
+review and resume an interrupted run. Completed steps do not repeat. Inputs and up to
+16,000 characters of redacted output per step stay in the local database, including
+source file references returned by document search. Export results as JSON, or delete
+saved runs. Up to 20 workflows and 50 runs can be kept. Exported files and older
+backups remain until you remove them yourself. These are deterministic local workflows,
+not autonomous specialist agents or scheduled external checks.
 
 ## Weekly planner
 

@@ -4,6 +4,7 @@ import collections
 import os
 import queue
 import re
+import secrets
 import subprocess
 import tempfile
 import threading
@@ -41,6 +42,10 @@ def voice_profile(cfg, assistant="jarvis"):
 
 def pick_voice(voices, preferences, avoid=None):
     """Return (voice, matched) from installed voices. voices have .id and .name."""
+    if preferences:
+        for voice in voices:
+            if voice.name.casefold() == preferences[0].casefold() and voice.id != avoid:
+                return voice, True
     for preference in preferences:
         for voice in voices:
             if preference in voice.name.lower() and voice.id != avoid:
@@ -49,6 +54,16 @@ def pick_voice(voices, preferences, avoid=None):
         if voice.id != avoid:
             return voice, False
     return (voices[0] if voices else None), False
+
+
+def installed_voice_names():
+    """Read installed system voice names for the local HUD only."""
+    try:
+        import pyttsx3
+        voices = pyttsx3.init().getProperty("voices")
+        return list(dict.fromkeys(v.name[:120] for v in voices[:64] if isinstance(v.name, str)))
+    except Exception:
+        return []
 
 
 class Speaker:
@@ -228,8 +243,10 @@ class Listener:
         self.follow_until = 0.0
         self.paused = threading.Event()
         self._generation = 0
-        self._audio = queue.Queue()
+        self._audio = queue.Queue(maxsize=64)
         self._stt_lock = threading.Lock()
+        self._manual_lock = threading.RLock()
+        self._manual = None
         words = tuple(dict.fromkeys([*cfg["wake_words"], "tuki"]))
         self._wake = re.compile(r"\b(" + "|".join(map(re.escape, words)) + r")\b[,.!?]*\s*", re.I)
 
@@ -243,12 +260,109 @@ class Listener:
     def pause(self):
         self.paused.set()
         self._generation += 1
+        self.cancel_manual()
         self.clear_context()
         self.follow_until = 0
 
     def resume(self):
         self._generation += 1
         self.paused.clear()
+
+    def begin_manual(self):
+        """Capture at most 25 seconds, then preview locally without issuing a command."""
+        with self._manual_lock:
+            if self.paused.is_set():
+                raise ValueError("Resume Mic before recording.")
+            if self._manual is not None:
+                raise ValueError("A recording or transcription is already active.")
+            if self.speaker and self.speaker.speaking.is_set():
+                raise ValueError("Use Stop before recording while Jarvis is speaking.")
+            self._generation += 1
+            self.follow_until = 0
+            self.clear_context()
+            capture_id = secrets.token_urlsafe(16)
+            timer = threading.Timer(25, self._expire_manual, args=(capture_id,))
+            timer.daemon = True
+            self._manual = {"id": capture_id, "blocks": [], "samples": 0,
+                            "generation": self._generation, "timer": timer, "recording": True}
+            timer.start()
+            self.on_event("dictation", {"state": "recording", "id": capture_id})
+            return {"ok": True, "id": capture_id, "limit_seconds": 25}
+
+    def _expire_manual(self, capture_id):
+        with self._manual_lock:
+            if self._manual and self._manual["id"] == capture_id:
+                self.finish_manual(capture_id)
+
+    def cancel_manual(self):
+        with self._manual_lock:
+            capture, self._manual = self._manual, None
+            if capture:
+                capture["timer"].cancel()
+                capture["blocks"].clear()
+                self._generation += 1
+                self.on_event("dictation", {"state": "cancelled", "id": capture["id"]})
+
+    def finish_manual(self, capture_id):
+        with self._manual_lock:
+            capture = self._manual
+            if not capture or capture["id"] != capture_id:
+                raise ValueError("This recording is no longer active.")
+            if not capture["recording"]:
+                return {"ok": True}
+            capture["recording"] = False
+            capture["timer"].cancel()
+            blocks, capture["blocks"] = capture["blocks"], []
+            self.on_event("dictation", {"state": "transcribing", "id": capture_id})
+        threading.Thread(target=self._preview_manual, args=(capture, blocks), daemon=True).start()
+        return {"ok": True}
+
+    def _preview_manual(self, capture, blocks):
+        text, error = "", ""
+        try:
+            if capture["samples"] < RATE * 0.4:
+                error = "Recording too short. Hold the button while speaking."
+            else:
+                with self._stt_lock:
+                    # A cancelled capture must not start transcription after waiting for the model.
+                    if self._manual is not capture or capture["generation"] != self._generation:
+                        return
+                    segs, _ = self.model.transcribe(np.concatenate(blocks), language="en", beam_size=1,
+                                                  vad_filter=False, condition_on_previous_text=False)
+                    text = " ".join(s.text for s in segs if s.no_speech_prob < 0.7).strip()[:4000]
+                if not text or _HALLUCINATION.fullmatch(text):
+                    text, error = "", "No clear speech detected. Try again."
+        except Exception:
+            error = "Local transcription failed. Check the speech model and microphone."
+        finally:
+            blocks.clear()
+        with self._manual_lock:
+            if (self._manual is not capture or capture["generation"] != self._generation
+                    or self.paused.is_set()):
+                return
+            self._manual = None
+            self._generation += 1
+            self.on_event("dictation", {"state": "preview", "id": capture["id"], "text": text, "error": error})
+
+    def _receive(self, data, *_):
+        # The stream is open while paused, but no sample enters a queue or transcription.
+        with self._manual_lock:
+            if self.paused.is_set() or (self.speaker and self.speaker.speaking.is_set()):
+                return
+            if self._manual is not None:
+                capture = self._manual
+                if capture["recording"] and capture["samples"] < RATE * 25:
+                    block = data[:RATE * 25 - capture["samples"], 0].copy()
+                    capture["blocks"].append(block)
+                    capture["samples"] += len(block)
+                return
+            if self.cfg.get("voice_input_mode", "wake") == "manual":
+                return
+            try:
+                self._audio.put_nowait((data[:, 0].copy(), self._generation))
+            except queue.Full:
+                # Dropping stale input is preferable to an unbounded microphone backlog.
+                pass
 
     def room_context(self) -> str:
         seconds = self.cfg.get("room_context_seconds", 120)
@@ -264,7 +378,7 @@ class Listener:
         import sounddevice as sd
         threading.Thread(target=self._segmenter, daemon=True, name="vad").start()
         with sd.InputStream(samplerate=RATE, channels=1, dtype="float32", blocksize=BLOCK,
-                            callback=lambda data, *_: self._audio.put(data[:, 0].copy())):
+                            callback=self._receive):
             self.on_event("status", "listening")
             while True:
                 time.sleep(1)
@@ -275,9 +389,16 @@ class Listener:
         sens = float(self.cfg.get("mic_sensitivity", 1.0)) or 1.0
         pre = collections.deque(maxlen=10)  # 300 ms of audio before speech starts
         speech, silent_blocks, in_speech = [], 0, False
+        segment_generation = self._generation
         while True:
-            block = self._audio.get()
-            if (self.speaker and self.speaker.speaking.is_set()) or self.paused.is_set():
+            block, generation = self._audio.get()
+            if generation != segment_generation:
+                speech, in_speech, silent_blocks = [], False, 0
+                pre.clear()
+                segment_generation = generation
+            if (generation != self._generation or self._manual is not None
+                    or self.cfg.get("voice_input_mode", "wake") == "manual"
+                    or (self.speaker and self.speaker.speaking.is_set()) or self.paused.is_set()):
                 speech, in_speech, silent_blocks = [], False, 0
                 pre.clear()
                 continue
@@ -297,7 +418,7 @@ class Listener:
                 in_speech, speech = False, []
                 pre.clear()
                 if len(audio) > RATE * 0.4:
-                    threading.Thread(target=self._handle, args=(audio, self._generation), daemon=True).start()
+                    threading.Thread(target=self._handle, args=(audio, generation), daemon=True).start()
 
     def _handle(self, audio, generation=None):
         if self.paused.is_set() or (generation is not None and generation != self._generation):

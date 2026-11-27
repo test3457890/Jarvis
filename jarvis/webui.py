@@ -119,6 +119,9 @@ def serve(app, port: int):
                 return self._json({"error": "forbidden"}, 403)
             if self.path == "/api/state":
                 self._json(app.state())
+            elif self.path == "/api/voices":
+                from .voice import installed_voice_names
+                self._json({"voices": installed_voice_names()})
             elif self.path == "/api/memory":
                 self._json(app.memory_operation())
             elif self.path == "/api/watches":
@@ -139,6 +142,8 @@ def serve(app, port: int):
                 self._json(app.dashboard())
             elif self.path == "/api/activity":
                 self._json(app.activity_operation())
+            elif self.path == "/api/workflows":
+                self._json(app.workflows_operation())
             elif self.path == "/api/connections":
                 self._json(app.connections_operation())
             elif self.path == "/api/models":
@@ -177,6 +182,11 @@ def serve(app, port: int):
                 self._json({"ok": True})
             elif self.path == "/api/stop":
                 self._json(app.stop())
+            elif self.path == "/api/dictation":
+                try:
+                    self._json(app.dictation_operation(data))
+                except ValueError as error:
+                    self._json({"error": str(error)}, 400)
             elif self.path == "/api/toggle":
                 self._json(app.toggle(str(data.get("what", ""))))
             elif self.path == "/api/preferences":
@@ -202,6 +212,11 @@ def serve(app, port: int):
                 except (ValueError, TypeError, OSError) as error:
                     return self._json({"error": str(error)}, 400)
                 self._json(result)
+            elif self.path == "/api/workflows":
+                try:
+                    self._json(app.workflows_operation(data))
+                except (ValueError, TypeError, OSError) as error:
+                    self._json({"error": str(error)}, 400)
             elif self.path == "/api/connections":
                 try:
                     result = app.connections_operation(data)

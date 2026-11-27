@@ -17,7 +17,11 @@ models or audio but has not been verified with real models, a microphone or spea
 | Chat | Jarvis and TUKI routing, streaming, Stop and Escape | Working (stubbed model) | HUD audit, unit tests |
 | Chat | Answer quality and speed with real models | Untested on hardware | `docs/Benchmarks.md` |
 | Voice | Spoken replies, separate TUKI voice | Untested on hardware | Voice selection unit tests only |
+| Voice | Installed system voice list and separate Jarvis/TUKI named selection | Automated tests pass; Windows voice inventory and playback unverified | `tests/test_voice_inventory.py` |
 | Voice | Wake word and microphone input | Untested on hardware | |
+| Voice | Hold-to-record with editable transcript, manual-only mode, page shortcut and cancellation | Automated sample-buffer and cancellation tests; Windows microphone unverified | `tests/test_manual_voice.py`; HUD audit |
+| HUD | Compact browser layout, keyboard focus and skip link | JavaScript syntax checked; browser audit in CI and screen-reader review required | `scripts/hud_control_audit.py` |
+| Workflows | Confirmed local read workflows, checkpoints, resume, export and deletion | Automated tests pass; Windows document/OCR behavior unverified | `tests/test_workflows.py`; HUD audit |
 | Voice | Configurable follow-up and temporary room context; pause clears context and ignores pending transcription | Working in unit tests; untested on microphone hardware | Setup controls, `tests/test_phase3.py` |
 | Voice | Opt-in local `voice-check` diagnostic | Working with stubbed audio; untested on Windows hardware | Requires microphone, local Whisper model and audible speaker confirmation |
 | Voice | "Jarvis, stop" cancels a reply still being prepared; wider hallucination filter | Working (unit tests); untested with a microphone | `tests/test_phase3.py` |

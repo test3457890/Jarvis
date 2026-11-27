@@ -36,6 +36,7 @@ DEFAULTS = {
     # First-run wizard. Existing installs are marked complete when their config loads.
     "setup_complete": False,
     "voice_enabled": True,
+    "voice_input_mode": "wake",  # wake | manual (hold-to-record in the HUD)
     "storage_budget_gb": None,
     # Folders the user explicitly selected for general file tasks. Separate from code_dir.
     "file_folders": [],
