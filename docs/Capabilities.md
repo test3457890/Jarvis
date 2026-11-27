@@ -44,6 +44,7 @@ models or audio but has not been verified with real models, a microphone or spea
 | Recurring checks | Daily selected-folder document query, local last-run state, change-only notification, pause/resume/delete | Working in automated tests; Windows schedule and notification untested | `tests/test_document_watches.py` |
 | Planner | Tasks, weekly plan, Canvas feed | Working | `tests/test_week_planner.py` |
 | Briefing | User-selected local time, automatic show/mute and manual replay | Working in automated tests; real speech unverified | `tests/test_briefing_controls.py` |
+| Models | Optional loopback-only chat-completions server, explicit model ID, bounded completed replies and validated tool calls | Real local HTTP fixtures pass; actual inference/model compatibility unverified | `tests/test_local_provider.py`; `docs/Local Chat Provider.md` |
 | Models | Read-only local Ollama inventory with reported disk sizes and explicit model role selection | Working in automated tests; model compatibility and real timings unverified | `tests/test_model_inventory.py` |
 | Connections | Local built-in service status, declared scopes, and confirmed removal of saved credentials | Working in automated tests; Windows credential storage unverified | `tests/test_connections_status.py` |
 | GitHub | Approved issue list/detail/comment reads and explicitly drafted issue creation in the configured repository | Mocked API tests pass; real token scopes unverified | `tests/test_github_issues.py` |

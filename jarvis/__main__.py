@@ -18,7 +18,7 @@ import threading
 import time
 import webbrowser
 
-from . import appactions, assistants, config, connections, documents, extensions, filejobs, images, net, nomad, planner, recovery, secure, setupwizard, skills, watchchecks, workflows
+from . import appactions, assistants, config, connections, documents, extensions, filejobs, images, localprovider, net, nomad, planner, recovery, secure, setupwizard, skills, watchchecks, workflows
 from .brain import Brain
 from .memory import Memory
 
@@ -88,8 +88,9 @@ class App:
                 "image_generator": bool(net.local_image_endpoint(self.cfg.get("image_generation_url"))),
                 "github_upload": bool(self.cfg.get("github_upload_repo") and secure.has_secret("github_upload_token")),
                 "pending": {"text": pending["preview"], "id": pending.get("id")} if pending else None,
-                "model": (self.cfg.get("coder_model") or self.cfg["model"])
-                if self.cfg.get("mode") == "coding" else self.cfg["model"],
+                "model": self.cfg.get("local_chat_model") if self.cfg.get("chat_provider") == "openai_local" else
+                ((self.cfg.get("coder_model") or self.cfg["model"]) if self.cfg.get("mode") == "coding" else self.cfg["model"]),
+                "chat_provider": self.cfg.get("chat_provider", "ollama"),
                 "mode": self.cfg.get("mode", "everyday"), "theme": self.cfg.get("theme", "hud"),
                 "workspace_view": self.cfg.get("workspace_view", "classic"),
                 "assistant": self.cfg.get("assistant", "auto"),
@@ -155,6 +156,41 @@ class App:
                     'selected': {key:self.cfg.get(key) for key in ('everyday_model', 'model', 'coder_model', 'embed_model')},
                     'profile': self.cfg.get('performance_profile'), 'context_tokens': self.cfg.get('num_ctx'),
                     'note': 'Ollama reports disk size, not RAM or speed. Model role compatibility is not verified.'}
+
+    def provider_operation(self, data=None):
+        with self.brain._lock, self._settings_lock:
+            extra = {}
+            if data is not None:
+                if data.get("action") == "save":
+                    if self.cfg.get("lockdown"):
+                        raise ValueError("Turn off Lockdown to change the chat provider.")
+                    provider = data.get("provider")
+                    if provider not in ("ollama", "openai_local"):
+                        raise ValueError("Choose Ollama or a loopback chat-completions server.")
+                    candidate = {**self.cfg, "chat_provider":provider}
+                    if "url" in data:
+                        candidate["local_chat_url"] = data["url"]
+                    candidate["local_chat_url"] = localprovider.endpoint(candidate)
+                    if "model" in data:
+                        candidate["local_chat_model"] = data["model"]
+                    if provider == "openai_local":
+                        candidate["local_chat_model"] = localprovider.model_name(candidate.get("local_chat_model"))
+                    config.save(candidate)
+                    self.cfg.update(candidate)
+                    self.brain._missing_models.clear()
+                    self.brain._no_tools.clear()
+                    self.brain._no_think.clear()
+                    self.brain._embed_ok = True
+                    self.emit("toggles", self.state())
+                elif data.get("action") == "models":
+                    if self.cfg.get("chat_provider") == "openai_local":
+                        extra["models"] = localprovider.models(self.cfg)
+                    else:
+                        extra["models"] = sorted((setupwizard.installed_ollama(self.cfg) or {}).keys())[:100]
+                else:
+                    raise ValueError("Choose Save provider or List active provider models.")
+            return {"provider":self.cfg.get("chat_provider", "ollama"),
+                    "url":self.cfg.get("local_chat_url"), "model":self.cfg.get("local_chat_model"), **extra}
 
     def toggle(self, what):
         with self._settings_lock:

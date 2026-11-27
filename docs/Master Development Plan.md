@@ -109,6 +109,9 @@ Consider dictation, specialist agents, smart-home/music integrations, mobile acc
 
 ## Current delivery record
 
+- Added a first M02 adapter: explicitly chosen numeric-loopback chat-completions server, model ID and model inventory. Completed responses and tool IDs are validated before the existing tool loop can run. Cloud endpoints, redirects and silent fallback are refused; provider errors do not trigger Ollama fallback. This initial adapter uses one chat/coding model and keyword recall. Real loopback HTTP fixtures pass; installed inference-model compatibility, streaming and authentication remain unverified or unimplemented as documented.
+- Restored all three original generated concept images to `docs/design-concepts/`, clearly labeled as artwork rather than application screenshots. Legacy captures are preserved. The original WebP bytes and SHA-256 values are retained.
+
 - Added further C04 support: approved first-page open-issue listing, bounded issue/comment reads, and explicitly drafted issue publication after reviewing the full destination/title/body. A repository change invalidates approval. Ambiguous create responses do not trigger retries. Tests use fake GitHub responses; real token scopes remain unverified. Push and PR operations remain planned.
 - Added three selectable workspace views: Classic Jarvis, Command Center navigation, and Ambient Intelligence with actual status, active assistant state, optional clock and Mic/Stop/Lockdown controls. Ambient visually hides conversation and pending action details even with Compact view enabled. These are shared-backend browser layouts, not native/mobile clients. Hardware integrations are not fabricated. The new view audit runs in CI.
 

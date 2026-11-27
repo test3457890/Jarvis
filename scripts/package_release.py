@@ -20,6 +20,8 @@ def build(output):
     paths += sorted(p for p in (ROOT / 'docs' / 'examples').rglob('*') if p.is_file())
     paths += [ROOT / 'scripts' / 'measure_document_search.py']
     paths += sorted((ROOT / 'docs' / 'screenshots').glob('*.png'))
+    paths += sorted(p for p in (ROOT / 'docs' / 'design-concepts').glob('*')
+                    if p.is_file() and p.suffix in ('.md', '.webp'))
     files = {str(path.relative_to(ROOT)).replace('\\','/'): path.read_bytes() for path in paths}
     manifest = {'version':__version__, 'files':{name:hashlib.sha256(data).hexdigest() for name,data in files.items()}}
     files['release-manifest.json'] = json.dumps(manifest, indent=2).encode()

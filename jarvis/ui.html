@@ -492,6 +492,16 @@
         <button>Save setup</button>
       </form>
       <p id="setup-status" role="status"></p>
+      <form id="provider-form">
+        <label>Chat provider<select id="chat-provider"><option value="ollama">Ollama</option>
+          <option value="openai_local">Local chat-completions server</option></select></label>
+        <label>Local server address<input id="local-chat-url" value="http://127.0.0.1:8081" maxlength="200"></label>
+        <label>Exact local model ID<input id="local-chat-model" maxlength="200"></label>
+        <button>Save chat provider</button><button id="provider-load" type="button">Load provider settings</button>
+        <button id="provider-models" type="button">List active provider models</button>
+      </form>
+      <p id="provider-status" role="status"></p>
+      <p class="hint">The optional server must use 127.0.0.1 on this PC. Save before listing its models. It receives chat and approved tool context, uses one model for chat and coding, returns completed replies, and uses keyword memory recall. Images and speech retain their separate setup. No cloud fallback.</p>
       <form id="repository-select">
         <label>Existing local Git repository for Coding mode<input id="repository-path" type="text" placeholder="C:\\Users\\you\\Projects\\MyApp" maxlength="1000" required></label>
         <button>Select repository</button>
@@ -1197,6 +1207,24 @@ async function repository(data) {
   } catch (error) { $('repository-status').textContent = error.message || 'Could not select repository.'; }
 }
 $('repository-select').onsubmit = event => { event.preventDefault(); repository({action:'select', path:$('repository-path').value}); };
+async function providerSettings(data) {
+  try {
+    const result = await api('/api/provider', data);
+    if (result.error) throw Error(result.error);
+    $('chat-provider').value = result.provider;
+    $('local-chat-url').value = result.url || '';
+    $('local-chat-model').value = result.model || '';
+    $('provider-status').textContent = 'Active chat provider: ' + result.provider +
+      (result.models ? '. Reported model IDs: ' + (result.models.join(', ') || 'none') : '. Changes apply to the next request.');
+  } catch (error) { $('provider-status').textContent = error.message || 'Could not change or inspect the local provider.'; }
+}
+$('provider-load').onclick = () => providerSettings();
+$('provider-models').onclick = () => providerSettings({action:'models'});
+$('provider-form').onsubmit = event => {
+  event.preventDefault();
+  providerSettings({action:'save', provider:$('chat-provider').value, url:$('local-chat-url').value,
+    model:$('local-chat-model').value});
+};
 $('repository-reset').onclick = () => repository({action:'reset'});
 repository();
 async function models(data) {

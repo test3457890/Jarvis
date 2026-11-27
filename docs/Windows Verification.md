@@ -59,3 +59,7 @@ a fixture-only green check or disable protections to make installation succeed.
 - Select Classic, Command Center and Ambient; restart to confirm the choice persists. Test Compact followed by Ambient and confirm conversation and action details remain hidden. Verify active TUKI color, real listening/speaking status, clock toggle, keyboard navigation, reduced motion, Stop, Mic and Lockdown. Ambient does not mute speech or lock Windows.
 - With a disposable repository, verify `/issues`, `/issue NUMBER` and cancelled approvals. Test offline, Lockdown, a repository change and insufficient token scopes. Draft a disposable issue with `/new-issue title | body`, review the full text, cancel once and publish once. Confirm no duplicate request after a timeout. Do not test on another person's repository.
 - Real Windows hardware and real account verification for this increment: Not tested.
+
+## Optional local chat provider
+
+Follow `Local Chat Provider.md` with an authorized local server and compatible model. Verify actual reply quality, model label, harmless calculator round trip, coding diff preview, cancellation, provider failure without fallback and switching back to preserved Ollama role settings. The adapter's HTTP fixtures and configuration controls do not establish inference quality. Status: Not tested on real inference hardware.

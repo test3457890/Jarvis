@@ -54,6 +54,10 @@ def allowed_endpoints(cfg: dict) -> set[tuple[str, str, int]]:
     ollama = _parse_endpoint(cfg.get("ollama_url", "http://127.0.0.1:11434"))
     if ollama:
         allowed.add(ollama)
+    if cfg.get("chat_provider") == "openai_local":
+        local_chat = local_image_endpoint(cfg.get("local_chat_url"))
+        if local_chat:
+            allowed.add(_parse_endpoint(local_chat))
 
     nomad = _parse_endpoint(cfg.get("nomad_url", "http://127.0.0.1:8080"))
     if nomad:

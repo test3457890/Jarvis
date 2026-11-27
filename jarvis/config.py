@@ -58,6 +58,9 @@ DEFAULTS = {
     # Small local model used to turn memories into vectors for smarter recall.
     "embed_model": "nomic-embed-text",
     "ollama_url": "http://127.0.0.1:11434",
+    "chat_provider": "ollama",
+    "local_chat_url": "http://127.0.0.1:8081",
+    "local_chat_model": "",
     # Speech recognition (faster-whisper). tiny.en / base.en / small.en / medium.en
     "whisper_model": "small.en",
     "whisper_device": "auto",  # auto | cuda | cpu

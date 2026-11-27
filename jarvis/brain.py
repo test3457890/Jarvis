@@ -7,7 +7,7 @@ import time
 import urllib.error
 import urllib.request
 
-from . import assistants, coder, net, online, planner, secure, skills, filejobs
+from . import assistants, coder, net, online, planner, secure, skills, filejobs, localprovider
 
 _YES = re.compile(r"^\W*(yes|yeah|yep|yup|sure|do it|confirm(ed)?|go ahead|affirmative|please do|ok(ay)?)\b", re.I)
 _NO = re.compile(r"^\W*(no|nope|cancel|stop|don'?t|never ?mind|abort)\b", re.I)
@@ -44,6 +44,15 @@ class Brain:
 
     # ------------------------------------------------------------ Ollama plumbing
     def _post(self, path, payload, timeout=300):
+        if self.cfg.get("chat_provider", "ollama") not in ("ollama", "openai_local"):
+            raise OllamaError("Unknown chat provider. Select a supported local provider in Setup.")
+        if path == "/api/chat" and self.cfg.get("chat_provider") == "openai_local":
+            try:
+                result = localprovider.chat(self.cfg, payload, self.cancelled, self.on_metrics, timeout)
+                self.model_used = self.cfg["local_chat_model"]
+                return result
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                raise OllamaError(f"Local chat provider: {error}") from None
         req = urllib.request.Request(self.cfg["ollama_url"].rstrip("/") + path,
                                      data=json.dumps(payload).encode(),
                                      headers={"Content-Type": "application/json"})
@@ -113,11 +122,15 @@ class Brain:
                                      "thinking": thinking, "tool_calls": calls}}
 
     def installed_models(self) -> list:
+        if self.cfg.get("chat_provider") == "openai_local":
+            return localprovider.models(self.cfg)
         req = urllib.request.Request(self.cfg["ollama_url"].rstrip("/") + "/api/tags")
         with net.urlopen(req, self.cfg, timeout=5, purpose="ollama_tags") as r:
             return [m["name"] for m in json.loads(r.read().decode()).get("models", [])]
 
     def embed(self, text):
+        if self.cfg.get("chat_provider") == "openai_local":
+            return None  # Keyword recall; no silent dependency on a second model provider.
         if not self._embed_ok or not self.cfg.get("memory_embeddings", True):
             return None
         try:
@@ -136,7 +149,7 @@ class Brain:
         if result.get("done_reason") == "length":
             raise OllamaError("The coding model reached its output limit. Try a smaller change.")
         msg = result["message"]
-        self.model_used = payload["model"]
+        self.model_used = self.cfg["local_chat_model"] if self.cfg.get("chat_provider") == "openai_local" else payload["model"]
         return _THINK.sub("", msg.get("content", "")).strip()
 
     def _chat(self, messages, use_tools):
@@ -626,7 +639,10 @@ class Brain:
                         return self.ctx.pending["preview"] + ". Use Confirm or cancel."
                     if name in ("fix_code", "write_code") and "Preview only." in result and self.ctx.code_proposal:
                         return result.removeprefix(secure.UNTRUSTED_NOTE).removesuffix(secure.UNTRUSTED_END)
-                    messages.append({"role": "tool", "tool_name": fn.get("name", ""), "content": result})
+                    tool_message = {"role":"tool", "tool_name":fn.get("name", ""), "content":result}
+                    if call.get("id"):
+                        tool_message["tool_call_id"] = call["id"]
+                    messages.append(tool_message)
             msg = self._chat(messages, use_tools=False)
             return _THINK.sub("", msg.get("content", "")).strip() or "Done."
         except OllamaError as e:

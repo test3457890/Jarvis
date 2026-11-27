@@ -36,6 +36,7 @@ def server(monkeypatch):
     app = SimpleNamespace(cfg={}, bus=webui.EventBus(), state=lambda: {'fixture': True},
                           toggle=lambda value: {'toggle': value},
                           dictation_operation=lambda data: {'action':data.get('action')},
+                          provider_operation=lambda data=None: {'provider':'ollama'},
                           workflows_operation=lambda data=None: {'templates':[], 'runs':[]})
     with socket.socket() as probe:
         probe.bind(('127.0.0.1', 0))
@@ -85,7 +86,8 @@ def test_valid_json_and_private_response_caching(server):
     assert cache == 'no-store'
 
 
-@pytest.mark.parametrize('method,path', [('POST','/api/dictation'), ('POST','/api/workflows'), ('GET','/api/workflows')])
+@pytest.mark.parametrize('method,path', [('POST','/api/dictation'), ('POST','/api/workflows'), ('GET','/api/workflows'),
+                                        ('GET','/api/provider'), ('POST','/api/provider')])
 @pytest.mark.parametrize('credential', ['missing', 'foreign-origin', 'valid'])
 def test_new_local_actions_require_session_key_and_same_origin(server, method, path, credential):
     port, key = server
@@ -101,7 +103,8 @@ def test_new_local_actions_require_session_key_and_same_origin(server, method, p
         payload = json.loads(response.read())
         assert response.status == (200 if credential == 'valid' else 403)
         if credential == 'valid':
-            assert payload == ({'action':'start'} if path == '/api/dictation' else {'templates':[], 'runs':[]})
+            expected = {'action':'start'} if path == '/api/dictation' else {'provider':'ollama'} if path == '/api/provider' else {'templates':[], 'runs':[]}
+            assert payload == expected
         assert response.getheader('Cache-Control') == 'no-store'
     finally:
         connection.close()

@@ -46,3 +46,9 @@ The project is not finished. See `Master Development Plan.md` for the full inven
 PR #37 at `63bf65042986b484ce2f550f700dbe00353f0889` passed all four GitHub CI jobs: Ubuntu tests, Windows tests, full Windows installation/first launch, and browser HUD audit. This establishes automated Windows installation and browser behavior, not real microphone/model quality.
 
 The follow-up branch `feature/workspace-views-and-github` adds the three selectable browser workspace views and approved GitHub issue list/read/create operations, plus repository-change approval invalidation. Its own CI results must be checked separately. GitHub push/PR tools, native tray/global hotkeys, the remaining account connectors and broader Phase 2 work remain outstanding.
+
+## Local chat-provider and design-reference follow-up
+
+PR #38 at `8b5847fa071d02daa1238c4a3d4d333122e892f1` passed all four GitHub CI jobs, including the workspace-view browser checks. Its CI artifacts contain the initial Command Center and Ambient application captures using synthetic test data.
+
+The next branch adds a numeric-loopback-only chat-completions adapter with a selected model ID, saved setup, real HTTP fixture tests, strict completed-tool parsing and no automatic fallback. It does not establish real inference quality or performance. The three original design concepts are also restored without altering their source bytes. All other outstanding roadmap entries retain their documented status.

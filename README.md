@@ -15,7 +15,7 @@ real Ollama, NOMAD, audio, image-generation or Windows hardware behavior.
 
 ## Screenshots
 
-[View all 18 screenshots](docs/screenshots/README.md). Includes the planner, setup, mobile layouts, and control audit.
+[View all 18 legacy screenshots](docs/screenshots/README.md). See the separately labeled [original design concepts](docs/design-concepts/README.md). Includes the planner, setup, mobile layouts, and control audit.
 
 | Boot sequence | HUD | Confirmation banner |
 |---|---|---|
@@ -209,6 +209,15 @@ provider permissions, including Issues write only if you want issue creation. Th
 commands do not grant scopes or perform Git pushes or pull-request operations.
 If the create response is lost, check GitHub before retrying; Jarvis makes no automatic
 retry that could create duplicate issues. Real private-repository scopes remain unverified.
+
+## Optional local chat provider
+
+Ollama is the default. Setup also supports an explicitly selected loopback-only
+chat-completions server, one exact local model ID, and a model-list check. Completed
+replies and validated tool calls use the same permissions and confirmation controls.
+The adapter uses keyword memory recall and has no cloud fallback. Its protocol tests
+use a real loopback fixture; an actual inference server/model still needs verification.
+See the [local provider guide](docs/Local%20Chat%20Provider.md) for setup and limits.
 
 ## Weekly planner
 

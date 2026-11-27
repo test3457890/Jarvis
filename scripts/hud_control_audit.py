@@ -188,6 +188,27 @@ def audit(app, cfg, code, files, url):
             page.locator("#compact-view").click()
             assert app.cfg["mode"] == mode
 
+        @check("Local provider settings", "save local settings, reject remote URL, restore Ollama", "explicit local model shown and no remote configuration accepted")
+        def _():
+            page.locator("#setup-panel summary").first.click()
+            page.locator("#provider-load").click()
+            expect(page.locator("#provider-status")).to_contain_text("ollama")
+            page.locator("#chat-provider").select_option("openai_local")
+            page.locator("#local-chat-url").fill("http://127.0.0.1:8081")
+            page.locator("#local-chat-model").fill("audit-local-model")
+            page.locator("#provider-form button").first.click()
+            expect(page.locator("#provider-status")).to_contain_text("openai_local")
+            assert cfg["chat_provider"] == "openai_local"
+            page.locator("#local-chat-url").fill("https://remote.invalid")
+            page.locator("#provider-form button").first.click()
+            expect(page.locator("#provider-status")).to_contain_text("127.0.0.1")
+            assert cfg["local_chat_url"] == "http://127.0.0.1:8081"
+            page.locator("#local-chat-url").fill("http://127.0.0.1:8081")
+            page.locator("#chat-provider").select_option("ollama")
+            page.locator("#provider-form button").first.click()
+            expect(page.locator("#provider-status")).to_contain_text("ollama")
+            page.locator("#setup-panel summary").first.click()
+
         @check("Workspace views", "Command Center and Ambient, then Classic", "shared settings and no private text in Ambient")
         def _():
             mode, theme = cfg["mode"], cfg["theme"]

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Optional loopback-only chat-completions adapter with explicit configuration, bounded complete responses, validated tool IDs and existing approvals; no cloud fallback.
+- Restore the three original concept images separately from actual application captures and retain legacy screenshots.
+
 - Select Classic, Command Center and Ambient workspace views independently of mode and theme, using shared state and existing permissions.
 - List/read GitHub issues and preview a manually drafted issue before publication. Destination changes invalidate approvals; ambiguous creation responses are not retried.
 

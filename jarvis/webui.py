@@ -149,6 +149,8 @@ def serve(app, port: int):
                 self._json(app.connections_operation())
             elif self.path == "/api/models":
                 self._json(app.models_operation())
+            elif self.path == "/api/provider":
+                self._json(app.provider_operation())
             else:
                 self._json({"error": "not found"}, 404)
 
@@ -216,6 +218,11 @@ def serve(app, port: int):
             elif self.path == "/api/workflows":
                 try:
                     self._json(app.workflows_operation(data))
+                except (ValueError, TypeError, OSError) as error:
+                    self._json({"error": str(error)}, 400)
+            elif self.path == "/api/provider":
+                try:
+                    self._json(app.provider_operation(data))
                 except (ValueError, TypeError, OSError) as error:
                     self._json({"error": str(error)}, 400)
             elif self.path == "/api/connections":
