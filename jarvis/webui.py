@@ -137,6 +137,8 @@ def serve(app, port: int):
                 self._json(app.extensions_operation())
             elif self.path == "/api/dashboard":
                 self._json(app.dashboard())
+            elif self.path == "/api/activity":
+                self._json(app.activity_operation())
             else:
                 self._json({"error": "not found"}, 404)
 

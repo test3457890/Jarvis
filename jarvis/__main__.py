@@ -107,6 +107,9 @@ class App:
         data["state"] = self.state()
         return data
 
+    def activity_operation(self):
+        return secure.recent_activity()
+
     def toggle(self, what):
         with self._settings_lock:
             return self._toggle(what)

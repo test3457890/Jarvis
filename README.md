@@ -424,6 +424,15 @@ Export remembered facts downloads a JSON copy to your browser's download folder.
 manage remembered facts. The saved conversation history is separate, and prior conversation
 can still contain a fact you deleted. Backup, restore, and conversation deletion are available in the same panel.
 
+## Activity timeline
+
+Open Activity timeline in the HUD to review up to 50 recent local actions and blocked
+requests. The view shows a time, action, limited target and an undo hint when one
+applies. It does not display raw message bodies, source excerpts, tool results or
+secrets. Jarvis keeps the local `actions.log` for troubleshooting; newly logged
+approved tools record field names instead of raw arguments and results. Existing
+older log entries are not rewritten, so review the file itself before sharing it.
+
 ## Existing Git repository in Coding mode
 
 In Setup, choose an existing local Git repository as the Coding mode workspace. Jarvis
