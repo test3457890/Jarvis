@@ -420,6 +420,11 @@ the instruction injection screen does not generate a change notification. Search
 permissions set to Ask or Off prevent unattended checks.
 
 Use Review remembered facts to edit or delete individual facts. Deletion requires confirmation.
+The memory list also shows when each fact was saved and whether it came through Jarvis's
+memory tool or predates source tracking. Set an expiration date for a fact, or choose
+Never expire. While Jarvis runs, expired facts are deleted from local storage and are
+excluded from recall. Expiration is checked on startup, when facts are accessed, and
+by the background watchdog. Choose a future date on this computer's local clock.
 Export remembered facts downloads a JSON copy to your browser's download folder. These controls
 manage remembered facts. The saved conversation history is separate, and prior conversation
 can still contain a fact you deleted. Backup, restore, and conversation deletion are available in the same panel.

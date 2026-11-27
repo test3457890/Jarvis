@@ -749,9 +749,15 @@ function renderMemories(facts) {
     const row = el('div', 'memory-row');
     const input = el('textarea'); input.value = fact.text; input.maxLength = 4000;
     input.setAttribute('aria-label', 'Remembered fact ' + fact.id);
+    const saved = fact.saved ? new Date(fact.saved * 1000).toLocaleString() : 'date unknown';
+    const expires = fact.expires ? new Date(fact.expires * 1000).toLocaleDateString() : 'never';
+    row.appendChild(el('span', 'hint', `Saved ${saved} via ${fact.origin || 'source unknown'}. Expires: ${expires}.`));
+    const expiry = el('input'); expiry.type = 'date'; expiry.setAttribute('aria-label', 'Expire remembered fact ' + fact.id);
     const actions = el('div', 'memory-actions');
     const save = el('button', '', 'Save memory'); save.type = 'button';
     const remove = el('button', '', 'Delete memory'); remove.type = 'button';
+    const setExpiry = el('button', '', 'Set expiry'); setExpiry.type = 'button';
+    const clearExpiry = el('button', '', 'Never expire'); clearExpiry.type = 'button';
     const update = async data => {
       save.disabled = remove.disabled = true;
       try {
@@ -762,12 +768,17 @@ function renderMemories(facts) {
       finally { save.disabled = remove.disabled = false; }
     };
     save.onclick = () => update({action:'edit', id:fact.id, text:input.value});
+    setExpiry.onclick = () => {
+      if (!expiry.value) { $('memory-status').textContent = 'Choose an expiration date.'; return; }
+      update({action:'expire', id:fact.id, expires:new Date(expiry.value + 'T00:00:00').getTime() / 1000});
+    };
+    clearExpiry.onclick = () => update({action:'clear_expiry', id:fact.id});
     remove.onclick = () => {
       if (window.confirm('Delete this remembered fact? ' + input.value.slice(0, 180))) {
         update({action:'delete', id:fact.id, confirmed:true});
       }
     };
-    actions.append(save, remove); row.append(input, actions); $('memory-list').append(row);
+    actions.append(save, setExpiry, clearExpiry, remove); row.append(input, expiry, actions); $('memory-list').append(row);
   }
 }
 $('memory-refresh').onclick = async () => {

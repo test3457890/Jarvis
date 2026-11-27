@@ -59,6 +59,11 @@ class Memory:
                 id INTEGER PRIMARY KEY, due REAL, text TEXT, done INTEGER DEFAULT 0);
             """
         )
+        fact_columns = {row[1] for row in self.db.execute('PRAGMA table_info(facts)')}
+        if 'expires' not in fact_columns:
+            self.db.execute('ALTER TABLE facts ADD COLUMN expires REAL')
+        if 'origin' not in fact_columns:
+            self.db.execute("ALTER TABLE facts ADD COLUMN origin TEXT DEFAULT 'Saved before source tracking'")
         self.db.commit()
 
     # ---------- diary ----------
@@ -99,14 +104,34 @@ class Memory:
         text = redact(text.strip())
         vec = self.embed(text) if self.embed else None
         with self._lock:
-            cur = self.db.execute("INSERT INTO facts(ts, text, embedding) VALUES (?,?,?)",
-                                  (time.time(), text, json.dumps(vec) if vec else None))
+            cur = self.db.execute("INSERT INTO facts(ts, text, embedding, origin) VALUES (?,?,?,?)",
+                                  (time.time(), text, json.dumps(vec) if vec else None, 'Jarvis memory tool'))
             self.db.commit()
             return cur.lastrowid
 
     def all_facts(self) -> list:
+        self.purge_expired()
         with self._lock:
             return self.db.execute("SELECT id, text FROM facts ORDER BY id").fetchall()
+
+    def purge_expired(self) -> int:
+        with self._lock, self.db:
+            result = self.db.execute('DELETE FROM facts WHERE expires IS NOT NULL AND expires<=?', (time.time(),))
+            return result.rowcount
+
+    def fact_details(self) -> list:
+        self.purge_expired()
+        with self._lock:
+            rows = self.db.execute('SELECT id, text, ts, origin, expires FROM facts ORDER BY id').fetchall()
+        return [dict(zip(('id', 'text', 'saved', 'origin', 'expires'), row)) for row in rows]
+
+    def set_fact_expiry(self, fact_id: int, expires) -> bool:
+        if expires is not None and (type(expires) not in (int, float) or
+                                    not time.time() < expires <= time.time() + 10 * 365 * 86400):
+            raise ValueError('Choose a future date within ten years, or clear expiry.')
+        with self._lock, self.db:
+            result = self.db.execute('UPDATE facts SET expires=? WHERE id=?', (expires, fact_id))
+            return result.rowcount == 1
 
     def edit_fact(self, fact_id: int, text: str) -> bool:
         if not isinstance(text, str) or not text.strip() or len(text) > 4000:
@@ -130,6 +155,7 @@ class Memory:
         return [t for _, t in matches]
 
     def recall(self, query: str, k: int = 5) -> list:
+        self.purge_expired()
         with self._lock:
             rows = self.db.execute("SELECT text, embedding FROM facts").fetchall()
         if not rows:
