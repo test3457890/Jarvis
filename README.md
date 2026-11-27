@@ -438,6 +438,16 @@ secrets. Jarvis keeps the local `actions.log` for troubleshooting; newly logged
 approved tools record field names instead of raw arguments and results. Existing
 older log entries are not rewritten, so review the file itself before sharing it.
 
+## Local model inventory
+
+Setup can show Ollama's installed local models and their reported disk sizes.
+Choose an installed model for Everyday, TUKI technical, or Coding mode; Jarvis
+does not download or run a model merely to list it. The performance profile and
+configured context length are shown alongside the inventory. Disk size is not a
+RAM estimate or speed measurement, and Jarvis cannot guarantee that a selected
+model supports every role. The first-run wizard can reset these choices when a
+performance profile is reapplied.
+
 ## Daily briefing controls
 
 In Setup, choose the daily briefing time, turn the automatic briefing on or off,

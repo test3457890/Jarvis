@@ -244,6 +244,8 @@
   #repository-select label { display:grid; min-width:0; gap:6px; }
   #repository-path { width:100%; min-width:0; box-sizing:border-box; }
   #repository-status { overflow-wrap:anywhere; }
+  #model-select { display:flex; flex-wrap:wrap; }
+  #model-select select { min-width:0; max-width:100%; }
   #setup-panel .hint, #apps .hint { color:var(--dim); font-size:13px; margin:2px 0; }
   #apps { border-top:1px solid var(--line); padding:8px 16px; max-height:52%; overflow:auto; }
   body[data-mode=talk] #apps { display:none; }
@@ -398,6 +400,14 @@
       </form>
       <p id="repository-status" role="status"></p>
       <p class="hint">Only this folder is granted for coding. Review the full diff before Apply; test and build commands still require confirmation. Jarvis will not run Git commands automatically.</p>
+      <form id="model-select">
+        <label>Role <select id="model-role" aria-label="Model role">
+          <option value="everyday_model">Everyday</option><option value="model">TUKI technical</option><option value="coder_model">Coding</option>
+        </select></label>
+        <label>Installed Ollama model <select id="model-name" aria-label="Installed Ollama model"></select></label>
+        <button>Use model</button><button id="model-refresh" type="button">Refresh models</button>
+      </form>
+      <p id="model-status" role="status"></p><div id="model-list"></div>
     </details>
     <details id="activity-timeline" name="assistant-tools">
       <summary>Activity timeline</summary>
@@ -870,6 +880,25 @@ async function repository(data) {
 $('repository-select').onsubmit = event => { event.preventDefault(); repository({action:'select', path:$('repository-path').value}); };
 $('repository-reset').onclick = () => repository({action:'reset'});
 repository();
+async function models(data) {
+  try {
+    const result = await api('/api/models', data);
+    if (result.error) throw new Error(result.error);
+    $('model-name').replaceChildren(...result.models.map(model => {
+      const option = new Option(model.name, model.name); return option;
+    }));
+    $('model-list').replaceChildren();
+    for (const model of result.models) {
+      $('model-list').appendChild(el('div', 'hint', `${model.name}: ${(model.disk_bytes / 1e9).toFixed(2)} GB on disk`));
+    }
+    $('model-status').textContent = (result.reachable ? `${result.models.length} installed models reported. ` : 'Ollama is unavailable. ') +
+      `Profile: ${result.profile}; context: ${result.context_tokens} tokens. ` +
+      `Everyday: ${result.selected.everyday_model}; TUKI: ${result.selected.model}; Coding: ${result.selected.coder_model}. ` + result.note;
+  } catch (error) { $('model-status').textContent = error.message || 'Could not read local models.'; }
+}
+$('model-select').onsubmit = event => { event.preventDefault(); models({role:$('model-role').value, name:$('model-name').value}); };
+$('model-refresh').onclick = () => models();
+models();
 async function refreshActivity() {
   try {
     const events = await api('/api/activity');

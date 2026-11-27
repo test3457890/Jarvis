@@ -38,6 +38,7 @@ models or audio but has not been verified with real models, a microphone or spea
 | Recurring checks | Daily selected-folder document query, local last-run state, change-only notification, pause/resume/delete | Working in automated tests; Windows schedule and notification untested | `tests/test_document_watches.py` |
 | Planner | Tasks, weekly plan, Canvas feed | Working | `tests/test_week_planner.py` |
 | Briefing | User-selected local time, automatic show/mute and manual replay | Working in automated tests; real speech unverified | `tests/test_briefing_controls.py` |
+| Models | Read-only local Ollama inventory with reported disk sizes and explicit model role selection | Working in automated tests; model compatibility and real timings unverified | `tests/test_model_inventory.py` |
 | Memory | Facts, history, backup and restore | Working | unit tests, HUD audit |
 | Memory | Saved date, source category and per-fact expiration with deletion on due | Working in automated tests; Windows local-date UI untested | `tests/test_memory_expiry.py` |
 | Audit | Bounded human-readable action timeline with redacted metadata and undo hints | Working in automated tests; Windows HUD review untested | `tests/test_activity_timeline.py` |
