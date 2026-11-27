@@ -97,6 +97,7 @@ _ACTIVITY_NAMES = {
     'public_page_read': 'Public source read', 'canvas_sync': 'Canvas feed checked',
     'web_search': 'Web search run', 'read_source': 'Source page read',
     'check_sources': 'Sources checked', 'github_upload': 'GitHub upload run',
+    'github_repo_read': 'GitHub repository read',
     'screen_capture_described': 'Screen question answered', 'run_code_sandbox': 'Code run',
     'rate_limited': 'Action blocked by rate limit',
     'send_email': 'Email sent', 'draft_email': 'Email draft opened',

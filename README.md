@@ -525,6 +525,12 @@ HTTPS HTML or text pages. A redirect needs separate destination approval. Eviden
 covers up to 12,000 characters from a page up to 1 MB. Use `/check https://source-one | https://source-two | claim` to approve and compare
 up to three source pages in one assessment. Extracted excerpts are shortened to fit your context. The quoted passages let you check the assessment against the source text.
 
+If a GitHub repository and token are configured in Setup, `/repo` requests approval
+to read that repository's metadata and README through GitHub's API. It shows the
+first 12,000 README characters. The command makes GET requests only and does not
+run code or change the repository. It works for a private repository when the
+configured token has read access. The repository text is treated as untrusted.
+
 Use `/copy original.txt | copy.txt` or `/move original.txt | moved.txt` for files inside
 Jarvis Code. Confirm the preview. `/jobs` shows the persistent task journal. `/resume JOBID`
 requests approval to continue an interrupted task. `/undo-file JOBID` requests approval to

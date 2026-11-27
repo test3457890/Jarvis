@@ -254,7 +254,7 @@ class Brain:
                 if self.ctx.pending:
                     self.confirm_pending(False)
                 return self._command(command)
-            if self.ctx.pending and self.ctx.pending["name"] in ("github_upload", "web_search", "image_search", "read_source", "check_sources"):
+            if self.ctx.pending and self.ctx.pending["name"] in ("github_upload", "github_repo_read", "web_search", "image_search", "read_source", "check_sources"):
                 return self._confirm_online_text(command)
             self.tools_used = []
             reply = self._ask(command, room_context)
@@ -346,6 +346,11 @@ class Brain:
                 return skills.run(self.ctx, "search_files", {"query": value.strip()})
             if command == "/upload" and value.strip():
                 return online.prepare_upload(self.ctx, value.strip())
+            if command == "/repo" and not value.strip():
+                result = skills.run(self.ctx, "github_repo_read", {})
+                if self.ctx.pending and self.ctx.pending["name"] == "github_repo_read":
+                    return self.ctx.pending["preview"] + ". Use Confirm or say “confirm repository”."
+                return result
             if command == "/briefing" and not value:
                 return skills.run(self.ctx, "briefing", {})
             if command == "/fix" and self.cfg.get("mode") == "coding":
@@ -387,13 +392,13 @@ class Brain:
                 if command == "/undo":
                     return coder.undo_proposal(self.ctx)
             return ("Planning: /task title | due date | minutes, /tasks, /plan, /schedule today or /schedule week. "
-                    "Other commands: /docs query, /research-docs question, /research-all question | HTTPS URLs, /calc expression, /files filename, /search query, /images query, /upload file. "
+                    "Other commands: /docs query, /research-docs question, /research-all question | HTTPS URLs, /calc expression, /files filename, /search query, /images query, /upload file, /repo. "
                     "In Coding mode: /fix, /diff, /apply, /undo, /test, /build, /investigate-tests, /fix-tests.")
         except (ValueError, OSError, OllamaError) as error:
             return f"Couldn't complete the request: {error}"
 
     def _confirm_online_text(self, text):
-        expected = {"github_upload": "confirm upload", "web_search": "confirm search",
+        expected = {"github_upload": "confirm upload", "github_repo_read": "confirm repository", "web_search": "confirm search",
                     "image_search": "confirm image search", "read_source": "confirm source", "check_sources": "confirm sources"}
         name = self.ctx.pending["name"]
         if text.casefold().rstrip(".!?") == expected[name]:
@@ -419,6 +424,10 @@ class Brain:
                 return "Talk mode is active. No action was taken."
             self.ctx.injection_seen = False
             result = skills.run(self.ctx, pending["name"], pending["args"], confirmed=True)
+            if pending["name"] == "github_repo_read":
+                if self.ctx.injection_seen:
+                    return "Repository text contained suspicious instructions. It was discarded."
+                return result.removeprefix(secure.UNTRUSTED_NOTE).removesuffix(secure.UNTRUSTED_END)
             if pending["name"] == "check_sources":
                 if self.ctx.injection_seen:
                     return "Source text contained suspicious instructions. It was discarded."
