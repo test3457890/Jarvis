@@ -43,6 +43,7 @@
   #response-timing { color:var(--dim); font-size:12px; }
   #setup-panel { padding:8px 16px; overflow:auto; max-height:40vh; }
   #activity-timeline { padding:8px 16px; overflow:auto; max-height:40vh; }
+  #connections-panel { padding:8px 16px; overflow:auto; max-height:40vh; }
   #setup-form { display:grid; }
   #setup-form label { display:grid; gap:6px; }
   #setup-folders { min-width:0; width:100%; box-sizing:border-box; padding:8px; font:inherit;
@@ -414,6 +415,12 @@
       <p>Recent local actions and blocked requests. Message text, source excerpts and secrets are excluded here.</p>
       <button id="activity-refresh" type="button">Refresh activity</button>
       <p id="activity-status" role="status"></p><div id="activity-list"></div>
+    </details>
+    <details id="connections-panel" name="assistant-tools">
+      <summary>Connections</summary>
+      <p>Built-in optional services. Status checks local settings and saved credentials; it does not contact the service. Removing a credential disconnects Jarvis locally but does not revoke it at the provider.</p>
+      <button id="connections-refresh" type="button">Review connections</button>
+      <p id="connections-status" role="status"></p><div id="connections-list"></div>
     </details>
     <details id="file-tasks" name="assistant-tools">
       <summary>File tasks</summary>
@@ -914,6 +921,31 @@ async function refreshActivity() {
   } catch (error) { $('activity-status').textContent = error.message || 'Could not load activity.'; }
 }
 $('activity-refresh').onclick = refreshActivity;
+async function refreshConnections(data) {
+  try {
+    const result = await api('/api/connections', data);
+    if (result.error) throw new Error(result.error);
+    $('connections-status').textContent = result.internet ? 'Internet toggle is on. Each online action still requires approval.' :
+      'Internet toggle is off for approved online tools.';
+    $('connections-list').replaceChildren();
+    for (const service of result.services) {
+      const row = el('div', 'memory-row');
+      row.appendChild(el('span', '', `${service.name}: ${service.state}`));
+      row.appendChild(el('span', 'hint', service.scope + '. Setup: ' + service.setup));
+      if (service.revocable) {
+        const remove = el('button', '', 'Remove saved credential'); remove.type = 'button';
+        remove.onclick = () => {
+          if (window.confirm('Remove Jarvis\'s saved credential for ' + service.name + '? This does not revoke it at the provider.')) {
+            refreshConnections({action:'revoke', service:service.name, confirmed:true});
+          }
+        };
+        row.appendChild(remove);
+      }
+      $('connections-list').appendChild(row);
+    }
+  } catch (error) { $('connections-status').textContent = error.message || 'Could not review connections.'; }
+}
+$('connections-refresh').onclick = () => refreshConnections();
 $('memory-export').onclick = async () => {
   try {
     const result = await api('/api/memory');

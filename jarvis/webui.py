@@ -139,6 +139,8 @@ def serve(app, port: int):
                 self._json(app.dashboard())
             elif self.path == "/api/activity":
                 self._json(app.activity_operation())
+            elif self.path == "/api/connections":
+                self._json(app.connections_operation())
             elif self.path == "/api/models":
                 self._json(app.models_operation())
             else:
@@ -197,6 +199,12 @@ def serve(app, port: int):
                 try:
                     operation = app.apps_operation if self.path == "/api/apps" else app.extensions_operation
                     result = operation(data)
+                except (ValueError, TypeError, OSError) as error:
+                    return self._json({"error": str(error)}, 400)
+                self._json(result)
+            elif self.path == "/api/connections":
+                try:
+                    result = app.connections_operation(data)
                 except (ValueError, TypeError, OSError) as error:
                     return self._json({"error": str(error)}, 400)
                 self._json(result)
