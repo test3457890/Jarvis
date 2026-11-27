@@ -409,6 +409,12 @@ memory to compare matching excerpts with the local model. The response includes 
 original numbered file and section excerpts for checking. If the model is unavailable,
 Jarvis shows the excerpts without a summary. This reads only selected local folders;
 the existing `/check` command handles explicitly approved public web sources.
+Use `/research-all your question | https://source-one | https://source-two` to
+compare selected local excerpts with one to three public pages. Jarvis asks for
+URL approval before reading pages, then searches selected folders locally. The
+response shows both sets of evidence. This requires online tools and local
+document search to be enabled. Local excerpts are sent only to the configured
+local Ollama model, not to the public pages.
 
 Under Documents and memory, add a daily document check with a query and local time.
 Checks run while Jarvis is open, over only the document folders you selected. The first
