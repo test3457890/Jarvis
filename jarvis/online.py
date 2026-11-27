@@ -1,5 +1,6 @@
 """Optional Brave searches and manually approved GitHub file uploads."""
 import base64
+import binascii
 import hashlib
 import html
 import json
@@ -156,6 +157,34 @@ def github_upload(ctx, filename, repo, branch, digest, size):
     if not result.get("commit", {}).get("sha"):
         return "GitHub returned no commit. Check the repository before retrying."
     return f"Uploaded to https://github.com/{repo}/blob/{result['commit']['sha']}/{quote(destination, safe='/')}"
+
+
+@skill("Read the configured GitHub repository metadata and README after approval.",
+       params={}, risky=True, internet=True, untrusted=True, manual=True, available=_upload_ready,
+       preview=lambda ctx: f"read repository details and README from GitHub for {_target(ctx.cfg)[0]}")
+def github_repo_read(ctx):
+    repo, _ = _target(ctx.cfg)
+    headers = {"Authorization": "Bearer " + secure.get_secret("github_upload_token"),
+               "Accept": "application/vnd.github+json"}
+    base = f"https://{GITHUB_HOST}/repos/{repo}"
+    details = _request(Request(base, headers=headers), ctx.cfg, "github_repo_read")
+    readme = _request(Request(base + "/readme", headers=headers), ctx.cfg, "github_repo_read")
+    if not isinstance(details, dict) or not isinstance(readme, dict):
+        return "GitHub returned invalid repository data."
+    encoded = readme.get("content", "")
+    if not isinstance(encoded, str) or len(encoded) > 40000 or readme.get("encoding") != "base64":
+        return "GitHub README is unavailable or exceeds the reading limit."
+    try:
+        content = base64.b64decode("".join(encoded.split()), validate=True).decode("utf-8", errors="replace")
+    except (ValueError, UnicodeError, binascii.Error):
+        return "GitHub README could not be decoded."
+    content = content[:12000]
+    description = _plain(str(details.get("description") or ""), 300)
+    return (f"GitHub repository https://github.com/{repo}\n"
+            f"Description: {description}\n"
+            f"Default branch: {_plain(str(details.get('default_branch') or ''), 100)}\n"
+            f"Visibility: {'private' if details.get('private') else 'public'}\n"
+            f"README ({readme.get('path', 'README.md')}, first 12,000 characters):\n{content}")
 
 
 @skill('Read a public HTTPS source page after the user approves its URL. '

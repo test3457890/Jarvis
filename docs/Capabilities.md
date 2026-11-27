@@ -41,6 +41,7 @@ models or audio but has not been verified with real models, a microphone or spea
 | Briefing | User-selected local time, automatic show/mute and manual replay | Working in automated tests; real speech unverified | `tests/test_briefing_controls.py` |
 | Models | Read-only local Ollama inventory with reported disk sizes and explicit model role selection | Working in automated tests; model compatibility and real timings unverified | `tests/test_model_inventory.py` |
 | Connections | Local built-in service status, declared scopes, and confirmed removal of saved credentials | Working in automated tests; Windows credential storage unverified | `tests/test_connections_status.py` |
+| GitHub | Approved read-only metadata and README of configured repository, up to 12,000 README characters | Working with fake API responses; private repository access unverified | `/repo`, `tests/test_github_context.py` |
 | Memory | Facts, history, backup and restore | Working | unit tests, HUD audit |
 | Memory | Saved date, source category and per-fact expiration with deletion on due | Working in automated tests; Windows local-date UI untested | `tests/test_memory_expiry.py` |
 | Audit | Bounded human-readable action timeline with redacted metadata and undo hints | Working in automated tests; Windows HUD review untested | `tests/test_activity_timeline.py` |
