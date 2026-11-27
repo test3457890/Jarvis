@@ -34,8 +34,7 @@
   #activity { color:var(--dim); font-size:13px; }
   #code-tools { display:none; }
   body[data-mode=coding] #code-tools { display:flex; }
-  #briefing { display:none; }
-  body[data-mode=briefing] #briefing { display:inline-block; }
+  body[data-mode=talk] #briefing { display:none; }
   .chat-tools { display:flex; flex-wrap:wrap; gap:8px; padding:8px 16px; align-items:center; }
   .chat-tools button { font-size:12px; }
   .chat > details { flex:0 0 auto; min-height:0; }
@@ -240,6 +239,7 @@
   #screen-status, #screen .hint { color:var(--dim); font-size:13px; }
   #setup-form label.inline { display:flex; align-items:center; gap:8px; }
   #setup-form label.inline input { flex:0 0 auto; width:auto; }
+  #setup-form input[type=time] { width:100%; min-width:0; box-sizing:border-box; }
   #repository-select { display:grid; min-width:0; }
   #repository-select label { display:grid; min-width:0; gap:6px; }
   #repository-path { width:100%; min-width:0; box-sizing:border-box; }
@@ -384,6 +384,9 @@
         <p id="setup-ocr-note" class="hint"></p>
         <label>Follow-up listening<select id="setup-follow-up"><option value="0">Off</option><option value="8">8 seconds</option><option value="20">20 seconds</option></select></label>
         <label>Nearby conversation context<select id="setup-room-context"><option value="0">Off</option><option value="30">30 seconds</option><option value="120">2 minutes</option></select></label>
+        <label>Daily briefing time on this computer<input id="setup-briefing-time" type="time" value="08:00"></label>
+        <label class="inline"><input id="setup-briefing-enabled" type="checkbox"> Show the daily briefing while Jarvis is open</label>
+        <label class="inline"><input id="setup-briefing-speak" type="checkbox"> Speak the daily briefing</label>
         <p class="hint">Context stays in memory only. Turning it off or pausing the mic clears the temporary context. Pause Mic to stop Jarvis processing nearby speech.</p>
         <button>Save setup</button>
       </form>
@@ -820,6 +823,9 @@ $('setup-load').onclick = async () => {
     $('setup-folders').value = result.document_folders.join('\n');
     $('setup-ocr').checked = !!result.ocr_enabled;
     $('setup-index').checked = !!result.document_index_enabled;
+    $('setup-briefing-time').value = result.briefing_time;
+    $('setup-briefing-enabled').checked = !!result.briefing_enabled;
+    $('setup-briefing-speak').checked = !!result.briefing_speak;
     for (const [id, value] of [['setup-follow-up', result.follow_up_seconds],
                                ['setup-room-context', result.room_context_seconds]]) {
       const select = $(id);
@@ -841,6 +847,9 @@ $('setup-form').onsubmit = async event => {
       document_folders:$('setup-folders').value.split('\n').map(value => value.trim()).filter(Boolean),
       ocr_enabled:$('setup-ocr').checked,
       document_index_enabled:$('setup-index').checked,
+      briefing_time:$('setup-briefing-time').value,
+      briefing_enabled:$('setup-briefing-enabled').checked,
+      briefing_speak:$('setup-briefing-speak').checked,
       follow_up_seconds:Number($('setup-follow-up').value),
       room_context_seconds:Number($('setup-room-context').value)});
     if (result.error) throw new Error(result.error);

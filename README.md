@@ -438,6 +438,14 @@ secrets. Jarvis keeps the local `actions.log` for troubleshooting; newly logged
 approved tools record field names instead of raw arguments and results. Existing
 older log entries are not rewritten, so review the file itself before sharing it.
 
+## Daily briefing controls
+
+In Setup, choose the daily briefing time, turn the automatic briefing on or off,
+and decide whether it is spoken. Jarvis shows the digest once per local day while
+it is open, after the chosen time. If it was closed at that time, the briefing
+appears when it next opens that day. The Read briefing button replays it on demand
+outside Talk mode; the Speak setting controls the automatic briefing only.
+
 ## Investigate a test failure
 
 After an approved `/test` fails in Coding mode, use `/investigate-tests` or
