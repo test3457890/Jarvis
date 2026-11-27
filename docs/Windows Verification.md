@@ -53,3 +53,9 @@ a fixture-only green check or disable protections to make installation succeed.
 - Toggle Compact view, reload, test all approval controls, inspect at 200% zoom and navigate with a keyboard and screen reader.
 - Save a local workflow with tasks, schedule, calculation and a disposable document query. Decline a preview, then run it. Check each actual result, export JSON, Stop and resume, restart and resume, and delete results. Disable a step or set it to Ask and verify the run blocks.
 - Status for all these Windows hardware checks: Not tested.
+
+## Workspace views and GitHub issues
+
+- Select Classic, Command Center and Ambient; restart to confirm the choice persists. Test Compact followed by Ambient and confirm conversation and action details remain hidden. Verify active TUKI color, real listening/speaking status, clock toggle, keyboard navigation, reduced motion, Stop, Mic and Lockdown. Ambient does not mute speech or lock Windows.
+- With a disposable repository, verify `/issues`, `/issue NUMBER` and cancelled approvals. Test offline, Lockdown, a repository change and insufficient token scopes. Draft a disposable issue with `/new-issue title | body`, review the full text, cancel once and publish once. Confirm no duplicate request after a timeout. Do not test on another person's repository.
+- Real Windows hardware and real account verification for this increment: Not tested.

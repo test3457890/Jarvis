@@ -80,6 +80,7 @@ def serve(app, port: int):
                 page = (UI_FILE.read_text(encoding="utf-8").replace("__JARVIS_KEY__", token)
                         .replace("__JARVIS_THEME__", theme if theme in config.THEMES else "hud")
                         .replace("__JARVIS_MODE__", mode if mode in config.MODES else "everyday")
+                        .replace("__JARVIS_VIEW__", app.cfg.get("workspace_view") if app.cfg.get("workspace_view") in config.WORKSPACE_VIEWS else "classic")
                         .replace("__JARVIS_TUKI_NAME__", assistants.TUKI_NAME)
                         .replace("__JARVIS_TUKI_FULL_NAME__", assistants.TUKI_FULL_NAME))
                 csp = ("default-src 'self'; script-src 'self' 'unsafe-inline'; "

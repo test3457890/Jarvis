@@ -186,6 +186,30 @@ saved runs. Up to 20 workflows and 50 runs can be kept. Exported files and older
 backups remain until you remove them yourself. These are deterministic local workflows,
 not autonomous specialist agents or scheduled external checks.
 
+## Classic, Command Center and Ambient views
+
+The View selector is independent of Mode and Theme. Classic Jarvis keeps the original
+layout. Command Center adds quick navigation to planning, research, workflows,
+connections and setup, using the same conversation, settings and backend data.
+Ambient Intelligence shows an orbital core, actual processing state, optional clock,
+active assistant color and microphone state. Open controls to return to Command Center.
+Stop, Mic and Lockdown remain available. Pending action details, conversations and
+schedules are visually hidden, including when Compact view was previously enabled.
+This is glance privacy, not an operating-system lock: listening, speech and background
+reminders keep their existing settings. Reduced-motion preferences stop the animation.
+
+## GitHub issues
+
+With Internet on and the configured repository token, use `/issues` for the first
+page of open issues or `/issue 7` for one issue and up to ten comments. Reads require
+approval. Use `/new-issue title | body` to draft an issue. Jarvis previews the complete
+text and repository before sending; use Confirm or `confirm issue` to publish.
+A changed repository invalidates the pending operation. Tokens need the corresponding
+provider permissions, including Issues write only if you want issue creation. These
+commands do not grant scopes or perform Git pushes or pull-request operations.
+If the create response is lost, check GitHub before retrying; Jarvis makes no automatic
+retry that could create duplicate issues. Real private-repository scopes remain unverified.
+
 ## Weekly planner
 
 Open Planner below the chat, enter a task, and select Plan my week. Choose View week

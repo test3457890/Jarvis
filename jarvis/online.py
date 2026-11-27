@@ -187,6 +187,100 @@ def github_repo_read(ctx):
             f"README ({readme.get('path', 'README.md')}, first 12,000 characters):\n{content}")
 
 
+def _issue_repo(ctx, repo):
+    if not isinstance(repo, str) or repo != _target(ctx.cfg)[0]:
+        raise ValueError("The GitHub repository changed. Start again and review the new destination.")
+    return f"https://{GITHUB_HOST}/repos/{repo}"
+
+
+def _github_headers():
+    return {"Authorization": "Bearer " + secure.get_secret("github_upload_token"),
+            "Accept": "application/vnd.github+json", "Content-Type": "application/json"}
+
+
+@skill("List up to 20 issues from the configured repository after approval.",
+       params={"repo":("string", "Configured repository", True)}, risky=True, internet=True,
+       untrusted=True, manual=True, available=_upload_ready,
+       preview=lambda ctx, repo: f"read up to 20 open issue records from GitHub repository {repo}")
+def github_issues_read(ctx, repo):
+    base = _issue_repo(ctx, repo)
+    rows = _request(Request(base + "/issues?state=open&per_page=20", headers=_github_headers()), ctx.cfg, "github_issues_read")
+    if not isinstance(rows, list):
+        raise ValueError("GitHub returned invalid issue data.")
+    lines = []
+    for item in rows[:20]:
+        if not isinstance(item, dict) or "pull_request" in item:
+            continue
+        number = item.get("number")
+        if type(number) is not int or number < 1:
+            continue
+        lines.append(f"#{number}: {_plain(str(item.get('title') or ''), 300)}\nhttps://github.com/{repo}/issues/{number}")
+    return "Open GitHub issues (first page; pull requests excluded):\n" + ("\n\n".join(lines) or "No issues in this page.")
+
+
+def _issue_number(number):
+    if type(number) is not int or not 1 <= number <= 2_147_483_647:
+        raise ValueError("Use a positive GitHub issue number.")
+    return number
+
+
+@skill("Read one configured-repository issue and up to 10 comments after approval.",
+       params={"repo":("string", "Configured repository", True), "number":("integer", "Issue number", True)},
+       risky=True, internet=True, untrusted=True, manual=True, available=_upload_ready,
+       preview=lambda ctx, repo, number: f"read GitHub issue {repo}#{_issue_number(number)} and its first 10 comments")
+def github_issue_read(ctx, repo, number):
+    base = _issue_repo(ctx, repo) + f"/issues/{_issue_number(number)}"
+    item = _request(Request(base, headers=_github_headers()), ctx.cfg, "github_issue_read")
+    comments = _request(Request(base + "/comments?per_page=10", headers=_github_headers()), ctx.cfg, "github_issue_read")
+    if not isinstance(item, dict) or not isinstance(comments, list):
+        raise ValueError("GitHub returned invalid issue data.")
+    lines = [f"https://github.com/{repo}/issues/{number}", _plain(str(item.get("title") or ""), 300),
+             f"State: {_plain(str(item.get('state') or ''), 30)}", str(item.get("body") or "")[:8000]]
+    for comment in comments[:10]:
+        if not isinstance(comment, dict):
+            continue
+        user = comment.get("user") or {}
+        author = _plain(str(user.get("login") or "unknown"), 100) if isinstance(user, dict) else "unknown"
+        lines.append(f"Comment by {author}:\n{str(comment.get('body') or '')[:1000]}")
+    return "\n\n".join(lines)[:20000]
+
+
+def _issue_draft(title, body):
+    from .memory import redact
+    if (not isinstance(title, str) or not 1 <= len(title.strip()) <= 120
+            or not isinstance(body, str) or not 1 <= len(body.strip()) <= 6000):
+        raise ValueError("Use an issue title of 1-120 characters and a body of 1-6,000 characters.")
+    if redact(title) != title or redact(body) != body:
+        raise ValueError("Remove credentials and sensitive numbers before publishing an issue.")
+    return title.strip(), body.strip()
+
+
+def _issue_preview(ctx, repo, title, body):
+    _issue_repo(ctx, repo)
+    title, body = _issue_draft(title, body)
+    return (f"create a GitHub issue in {repo}. Repository readers can see this text.\n"
+            f"Title: {title}\nBody:\n{body}")
+
+
+@skill("Create an explicitly drafted issue in the configured repository after approval.",
+       params={"repo":("string", "", True), "title":("string", "", True), "body":("string", "", True)},
+       risky=True, internet=True, manual=True, available=_upload_ready, preview=_issue_preview)
+def github_issue_create(ctx, repo, title, body):
+    base = _issue_repo(ctx, repo)
+    title, body = _issue_draft(title, body)
+    request = Request(base + "/issues", headers=_github_headers(), method="POST",
+                      data=json.dumps({"title":title, "body":body}).encode())
+    try:
+        result = _request(request, ctx.cfg, "github_issue_create")
+    except (ValueError, OSError):
+        return (f"GitHub did not confirm issue creation. Check https://github.com/{repo}/issues "
+                "before trying again; the request may already have created an issue. No retry was made.")
+    number = result.get("number") if isinstance(result, dict) else None
+    if type(number) is not int or number < 1:
+        return f"GitHub returned no issue number. Check https://github.com/{repo}/issues before retrying."
+    return f"Created GitHub issue https://github.com/{repo}/issues/{number}"
+
+
 @skill('Read a public HTTPS source page after the user approves its URL. '
        'Return extracted source text for evidence comparison.',
        params={'url': ('string', 'Public HTTPS URL to read', True)},

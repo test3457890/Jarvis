@@ -254,7 +254,7 @@ class Brain:
                 if self.ctx.pending:
                     self.confirm_pending(False)
                 return self._command(command)
-            if self.ctx.pending and self.ctx.pending["name"] in ("github_upload", "github_repo_read", "web_search", "image_search", "read_source", "check_sources"):
+            if self.ctx.pending and self.ctx.pending["name"] in ("github_upload", "github_repo_read", "github_issues_read", "github_issue_read", "github_issue_create", "web_search", "image_search", "read_source", "check_sources"):
                 return self._confirm_online_text(command)
             self.tools_used = []
             reply = self._ask(command, room_context)
@@ -349,7 +349,28 @@ class Brain:
             if command == "/repo" and not value.strip():
                 result = skills.run(self.ctx, "github_repo_read", {})
                 if self.ctx.pending and self.ctx.pending["name"] == "github_repo_read":
+                    self.ctx.pending["repository_snapshot"] = online._target(self.cfg)[0]
                     return self.ctx.pending["preview"] + ". Use Confirm or say “confirm repository”."
+                return result
+            if command in ("/issues", "/issue", "/new-issue"):
+                repo, _ = online._target(self.cfg)
+                if command == "/issues":
+                    if value.strip():
+                        return "Use /issues without arguments for the configured repository."
+                    name, args = "github_issues_read", {"repo":repo}
+                elif command == "/issue":
+                    if not value.strip().isdigit():
+                        return "Use /issue NUMBER for the configured repository."
+                    name, args = "github_issue_read", {"repo":repo, "number":int(value.strip())}
+                else:
+                    title, separator, body = value.partition(" | ")
+                    if not separator:
+                        return "Use /new-issue title | body. The complete text is previewed before publication."
+                    title, body = online._issue_draft(title, body)
+                    name, args = "github_issue_create", {"repo":repo, "title":title, "body":body}
+                result = skills.run(self.ctx, name, args)
+                if self.ctx.pending:
+                    return self.ctx.pending["preview"] + ". Use Confirm or say “confirm issue”."
                 return result
             if command == "/briefing" and not value:
                 return skills.run(self.ctx, "briefing", {})
@@ -399,6 +420,7 @@ class Brain:
 
     def _confirm_online_text(self, text):
         expected = {"github_upload": "confirm upload", "github_repo_read": "confirm repository", "web_search": "confirm search",
+                    "github_issues_read":"confirm issue", "github_issue_read":"confirm issue", "github_issue_create":"confirm issue",
                     "image_search": "confirm image search", "read_source": "confirm source", "check_sources": "confirm sources"}
         name = self.ctx.pending["name"]
         if text.casefold().rstrip(".!?") == expected[name]:
@@ -422,9 +444,16 @@ class Brain:
                 return "Cancelled. Nothing was done."
             if self.cfg.get("mode") == "talk":
                 return "Talk mode is active. No action was taken."
+            if pending["name"] == "github_repo_read":
+                try:
+                    current_repo = online._target(self.cfg)[0]
+                except ValueError:
+                    return "The GitHub repository changed. Start again and review the destination."
+                if pending.get("repository_snapshot") != current_repo:
+                    return "The GitHub repository changed. Start again and review the destination."
             self.ctx.injection_seen = False
             result = skills.run(self.ctx, pending["name"], pending["args"], confirmed=True)
-            if pending["name"] == "github_repo_read":
+            if pending["name"] in ("github_repo_read", "github_issues_read", "github_issue_read"):
                 if self.ctx.injection_seen:
                     return "Repository text contained suspicious instructions. It was discarded."
                 return result.removeprefix(secure.UNTRUSTED_NOTE).removesuffix(secure.UNTRUSTED_END)

@@ -91,7 +91,9 @@ class App:
                 "model": (self.cfg.get("coder_model") or self.cfg["model"])
                 if self.cfg.get("mode") == "coding" else self.cfg["model"],
                 "mode": self.cfg.get("mode", "everyday"), "theme": self.cfg.get("theme", "hud"),
+                "workspace_view": self.cfg.get("workspace_view", "classic"),
                 "assistant": self.cfg.get("assistant", "auto"),
+                "active_assistant": self.brain.assistant,
                 "voice_choice": self.cfg.get("voice_choice", "auto"),
                 "tuki_voice_choice": self.cfg.get("tuki_voice_choice", "auto"),
                 "sapi_voice_contains": self.cfg.get("sapi_voice_contains", ""),
@@ -185,7 +187,7 @@ class App:
     def set_preference(self, key, value):
         choices = {"mode": config.MODES, "theme": config.THEMES, "assistant": assistants.CHOICES,
                    "voice_choice": config.VOICE_CHOICES, "tuki_voice_choice": config.VOICE_CHOICES,
-                   "voice_input_mode": ("wake", "manual")}
+                   "voice_input_mode": ("wake", "manual"), "workspace_view": config.WORKSPACE_VIEWS}
         if key in ("sapi_voice_contains", "tuki_sapi_voice_contains"):
             from .voice import installed_voice_names
             if not isinstance(value, str) or (value and value not in installed_voice_names()):

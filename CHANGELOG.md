@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Select Classic, Command Center and Ambient workspace views independently of mode and theme, using shared state and existing permissions.
+- List/read GitHub issues and preview a manually drafted issue before publication. Destination changes invalidate approvals; ambiguous creation responses are not retried.
+
 - Local hold-to-record with a focused-page shortcut, manual input mode, editable transcript preview, capture limits and cancellation.
 - Saved compact HUD view, skip link and reduced-motion handling.
 - Confirmed local workflows with fixed read tools, persisted step checkpoints, Stop/resume, JSON export and result deletion.

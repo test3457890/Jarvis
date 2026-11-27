@@ -270,6 +270,29 @@
   #workflows label { display:block; margin:6px 0; }
   #workflows form { display:block; }
   #workflow-list { overflow-wrap:anywhere; }
+  #command-nav, #ambient-view { display:none; }
+  body[data-view=command] { background:var(--bg); }
+  body[data-view=command] .app { grid-template-columns:220px minmax(0, 1fr) 280px; }
+  body[data-view=command] #command-nav { display:flex; gap:8px; flex-wrap:wrap; padding:10px 16px; border-bottom:1px solid var(--line); }
+  body[data-view=command][data-mode=talk] #command-nav { display:none; }
+  body[data-view=command] .reactor { transform:scale(.7); margin:-30px; }
+  body[data-view=command] .brand { letter-spacing:.08em; }
+  body[data-view=ambient] .app, body[data-view=ambient] .grid, body[data-view=ambient] #boot,
+  body[data-view=ambient] .skip-link { display:none !important; }
+  body[data-view=command][data-mode=talk] .app { grid-template-columns:minmax(0,840px); }
+  body[data-view=ambient] { overflow:auto; background:#070d13; color:#d9f4ff; }
+  body[data-view=ambient] #ambient-view { min-height:100vh; padding:30px 20px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; }
+  #ambient-orbit { width:min(52vw, 340px); aspect-ratio:1; position:relative; border:2px solid #4fd8ff; border-radius:50%; box-shadow:0 0 60px #4fd8ff24; }
+  #ambient-orbit::before, #ambient-orbit::after { content:''; position:absolute; inset:10%; border:3px solid #4fd8ff; border-bottom-color:transparent; border-radius:50%; animation:spin 16s linear infinite; }
+  #ambient-orbit::after { inset:27%; border-width:12px; border-top-color:transparent; animation-direction:reverse; }
+  #ambient-view[data-assistant=tuki] #ambient-orbit, #ambient-view[data-assistant=tuki] #ambient-orbit::before,
+  #ambient-view[data-assistant=tuki] #ambient-orbit::after { border-color:#ffb347; }
+  #ambient-status { font-size:20px; letter-spacing:.12em; }
+  #ambient-clock { font-size:30px; }
+  #ambient-privacy { text-align:center; max-width:34rem; }
+  #ambient-view .ambient-actions { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+  @media (max-width:1100px) { body[data-view=command] .app { grid-template-columns:200px minmax(0,1fr); } }
+  @media (max-width:720px) { body[data-view=command] .app { grid-template-columns:minmax(0,1fr); } }
   #workflow-runs pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:320px; overflow:auto; }
   body[data-compact=true] { overflow:auto; }
   body[data-compact=true] .app { display:flex; flex-direction:column; height:auto; min-height:100%; max-width:700px; margin:auto; }
@@ -281,14 +304,28 @@
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
 </style>
 </head>
-<body data-state="idle" data-theme="__JARVIS_THEME__" data-mode="__JARVIS_MODE__">
+<body data-state="idle" data-theme="__JARVIS_THEME__" data-mode="__JARVIS_MODE__" data-view="__JARVIS_VIEW__">
 <a class="skip-link" href="#q">Skip to message</a>
 <div class="grid"></div>
 <div id="boot"><pre id="bootlog"></pre></div>
+<section id="ambient-view" aria-label="Ambient assistant view">
+  <div id="ambient-orbit" aria-hidden="true"></div>
+  <div id="ambient-status" role="status">Starting</div>
+  <div id="ambient-clock" aria-label="Local time"></div>
+  <p id="ambient-privacy">Conversation, contacts and calendar details are hidden in this view.</p>
+  <p id="ambient-input" role="status"></p>
+  <p id="ambient-pending" role="status"></p>
+  <div class="ambient-actions"><button id="ambient-controls" type="button">Open controls</button>
+    <button id="ambient-stop" type="button">Stop</button><button id="ambient-mic" type="button">Pause Mic</button>
+    <button id="ambient-lock" type="button">Lockdown</button>
+    <button id="ambient-clock-toggle" type="button" aria-pressed="true">Hide clock</button></div>
+</section>
 <div class="app">
   <header>
     <div class="brand">J.A.R.V.I.S.<small>JUST A RATHER VERY INTELLIGENT SYSTEM</small></div>
     <div class="prefs">
+      <label>View <select id="workspace_view"><option value="classic">Classic Jarvis</option>
+        <option value="command">Command Center</option><option value="ambient">Ambient Intelligence</option></select></label>
       <label>Mode <select id="mode"><option value="everyday">Everyday</option><option value="coding">Coding</option>
         <option value="briefing">Briefing</option><option value="talk">Talk</option></select></label>
       <label>Assistant <select id="assistant"><option value="auto">Auto</option>
@@ -331,6 +368,11 @@
   </aside>
 
   <section class="panel chat">
+    <nav id="command-nav" aria-label="Command Center tools">
+      <button type="button" data-panel="planner">Plan</button><button type="button" data-panel="knowledge">Research</button>
+      <button type="button" data-panel="workflows">Workflows</button><button type="button" data-panel="connections-panel">Connections</button>
+      <button type="button" data-panel="setup-panel">Setup</button>
+    </nav>
     <div class="chat-tools">
       <span id="activity" role="status"></span>
       <label>Voice input <select id="voice_input_mode"><option value="wake">Wake word</option><option value="manual">Hold to record only</option></select></label>
@@ -347,6 +389,9 @@
       <button id="read-source" type="button">Read source page</button>
       <button id="web-search" type="button" hidden>Web search</button>
       <button id="upload-file" type="button" hidden>Upload to GitHub</button>
+      <button id="github-issues" type="button" hidden>GitHub issues</button>
+      <button id="github-issue" type="button" hidden>Read GitHub issue</button>
+      <button id="github-new-issue" type="button" hidden>Draft GitHub issue</button>
       <div id="code-tools" class="chat-tools">
         <button id="code-fix" type="button">Propose fix</button>
         <button id="code-diff" type="button">Show diff</button>
@@ -660,15 +705,17 @@ function add(role, text, via) {
 function setState(s) {
   document.body.dataset.state = s; $('status').textContent = s;
   $('activity').textContent = s ? s[0].toUpperCase() + s.slice(1) : '';
+  $('ambient-status').textContent = s ? s[0].toUpperCase() + s.slice(1) : 'Idle';
 }
 let pendingId = null;
 function setPending(request) {
   pendingId = request?.id || null;
   $('pending').classList.toggle('on', !!request);
   $('pending-text').textContent = request ? 'Jarvis wants to ' + request.text + '.' : '';
+  $('ambient-pending').textContent = request ? 'An action is waiting. Open controls to review its details.' : '';
 }
 function setToggles(st) {
-  for (const key of ['mode', 'theme', 'voice_choice', 'assistant', 'tuki_voice_choice', 'voice_input_mode']) {
+  for (const key of ['mode', 'theme', 'voice_choice', 'assistant', 'tuki_voice_choice', 'voice_input_mode', 'workspace_view']) {
     if (st[key]) $(key).value = st[key];
   }
   $('tuki_voice_choice').querySelector('[value=piper]').disabled = !st.tuki_piper_available;
@@ -677,6 +724,20 @@ function setToggles(st) {
   }
   if (st.mode) document.body.dataset.mode = st.mode;
   if (st.theme) document.body.dataset.theme = st.theme;
+  if (st.workspace_view) {
+    document.body.dataset.view = st.workspace_view;
+    if (st.workspace_view === 'ambient') {
+      document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+    }
+  }
+  $('ambient-view').dataset.assistant = st.active_assistant || st.assistant || 'auto';
+  $('ambient-input').textContent = !st.voice_available ? 'Voice input unavailable' : !st.mic_on ? 'Microphone processing paused' :
+    st.voice_input_mode === 'manual' ? 'Hold-to-record only; open controls to record' : 'Wake-word listening enabled';
+  $('ambient-mic').disabled = !st.voice_available;
+  $('ambient-mic').textContent = st.mic_on ? 'Pause Mic' : 'Resume Mic';
+  $('ambient-mic').setAttribute('aria-pressed', !!st.mic_on);
+  $('ambient-lock').textContent = st.lockdown ? 'Lockdown ON' : 'Lockdown';
+  $('ambient-lock').setAttribute('aria-pressed', !!st.lockdown);
   $('voice_choice').querySelector('[value=piper]').disabled = !st.piper_available;
   $('t-speak').setAttribute('aria-pressed', !!st.speak_replies);
   $('t-mic').setAttribute('aria-pressed', !!st.mic_on);
@@ -694,6 +755,7 @@ function setToggles(st) {
   $('image-generate-button').disabled = !st.image_generator || !!st.lockdown;
   $('image-generate-button').title = st.image_generator ? '' : 'Connect a local image generation API in Jarvis setup';
   $('upload-file').hidden = !online || !st.github_upload;
+  for (const id of ['github-issues', 'github-issue', 'github-new-issue']) $(id).hidden = !online || !st.github_upload;
   $('t-speak').classList.toggle('off', !st.speak_replies);
   $('t-mic').classList.toggle('off', !st.mic_on); $('t-mic').disabled = !st.voice_available;
   $('t-mic').title = st.voice_available ? 'Pause or resume listening' : 'Voice input unavailable: ' + (st.voice_error || 'starting');
@@ -716,6 +778,7 @@ es.onmessage = e => {
     const reply = ev.data;
     if (typeof reply === 'string') add('jarvis', reply);
     else add('jarvis', reply.text, [reply.assistant, reply.model].filter(Boolean).join(' · '));
+    if (typeof reply !== 'string') $('ambient-view').dataset.assistant = reply.assistant === '__JARVIS_TUKI_NAME__' ? 'tuki' : 'jarvis';
     refresh();
     if ($('file-tasks').open && $('ft-root').options.length) ftBrowse(ft.path);
     if ($('apps').open) loadApps();
@@ -756,7 +819,7 @@ async function send(text) {
   return false;
 }
 for (const key of ['mode', 'theme', 'voice_choice', 'assistant', 'tuki_voice_choice',
-                   'sapi_voice_contains', 'tuki_sapi_voice_contains', 'voice_input_mode']) {
+                   'sapi_voice_contains', 'tuki_sapi_voice_contains', 'voice_input_mode', 'workspace_view']) {
   $(key).onchange = async () => {
     try {
       const state = await api('/api/preferences', {key, value: $(key).value});
@@ -863,6 +926,28 @@ function compactView(enabled) {
 }
 try { compactView(localStorage.getItem('jarvis-compact') === 'true'); } catch {}
 $('compact-view').onclick = () => compactView(document.body.dataset.compact !== 'true');
+$('ambient-controls').onclick = async () => {
+  try {
+    const result = await api('/api/preferences', {key:'workspace_view', value:'command'});
+    if (result.error) $('ambient-pending').textContent = result.error;
+    else { setToggles(result); $('workspace_view').focus(); }
+  } catch { $('ambient-pending').textContent = 'Could not reach Jarvis. Check the local service.'; }
+};
+$('ambient-stop').onclick = () => $('stop-reply').click();
+$('ambient-mic').onclick = () => $('t-mic').click();
+$('ambient-lock').onclick = () => $('t-lock').click();
+function ambientClock(enabled) {
+  $('ambient-clock').hidden = !enabled;
+  $('ambient-clock-toggle').textContent = enabled ? 'Hide clock' : 'Show clock';
+  $('ambient-clock-toggle').setAttribute('aria-pressed', enabled);
+  try { localStorage.setItem('jarvis-ambient-clock', String(enabled)); } catch {}
+}
+try { ambientClock(localStorage.getItem('jarvis-ambient-clock') !== 'false'); } catch {}
+$('ambient-clock-toggle').onclick = () => ambientClock($('ambient-clock').hidden);
+document.querySelectorAll('#command-nav button').forEach(button => button.onclick = () => {
+  const panel = $(button.dataset.panel); panel.open = true;
+  panel.querySelector('summary').focus(); panel.scrollIntoView({block:'nearest'});
+});
 const workflowSteps = [];
 function workflowStepText(step) {
   const label = {documents:'Search selected documents', schedule:'Read saved schedule', tasks:'Read open tasks',
@@ -1216,6 +1301,9 @@ $('read-source').onclick = () => fillCommand('/read', 'https://source-page | opt
 $('tuki-files').onclick = () => fillCommand('/files', 'Part of a filename');
 $('web-search').onclick = () => fillCommand('/search', 'Public search terms');
 $('upload-file').onclick = () => fillCommand('/upload', 'File relative to Jarvis Code');
+$('github-issues').onclick = () => send('/issues');
+$('github-issue').onclick = () => fillCommand('/issue', 'Issue number in the configured repository');
+$('github-new-issue').onclick = () => fillCommand('/new-issue', 'title | body; review the full preview before publishing');
 function imageStatus(text) { $('image-status').textContent = text; }
 function showImageResults(cards) {
   $('images').open = true;
@@ -1342,6 +1430,7 @@ function refresh() {
 }
 refresh(); setInterval(refresh, 15000);
 function tick() { const n = new Date(); $('clock').textContent = n.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  $('ambient-clock').textContent = $('clock').textContent;
   $('date').textContent = n.toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'}); }
 tick(); setInterval(tick, 1000);
 
@@ -1460,7 +1549,7 @@ $('wizard-open').onclick = openWizard;
 api('/api/state').then(st => {
   let closed = false;
   try { closed = sessionStorage.getItem('jarvis-wizard-closed') === '1'; } catch {}
-  if (st.first_run && !closed) openWizard();
+  if (st.first_run && !closed && st.workspace_view !== 'ambient') openWizard();
 });
 // ---- selected-folder file tasks
 const ft = {path: '', items: []};

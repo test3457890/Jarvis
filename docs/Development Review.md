@@ -40,3 +40,9 @@ The user explicitly authorized publishing this branch to `test3457890/Jarvis` an
 ## Outstanding roadmap
 
 The project is not finished. See `Master Development Plan.md` for the full inventory. Work still includes reliable spoken interruption, global shortcuts/tray, Google and Microsoft account adapters, MCP, feeds, GitHub issues and PR operations, broader routines and specialist agents, worktrees, additional model providers, sandboxed extensions, signed packaging, mobile access and hardware benchmarks. Phase 2 finance, Garmin/fitness/chef, Rust foundation, Sentinel, expanded NOMAD, server/household features and the three design concepts are not implemented or verified by this batch.
+
+## Follow-up implementation
+
+PR #37 at `63bf65042986b484ce2f550f700dbe00353f0889` passed all four GitHub CI jobs: Ubuntu tests, Windows tests, full Windows installation/first launch, and browser HUD audit. This establishes automated Windows installation and browser behavior, not real microphone/model quality.
+
+The follow-up branch `feature/workspace-views-and-github` adds the three selectable browser workspace views and approved GitHub issue list/read/create operations, plus repository-change approval invalidation. Its own CI results must be checked separately. GitHub push/PR tools, native tray/global hotkeys, the remaining account connectors and broader Phase 2 work remain outstanding.

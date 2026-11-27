@@ -13,6 +13,7 @@ CONFIG_PATH = APP_DIR / "config.json"
 
 MODES = ("everyday", "coding", "briefing", "talk")
 THEMES = ("hud", "simple", "light", "contrast", "midnight", "paper")
+WORKSPACE_VIEWS = ("classic", "command", "ambient")
 VOICE_CHOICES = ("auto", "windows", "piper")
 VOICE_LIMITS = {"follow_up_seconds": 60, "room_context_seconds": 600}
 
@@ -27,6 +28,7 @@ DEFAULTS = {
     "memory_embeddings": True,
     "performance_profile": "standard",
     "theme": "hud",
+    "workspace_view": "classic",
     "voice_choice": "auto",
     # TUKI speaks with its own voice. "auto" picks a different installed voice from Jarvis.
     "tuki_voice_choice": "auto",

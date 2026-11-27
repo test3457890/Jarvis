@@ -13,6 +13,7 @@ models or audio but has not been verified with real models, a microphone or spea
 | Upgrade | Upgrade from 1.1.1 and 1.2.1 with their own updater, rollback | Working | `tests/test_upgrade_paths.py` (Windows CI) |
 | Upgrade | Code-signed releases | Not implemented | `docs/WindowsDefender.md` |
 | HUD | Every visible control | Working | `docs/ControlReport.md` (54 checks) |
+| HUD | Classic, Command Center and glance-private Ambient views, with shared state | Unit tests and DOM syntax pass; expanded view audit in CI | `tests/test_workspace_views.py`, HUD audit |
 | HUD | Six themes with contrast checks, phone-width layout | Working | `tests/test_themes.py`, HUD audit |
 | Chat | Jarvis and TUKI routing, streaming, Stop and Escape | Working (stubbed model) | HUD audit, unit tests |
 | Chat | Answer quality and speed with real models | Untested on hardware | `docs/Benchmarks.md` |
@@ -45,6 +46,7 @@ models or audio but has not been verified with real models, a microphone or spea
 | Briefing | User-selected local time, automatic show/mute and manual replay | Working in automated tests; real speech unverified | `tests/test_briefing_controls.py` |
 | Models | Read-only local Ollama inventory with reported disk sizes and explicit model role selection | Working in automated tests; model compatibility and real timings unverified | `tests/test_model_inventory.py` |
 | Connections | Local built-in service status, declared scopes, and confirmed removal of saved credentials | Working in automated tests; Windows credential storage unverified | `tests/test_connections_status.py` |
+| GitHub | Approved issue list/detail/comment reads and explicitly drafted issue creation in the configured repository | Mocked API tests pass; real token scopes unverified | `tests/test_github_issues.py` |
 | GitHub | Approved read-only metadata and README of configured repository, up to 12,000 README characters | Working with fake API responses; private repository access unverified | `/repo`, `tests/test_github_context.py` |
 | Memory | Facts, history, backup and restore | Working | unit tests, HUD audit |
 | Memory | Saved date, source category and per-fact expiration with deletion on due | Working in automated tests; Windows local-date UI untested | `tests/test_memory_expiry.py` |

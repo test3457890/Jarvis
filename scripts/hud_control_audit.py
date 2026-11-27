@@ -188,6 +188,35 @@ def audit(app, cfg, code, files, url):
             page.locator("#compact-view").click()
             assert app.cfg["mode"] == mode
 
+        @check("Workspace views", "Command Center and Ambient, then Classic", "shared settings and no private text in Ambient")
+        def _():
+            mode, theme = cfg["mode"], cfg["theme"]
+            page.locator("#workspace_view").select_option("command")
+            expect(page.locator("body")).to_have_attribute("data-view", "command")
+            expect(page.locator("#command-nav")).to_be_visible()
+            page.locator("#command-nav button[data-panel=workflows]").click()
+            assert page.locator("#workflows").evaluate("e => e.open")
+            page.locator("#workflows summary").first.click()
+            page.screenshot(path=OUT / "audit-phase2-command.png")
+            page.locator("#compact-view").click()
+            page.locator("#workspace_view").select_option("ambient")
+            expect(page.locator(".app")).to_be_hidden()
+            expect(page.locator("#ambient-view")).to_be_visible()
+            page.evaluate("setPending({id:'private-preview',text:'PRIVATE ACCOUNT DETAILS'})")
+            expect(page.locator("#ambient-pending")).to_contain_text("Open controls")
+            assert "PRIVATE" not in page.locator("#ambient-view").inner_text()
+            page.locator("#ambient-clock-toggle").click()
+            expect(page.locator("#ambient-clock")).to_be_hidden()
+            page.locator("#ambient-clock-toggle").click()
+            page.screenshot(path=OUT / "audit-phase2-ambient.png")
+            page.locator("#ambient-controls").click()
+            expect(page.locator("body")).to_have_attribute("data-view", "command")
+            page.locator("#compact-view").click()
+            page.locator("#workspace_view").select_option("classic")
+            expect(page.locator("body")).to_have_attribute("data-view", "classic")
+            page.evaluate("setPending(null)")
+            assert cfg["mode"] == mode and cfg["theme"] == theme
+
         @check("Manual voice preview", "hold, release, review, copy to message, cancel", "transcript never submits itself")
         def _():
             import numpy as np
