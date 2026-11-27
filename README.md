@@ -438,6 +438,15 @@ secrets. Jarvis keeps the local `actions.log` for troubleshooting; newly logged
 approved tools record field names instead of raw arguments and results. Existing
 older log entries are not rewritten, so review the file itself before sharing it.
 
+## Investigate a test failure
+
+After an approved `/test` fails in Coding mode, use `/investigate-tests` or
+Investigate failure. Jarvis extracts the error lines and likely files inside the
+selected coding workspace from the saved test output. This review runs no command
+and makes no edits. Choose the intended file with `/fix-tests file | intended
+behavior`, review `/diff`, and apply only if the proposal is correct. A passed
+test, cancelled approval, or workspace switch cannot be used as an old failure.
+
 ## Existing Git repository in Coding mode
 
 In Setup, choose an existing local Git repository as the Coding mode workspace. Jarvis

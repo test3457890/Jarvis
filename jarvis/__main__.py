@@ -307,6 +307,8 @@ class App:
                     self.brain.ctx.last_test_output = ''
                     self.brain.ctx.last_test_root = ''
                     self.brain.ctx.last_test_file = ''
+                    self.brain.ctx.last_test_failed = False
+                    self.brain.ctx.last_test_kind = ''
                     self.brain.ctx.pending = None
                     self.brain.ctx.on_pending(None)
             root = coder.code_dir(self.cfg).resolve()
