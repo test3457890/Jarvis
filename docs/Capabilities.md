@@ -37,6 +37,7 @@ models or audio but has not been verified with real models, a microphone or spea
 | Recurring checks | Daily selected-folder document query, local last-run state, change-only notification, pause/resume/delete | Working in automated tests; Windows schedule and notification untested | `tests/test_document_watches.py` |
 | Planner | Tasks, weekly plan, Canvas feed | Working | `tests/test_week_planner.py` |
 | Memory | Facts, history, backup and restore | Working | unit tests, HUD audit |
+| Audit | Bounded human-readable action timeline with redacted metadata and undo hints | Working in automated tests; Windows HUD review untested | `tests/test_activity_timeline.py` |
 | Online | Brave search, source pages, GitHub upload | Optional | Needs keys; mocked in tests |
 | Images | Local image lookup and generation | Optional | Needs a vision model or Stable Diffusion |
 | NOMAD | Offline library search | Optional | Needs a Project NOMAD server |

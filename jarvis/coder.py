@@ -649,6 +649,7 @@ def apply_proposal(ctx):
     ctx.code_proposal = None
     ctx.applied_code = proposal
     _remember_undo(ctx, proposal)
+    secure.audit('code_edit_applied', {'files': [change.filename for change in proposal.changes]})
     files = ", ".join(change.path.name for change in proposal.changes)
     tests = test_command(project_root(ctx.cfg, proposal.changes[0].path))
     hint = " Type /test to run the project tests after approval." if tests else ""
@@ -716,6 +717,7 @@ def undo_proposal(ctx):
     from . import planner
     planner.kv_set(ctx.memory, _undo_key(ctx), None)
     planner.kv_set(ctx.memory, _UNDO_KEY, None)
+    secure.audit('code_edit_undone', {'files': [change.filename for change in proposal.changes]})
     return "Restored the previous version of " + ", ".join(change.path.name for change in proposal.changes) + "."
 
 

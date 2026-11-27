@@ -161,11 +161,11 @@ def run(ctx: Context, name: str, args: dict, confirmed=False) -> str:
     except Exception as e:  # a broken skill must never crash Jarvis
         result = f"{name} failed: {e}"
     if s["risky"] or s["internet"]:
-        secure.audit(name, {"args": clean, "result": result[:300]})
+        secure.audit(name, {"fields": sorted(clean), "outcome": "reported"})
     if s["untrusted"]:
         if secure.looks_like_injection(result):
             ctx.injection_seen = True
-            secure.audit("injection_blocked", {"source": name, "sample": result[:200]})
+            secure.audit("injection_blocked", {"source": name})
         result = secure.fence(result)
     return result
 

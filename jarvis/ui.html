@@ -43,6 +43,7 @@
   #stream-draft { padding:8px 16px; max-height:25vh; overflow:auto; white-space:pre-wrap; color:var(--dim); }
   #response-timing { color:var(--dim); font-size:12px; }
   #setup-panel { padding:8px 16px; overflow:auto; max-height:40vh; }
+  #activity-timeline { padding:8px 16px; overflow:auto; max-height:40vh; }
   #setup-form { display:grid; }
   #setup-form label { display:grid; gap:6px; }
   #setup-folders { min-width:0; width:100%; box-sizing:border-box; padding:8px; font:inherit;
@@ -393,6 +394,12 @@
       </form>
       <p id="repository-status" role="status"></p>
       <p class="hint">Only this folder is granted for coding. Review the full diff before Apply; test and build commands still require confirmation. Jarvis will not run Git commands automatically.</p>
+    </details>
+    <details id="activity-timeline" name="assistant-tools">
+      <summary>Activity timeline</summary>
+      <p>Recent local actions and blocked requests. Message text, source excerpts and secrets are excluded here.</p>
+      <button id="activity-refresh" type="button">Refresh activity</button>
+      <p id="activity-status" role="status"></p><div id="activity-list"></div>
     </details>
     <details id="file-tasks" name="assistant-tools">
       <summary>File tasks</summary>
@@ -842,6 +849,21 @@ async function repository(data) {
 $('repository-select').onsubmit = event => { event.preventDefault(); repository({action:'select', path:$('repository-path').value}); };
 $('repository-reset').onclick = () => repository({action:'reset'});
 repository();
+async function refreshActivity() {
+  try {
+    const events = await api('/api/activity');
+    if (events.error) throw new Error(events.error);
+    $('activity-list').replaceChildren();
+    $('activity-status').textContent = events.length ? `${events.length} recent actions.` : 'No recorded actions yet.';
+    for (const event of events) {
+      const row = el('div', 'memory-row');
+      row.appendChild(el('span', '', [event.time, event.action, event.target].filter(Boolean).join(' · ')));
+      if (event.undo) row.appendChild(el('span', 'hint', 'Undo: ' + event.undo));
+      $('activity-list').appendChild(row);
+    }
+  } catch (error) { $('activity-status').textContent = error.message || 'Could not load activity.'; }
+}
+$('activity-refresh').onclick = refreshActivity;
 $('memory-export').onclick = async () => {
   try {
     const result = await api('/api/memory');
