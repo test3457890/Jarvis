@@ -110,6 +110,29 @@ class App:
     def activity_operation(self):
         return secure.recent_activity()
 
+    def models_operation(self, data=None):
+        """Inspect locally installed Ollama models and assign one to an assistant role."""
+        with self.brain._lock, self._settings_lock:
+            installed = setupwizard.installed_ollama(self.cfg)
+            if data is not None:
+                if self.cfg.get('lockdown'):
+                    raise ValueError('Turn off Lockdown to change models.')
+                role, name = data.get('role'), data.get('name')
+                if role not in ('everyday_model', 'model', 'coder_model') or not isinstance(name, str):
+                    raise ValueError('Choose a model role and an installed model.')
+                if installed is None:
+                    raise ValueError('Ollama is unavailable. Start it and refresh models.')
+                if name not in installed:
+                    raise ValueError('Choose a model reported as installed by Ollama.')
+                config.save({**self.cfg, role: name})
+                self.cfg[role] = name
+            return {'reachable': installed is not None,
+                    'models': [{'name': name, 'disk_bytes': size} for name, size in sorted((installed or {}).items())
+                               if not name.endswith(':latest')][:50],
+                    'selected': {key:self.cfg.get(key) for key in ('everyday_model', 'model', 'coder_model', 'embed_model')},
+                    'profile': self.cfg.get('performance_profile'), 'context_tokens': self.cfg.get('num_ctx'),
+                    'note': 'Ollama reports disk size, not RAM or speed. Model role compatibility is not verified.'}
+
     def toggle(self, what):
         with self._settings_lock:
             return self._toggle(what)

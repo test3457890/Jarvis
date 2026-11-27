@@ -139,6 +139,8 @@ def serve(app, port: int):
                 self._json(app.dashboard())
             elif self.path == "/api/activity":
                 self._json(app.activity_operation())
+            elif self.path == "/api/models":
+                self._json(app.models_operation())
             else:
                 self._json({"error": "not found"}, 404)
 
@@ -227,6 +229,12 @@ def serve(app, port: int):
                 try:
                     result = app.watches_operation(data)
                 except (ValueError, TypeError) as error:
+                    return self._json({"error": str(error)}, 400)
+                self._json(result)
+            elif self.path == "/api/models":
+                try:
+                    result = app.models_operation(data)
+                except (ValueError, TypeError, OSError) as error:
                     return self._json({"error": str(error)}, 400)
                 self._json(result)
             elif self.path == "/api/repository":
