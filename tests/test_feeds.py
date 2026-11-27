@@ -33,6 +33,16 @@ def test_xml_entities_invalid_content_and_size_budgets_are_refused(text):
         online.parse_feed(text, "https://example.org/feed")
 
 
+@pytest.mark.parametrize("encoding", ["utf-16le", "utf-16be", "utf-32le", "utf-32be"])
+def test_misdecoded_xml_cannot_bypass_dtd_rejection(encoding):
+    payload='<!DOCTYPE rss [<!ENTITY sample "sample text">]><rss><channel><title>&sample;</title></channel></rss>'
+    # A server can mislabel its encoding. Embedded NULs can make Expat recognise
+    # UTF-16 even though a Unicode text scan cannot see the DTD token.
+    text=payload.encode(encoding).decode('latin1')
+    with pytest.raises(ValueError, match="NUL"):
+        online.parse_feed(text, "https://example.org/feed")
+
+
 def test_entry_limit_and_unsafe_links():
     feed = '<rss><channel>' + '<item><title>Entry</title><link>javascript:alert(1)</link></item>'*30 + '</channel></rss>'
     parsed = online.parse_feed(feed, "https://example.org/feed")

@@ -300,9 +300,9 @@ def _feed_link(value, source):
 def parse_feed(text, source):
     """Read bounded RSS/Atom data, never XML declarations for entities or DTDs."""
     import xml.etree.ElementTree as ET
-    if (not isinstance(text, str) or len(text) > 1_000_000
+    if (not isinstance(text, str) or len(text) > 1_000_000 or '\x00' in text
             or re.search(r'<!\s*(?:DOCTYPE|ENTITY)\b', text, re.I)):
-        raise ValueError("Feeds must be at most 1 MB and cannot declare entities or a DTD.")
+        raise ValueError("Feeds must be at most 1 MB and cannot contain NUL characters, entities or a DTD.")
     try:
         root = ET.fromstring(text)
     except (ET.ParseError, RecursionError):

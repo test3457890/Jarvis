@@ -63,6 +63,8 @@ The next increment adds approved manual RSS/Atom reads and NWS forecasts for exp
 
 ## Verification checkpoint
 
+A format-edge check found that misdecoded UTF-16 text could reach Expat without the DTD token being visible to the Unicode rejection scan. Rejecting NUL-containing decoded input closes that route; UTF-16/UTF-32 regression cases are included. Correctly decoded feed text continues through the existing DTD/entity and size checks.
+
 The final source-bundle link check found three broken links caused by omitted documentation assets: the screenshot-gallery README (linked twice) and a benchmark JSON record. Both assets are now included, and a regression test checks local links inside the ZIP rather than only in the checkout.
 
 PR #40 at `0d5d8fd21a3e4e47db6c67659add9724d61d1536` passed all four CI jobs, including the feed/weather browser checks. The later named-voice fixes pass 327 local tests with 6 platform-only skips, JavaScript syntax, the DOM interaction harness and source packaging. Their own CI result must be checked separately. No new versioned release, merge or real microphone/model verification is implied by these results.

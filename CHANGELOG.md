@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reject NUL-containing misdecoded XML before feed parsing so alternate byte encodings cannot bypass the DTD/entity scan.
+
 - Include the screenshot-gallery README and linked benchmark JSON in source packages, with a packaged-documentation link check.
 
 - Preserve saved named voices while the HUD loads its installed-voice inventory. Explicit TUKI choices now take priority even if the owner chooses the same voice as Jarvis; Automatic still prefers a different voice.
