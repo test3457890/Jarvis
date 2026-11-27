@@ -322,7 +322,7 @@ class App:
                     with self.memory._lock, self.memory.db:
                         self.memory.db.execute("DELETE FROM messages")
                     self.brain.history = []
-                    return {"facts": [{"id": key, "text": text} for key, text in self.memory.all_facts()]}
+                    return {"facts": self.memory.fact_details()}
                 fact_id = data.get("id")
                 if type(fact_id) is not int or fact_id < 1:
                     raise ValueError("Choose a remembered fact.")
@@ -330,11 +330,17 @@ class App:
                     changed = self.memory.edit_fact(fact_id, data.get("text"))
                 elif data.get("action") == "delete" and data.get("confirmed") is True:
                     changed = self.memory.delete_fact(fact_id)
+                elif data.get("action") == "expire":
+                    if 'expires' not in data or data['expires'] is None:
+                        raise ValueError('Choose a future expiration date.')
+                    changed = self.memory.set_fact_expiry(fact_id, data.get('expires'))
+                elif data.get("action") == "clear_expiry":
+                    changed = self.memory.set_fact_expiry(fact_id, None)
                 else:
                     raise ValueError("Choose Edit or confirm deletion.")
                 if not changed:
                     raise ValueError("This remembered fact has already been removed. Refresh the list.")
-            return {"facts": [{"id": key, "text": text} for key, text in self.memory.all_facts()]}
+            return {"facts": self.memory.fact_details()}
 
     def files_operation(self, data):
         """Selected-folder file tasks for the HUD. Changes always go through a confirmation."""
@@ -486,6 +492,7 @@ class App:
             try:
                 for text in self.memory.pop_due_reminders():
                     self.notify(f"Reminder: {text}")
+                self.memory.purge_expired()
                 watchchecks.run_due(self.memory, self.cfg, lambda message: self.notify(message, speak=False))
                 self._event_heads_up()
                 self._deadline_nudges()
