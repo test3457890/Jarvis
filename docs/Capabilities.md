@@ -52,6 +52,8 @@ models or audio but has not been verified with real models, a microphone or spea
 | Memory | Facts, history, backup and restore | Working | unit tests, HUD audit |
 | Memory | Saved date, source category and per-fact expiration with deletion on due | Working in automated tests; Windows local-date UI untested | `tests/test_memory_expiry.py` |
 | Audit | Bounded human-readable action timeline with redacted metadata and undo hints | Working in automated tests; Windows HUD review untested | `tests/test_activity_timeline.py` |
+| Feeds | Approved manual RSS/Atom reads, up to 20 source-attributed entries, no article fetching | Parsing, confirmation, XML limits and shared network boundaries tested with fixtures; live feeds unverified | `tests/test_feeds.py` |
+| Weather | Approved coordinates to NWS points and an exact-host grid forecast, no GPS | Mocked response and destination/reading validation tests pass; live API unverified | `tests/test_weather.py` |
 | Online | Brave search, source pages, GitHub upload | Optional | Needs keys; mocked in tests |
 | Images | Local image lookup and generation | Optional | Needs a vision model or Stable Diffusion |
 | NOMAD | Offline library search | Optional | Needs a Project NOMAD server |

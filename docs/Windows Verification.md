@@ -63,3 +63,9 @@ a fixture-only green check or disable protections to make installation succeed.
 ## Optional local chat provider
 
 Follow `Local Chat Provider.md` with an authorized local server and compatible model. Verify actual reply quality, model label, harmless calculator round trip, coding diff preview, cancellation, provider failure without fallback and switching back to preserved Ollama role settings. The adapter's HTTP fixtures and configuration controls do not establish inference quality. Status: Not tested on real inference hardware.
+
+## Feeds and weather
+
+- With Internet on, approve a public RSS/Atom URL you choose, verify the first entries against the publisher and cancel a second request. Offline and Lockdown must block it. No article should be fetched automatically.
+- Approve coordinates for a supported US location with `/weather latitude,longitude`, verify the actual NWS source, timestamp, units and forecast periods. Check a service error and cancellation; no synthetic readings should appear. No GPS is accessed.
+- Live publisher/NWS verification and real Windows review: Not tested by the fixtures.

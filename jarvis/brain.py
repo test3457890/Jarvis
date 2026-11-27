@@ -267,7 +267,7 @@ class Brain:
                 if self.ctx.pending:
                     self.confirm_pending(False)
                 return self._command(command)
-            if self.ctx.pending and self.ctx.pending["name"] in ("github_upload", "github_repo_read", "github_issues_read", "github_issue_read", "github_issue_create", "web_search", "image_search", "read_source", "check_sources"):
+            if self.ctx.pending and self.ctx.pending["name"] in ("github_upload", "github_repo_read", "github_issues_read", "github_issue_read", "github_issue_create", "feed_read", "weather_read", "web_search", "image_search", "read_source", "check_sources"):
                 return self._confirm_online_text(command)
             self.tools_used = []
             reply = self._ask(command, room_context)
@@ -329,6 +329,20 @@ class Brain:
                 result = skills.run(self.ctx, "read_source", {"url": url.strip()})
                 if self.ctx.pending and claim.strip():
                     self.ctx.pending["source_claim"] = claim.strip()[:4000]
+                return result
+            if command == "/feed" and value.strip():
+                result = skills.run(self.ctx, "feed_read", {"url":value.strip()})
+                if self.ctx.pending:
+                    return self.ctx.pending["preview"] + ". Use Confirm or say “confirm feed”."
+                return result
+            if command == "/weather":
+                fields = value.split(',')
+                if len(fields) != 2:
+                    return "Use /weather latitude,longitude for a supported US location. Coordinates are previewed before sending."
+                lat, lon = online._weather_coordinates(*fields)
+                result = skills.run(self.ctx, "weather_read", {"latitude":float(lat), "longitude":float(lon)})
+                if self.ctx.pending:
+                    return self.ctx.pending["preview"] + ". Use Confirm or say “confirm weather”."
                 return result
             if command == "/search" and value.strip():
                 return skills.run(self.ctx, "web_search", {"query": value})
@@ -426,7 +440,7 @@ class Brain:
                 if command == "/undo":
                     return coder.undo_proposal(self.ctx)
             return ("Planning: /task title | due date | minutes, /tasks, /plan, /schedule today or /schedule week. "
-                    "Other commands: /docs query, /research-docs question, /research-all question | HTTPS URLs, /calc expression, /files filename, /search query, /images query, /upload file, /repo. "
+                    "Other commands: /docs query, /research-docs question, /research-all question | HTTPS URLs, /calc expression, /files filename, /search query, /images query, /upload file, /repo, /issues, /issue NUMBER, /new-issue title | body, /feed URL, /weather latitude,longitude. "
                     "In Coding mode: /fix, /diff, /apply, /undo, /test, /build, /investigate-tests, /fix-tests.")
         except (ValueError, OSError, OllamaError) as error:
             return f"Couldn't complete the request: {error}"
@@ -434,6 +448,7 @@ class Brain:
     def _confirm_online_text(self, text):
         expected = {"github_upload": "confirm upload", "github_repo_read": "confirm repository", "web_search": "confirm search",
                     "github_issues_read":"confirm issue", "github_issue_read":"confirm issue", "github_issue_create":"confirm issue",
+                    "feed_read":"confirm feed", "weather_read":"confirm weather",
                     "image_search": "confirm image search", "read_source": "confirm source", "check_sources": "confirm sources"}
         name = self.ctx.pending["name"]
         if text.casefold().rstrip(".!?") == expected[name]:
@@ -469,6 +484,10 @@ class Brain:
             if pending["name"] in ("github_repo_read", "github_issues_read", "github_issue_read"):
                 if self.ctx.injection_seen:
                     return "Repository text contained suspicious instructions. It was discarded."
+                return result.removeprefix(secure.UNTRUSTED_NOTE).removesuffix(secure.UNTRUSTED_END)
+            if pending["name"] in ("feed_read", "weather_read"):
+                if self.ctx.injection_seen:
+                    return "Feed or forecast text contained suspicious instructions. It was discarded."
                 return result.removeprefix(secure.UNTRUSTED_NOTE).removesuffix(secure.UNTRUSTED_END)
             if pending["name"] == "check_sources":
                 if self.ctx.injection_seen:

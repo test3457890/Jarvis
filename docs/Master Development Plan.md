@@ -109,6 +109,8 @@ Consider dictation, specialist agents, smart-home/music integrations, mobile acc
 
 ## Current delivery record
 
+- Added C05 manual adapters: approved RSS/Atom reads with publisher links and reported dates, plus NWS forecasts for explicitly approved coordinates. Feeds never fetch articles or run source instructions, XML DTD/entities are refused and parsing is bounded. Weather grid discovery cannot change the approved NWS host/path; missing or invalid temperatures are not fabricated. Tests use fixtures. Saved subscriptions, automatic external polling and feed-enriched briefings remain planned.
+
 - Added a first M02 adapter: explicitly chosen numeric-loopback chat-completions server, model ID and model inventory. Completed responses and tool IDs are validated before the existing tool loop can run. Cloud endpoints, redirects and silent fallback are refused; provider errors do not trigger Ollama fallback. This initial adapter uses one chat/coding model and keyword recall. Real loopback HTTP fixtures pass; installed inference-model compatibility, streaming and authentication remain unverified or unimplemented as documented.
 - Restored all three original generated concept images to `docs/design-concepts/`, clearly labeled as artwork rather than application screenshots. Legacy captures are preserved. The original WebP bytes and SHA-256 values are retained.
 

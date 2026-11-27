@@ -153,7 +153,7 @@ def check_smtp(host: str, cfg: dict) -> str:
     return host
 
 
-def read_public_page(url, cfg):
+def read_public_page(url, cfg, *, content_types=('text/html', 'text/plain')):
     """Read an approved HTTPS page over a connection pinned to a public address."""
     import http.client
     import ipaddress
@@ -192,7 +192,7 @@ def read_public_page(url, cfg):
     path = urllib.parse.urlunsplit(('', '', parsed.path or '/', parsed.query, ''))
     secure.audit('public_page_read', {'host': host, 'purpose': 'approved_source'})
     try:
-        connection.request('GET', path, headers={'User-Agent':'JarvisLocalAssistant/1.1', 'Accept':'text/html,text/plain',
+        connection.request('GET', path, headers={'User-Agent':'JarvisLocalAssistant/1.1', 'Accept':','.join(content_types),
                                                  'Accept-Encoding':'identity'})
         response = connection.getresponse()
         if 300 <= response.status < 400:
@@ -200,8 +200,8 @@ def read_public_page(url, cfg):
         if response.status != 200:
             raise ValueError(f'The page returned HTTP {response.status}.')
         content_type = response.headers.get_content_type()
-        if content_type not in ('text/html', 'text/plain') or response.getheader('Content-Encoding', 'identity') != 'identity':
-            raise ValueError('The source must provide an uncompressed HTML or text page.')
+        if content_type not in content_types or response.getheader('Content-Encoding', 'identity') != 'identity':
+            raise ValueError('The source must provide an uncompressed supported content type.')
         data = response.read(1_000_001)
         if len(data) > 1_000_000:
             raise ValueError('The source exceeds the 1 MB page limit.')

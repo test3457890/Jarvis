@@ -391,6 +391,8 @@
       <button id="file-move" type="button">Move file</button>
       <button id="file-jobs" type="button">File task history</button>
       <button id="read-source" type="button">Read source page</button>
+      <button id="read-feed" type="button" hidden>Read RSS or Atom feed</button>
+      <button id="read-weather" type="button" hidden>Read US weather forecast</button>
       <button id="web-search" type="button" hidden>Web search</button>
       <button id="upload-file" type="button" hidden>Upload to GitHub</button>
       <button id="github-issues" type="button" hidden>GitHub issues</button>
@@ -763,6 +765,8 @@ function setToggles(st) {
   $('tuki-calculate').hidden = !tukiTools;
   $('tuki-files').hidden = !tukiTools;
   const online = st.internet && !st.lockdown && st.mode !== 'talk';
+  $('read-feed').hidden = !online;
+  $('read-weather').hidden = !online;
   $('web-search').hidden = !online || !st.web_search;
   $('image-search-button').disabled = !online || !st.web_search;
   $('image-search-button').title = st.web_search ? 'Requires the Internet toggle and your approval' : 'Set up Brave Search first';
@@ -1330,6 +1334,8 @@ $('file-copy').onclick = () => fillCommand('/copy', 'source | destination inside
 $('file-move').onclick = () => fillCommand('/move', 'source | destination inside Jarvis Code');
 $('file-jobs').onclick = () => send('/jobs');
 $('read-source').onclick = () => fillCommand('/read', 'https://source-page | optional claim to check');
+$('read-feed').onclick = () => fillCommand('/feed', 'Exact public HTTPS RSS or Atom feed URL');
+$('read-weather').onclick = () => fillCommand('/weather', 'latitude,longitude for a supported US location; reviewed before sending');
 $('tuki-files').onclick = () => fillCommand('/files', 'Part of a filename');
 $('web-search').onclick = () => fillCommand('/search', 'Public search terms');
 $('upload-file').onclick = () => fillCommand('/upload', 'File relative to Jarvis Code');

@@ -4,6 +4,7 @@ import binascii
 import hashlib
 import html
 import json
+import math
 import re
 from pathlib import PureWindowsPath
 from urllib.error import HTTPError, URLError
@@ -279,6 +280,151 @@ def github_issue_create(ctx, repo, title, body):
     if type(number) is not int or number < 1:
         return f"GitHub returned no issue number. Check https://github.com/{repo}/issues before retrying."
     return f"Created GitHub issue https://github.com/{repo}/issues/{number}"
+
+
+def _feed_link(value, source):
+    from urllib.parse import urljoin
+    if not isinstance(value, str) or len(value) > 2000 or any(ord(c) < 33 for c in value):
+        return ""
+    try:
+        value = urljoin(source, value)
+        parsed = urlsplit(value)
+        if (parsed.scheme != "https" or not parsed.hostname or parsed.username is not None
+                or parsed.password is not None or parsed.port not in (None, 443)):
+            return ""
+        return value
+    except ValueError:
+        return ""
+
+
+def parse_feed(text, source):
+    """Read bounded RSS/Atom data, never XML declarations for entities or DTDs."""
+    import xml.etree.ElementTree as ET
+    if (not isinstance(text, str) or len(text) > 1_000_000
+            or re.search(r'<!\s*(?:DOCTYPE|ENTITY)\b', text, re.I)):
+        raise ValueError("Feeds must be at most 1 MB and cannot declare entities or a DTD.")
+    try:
+        root = ET.fromstring(text)
+    except (ET.ParseError, RecursionError):
+        raise ValueError("The source did not provide a valid RSS or Atom feed.") from None
+    local = lambda element: str(element.tag).rsplit('}', 1)[-1].lower()
+    if local(root) not in ("rss", "feed", "rdf"):
+        raise ValueError("The source is not an RSS or Atom feed.")
+    count = 0
+    for element in root.iter():
+        count += 1
+        if count > 10000:
+            raise ValueError("The feed contains too many XML elements.")
+    heading = next((element for element in root if local(element) == "channel"), root)
+    title = next((_plain(''.join(e.itertext()), 200) for e in heading if local(e) == "title"), "")
+    items = []
+    for entry in root.iter():
+        if local(entry) not in ("item", "entry"):
+            continue
+        fields, link = {}, ""
+        for child in entry:
+            tag = local(child)
+            if tag == "link":
+                relation = child.get("rel", "alternate")
+                if relation == "alternate":
+                    candidate = child.get("href") or ''.join(child.itertext()).strip()
+                    link = _feed_link(candidate, source) or link
+            elif tag in ("title", "description", "summary", "content", "pubdate", "published", "updated", "date"):
+                fields.setdefault(tag, _plain(''.join(child.itertext()), 500))
+        if not fields.get("title") and not link:
+            continue
+        items.append({"title":fields.get("title", "Untitled entry")[:200], "url":link,
+                      "summary":(fields.get("summary") or fields.get("description") or fields.get("content") or "")[:500],
+                      "reported_date":(fields.get("published") or fields.get("pubdate") or fields.get("updated") or fields.get("date") or "")[:100]})
+        if len(items) == 20:
+            break
+    return {"title":title or "Selected feed", "source":source, "items":items}
+
+
+@skill("Read up to 20 RSS or Atom feed entries after approving the exact public HTTPS URL.",
+       params={"url":("string", "Public HTTPS feed URL", True)}, risky=True, internet=True,
+       untrusted=True, manual=True, preview=lambda ctx, url: f"read RSS/Atom entries from this exact URL: {url}")
+def feed_read(ctx, url):
+    text, _ = net.read_public_page(url, ctx.cfg, content_types=(
+        "application/rss+xml", "application/atom+xml", "application/rdf+xml", "application/xml", "text/xml", "text/plain"))
+    feed = parse_feed(text, url)
+    lines = [f"Feed: {feed['title']}", f"Source: {url}", "Dates and summaries below are reported by the feed, not independently verified."]
+    for index, item in enumerate(feed["items"], 1):
+        lines.append(f"[{index}] {item['title']}\n{item['url']}\nReported date: {item['reported_date'] or 'Not supplied'}\n{item['summary']}")
+    if not feed["items"]:
+        lines.append("No usable entries were found in the feed.")
+    return '\n\n'.join(lines)[:20000]
+
+
+def _weather_coordinates(latitude, longitude):
+    if isinstance(latitude, bool) or isinstance(longitude, bool):
+        raise ValueError("Use numeric latitude and longitude.")
+    try:
+        lat, lon = float(latitude), float(longitude)
+    except (ValueError, TypeError, OverflowError):
+        raise ValueError("Use numeric latitude and longitude.") from None
+    if not math.isfinite(lat) or not math.isfinite(lon) or not -90 <= lat <= 90 or not -180 <= lon <= 180:
+        raise ValueError("Latitude must be -90 to 90 and longitude -180 to 180.")
+    return f"{lat:.4f}", f"{lon:.4f}"
+
+
+def _weather_preview(ctx, latitude, longitude):
+    lat, lon = _weather_coordinates(latitude, longitude)
+    return (f"send coordinates {lat}, {lon} to api.weather.gov/points and read its official grid forecast "
+            "from api.weather.gov. This service covers supported US locations; no GPS is accessed")
+
+
+@skill("Read the National Weather Service forecast for explicitly supplied coordinates after approval.",
+       params={"latitude":("number", "Latitude", True), "longitude":("number", "Longitude", True)},
+       risky=True, internet=True, untrusted=True, manual=True, preview=_weather_preview)
+def weather_read(ctx, latitude, longitude):
+    lat, lon = _weather_coordinates(latitude, longitude)
+    types = ("application/geo+json", "application/ld+json", "application/json")
+    points = f"https://api.weather.gov/points/{lat},{lon}"
+    text, _ = net.read_public_page(points, ctx.cfg, content_types=types)
+    try:
+        data = json.loads(text)
+        forecast_url = data["properties"]["forecast"]
+    except (ValueError, TypeError, KeyError, RecursionError):
+        raise ValueError("The weather service did not return a supported forecast grid.") from None
+    if not isinstance(forecast_url, str):
+        raise ValueError("The weather service returned an invalid forecast address.")
+    try:
+        parsed = urlsplit(forecast_url)
+        valid = (parsed.scheme == "https" and parsed.hostname == "api.weather.gov" and parsed.port in (None,443)
+                 and parsed.username is None and parsed.password is None and not parsed.query and not parsed.fragment
+                 and re.fullmatch(r"/gridpoints/[A-Za-z]{3}/\d{1,5},\d{1,5}/forecast", parsed.path))
+    except ValueError:
+        valid = False
+    if not valid:
+        raise ValueError("The weather service returned a forecast outside the approved NWS grid path.")
+    if ctx.cfg.get("lockdown") or not ctx.cfg.get("allow_internet_tools") or (ctx.cancelled is not None and ctx.cancelled.is_set()):
+        return "Weather request stopped before the forecast read."
+    text, _ = net.read_public_page(forecast_url, ctx.cfg, content_types=types)
+    try:
+        forecast = json.loads(text)
+        properties = forecast["properties"]
+        periods = properties["periods"]
+        if not isinstance(properties, dict) or not isinstance(periods, list):
+            raise ValueError
+    except (ValueError, KeyError, TypeError, RecursionError):
+        raise ValueError("The weather service returned invalid forecast data.") from None
+    lines = [f"National Weather Service forecast for supplied coordinates {lat}, {lon}", f"Source: {forecast_url}",
+             f"Service update: {_plain(str(properties.get('updated') or 'Not supplied'), 100)}"]
+    for period in periods[:8]:
+        if not isinstance(period, dict):
+            raise ValueError("The weather service returned an invalid forecast period.")
+        temperature, unit = period.get("temperature"), period.get("temperatureUnit")
+        if type(temperature) not in (int,float) or unit not in ("F","C"):
+            raise ValueError("The forecast temperature or units are missing; no reading was substituted.")
+        if not math.isfinite(temperature) or not -200 <= temperature <= 200:
+            raise ValueError("The weather service returned an invalid temperature.")
+        lines.append(f"{_plain(str(period.get('name') or 'Forecast period'), 100)} ({_plain(str(period.get('startTime') or 'Time not supplied'), 80)}): "
+                     f"{temperature} {unit}; {_plain(str(period.get('shortForecast') or 'Description not supplied'), 300)}; "
+                     f"wind {_plain(str(period.get('windSpeed') or 'not supplied'), 80)} {_plain(str(period.get('windDirection') or ''), 30)}")
+    if not periods:
+        lines.append("The service returned no forecast periods. No weather readings are available.")
+    return '\n\n'.join(lines)
 
 
 @skill('Read a public HTTPS source page after the user approves its URL. '

@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, patch
 from PIL import Image
 from playwright.sync_api import expect, sync_playwright
 
-from jarvis import config, memory, nomad, setupwizard, webui
+from jarvis import config, memory, net, nomad, setupwizard, webui
 from jarvis.__main__ import App
 
 OUT = Path("hud-captures")
@@ -303,6 +303,54 @@ def audit(app, cfg, code, files, url):
             page.get_by_role("button", name="Delete workflow", exact=True).click()
             expect(page.locator("#workflow-list")).to_be_empty()
             page.locator("#workflows summary").first.click()
+
+        @check("RSS and Atom feed", "preview, cancel, then approve a fixture feed", "no fetch before approval and source-attributed output")
+        def _():
+            cfg['allow_internet_tools'] = True
+            page.evaluate("api('/api/state').then(setToggles)")
+            page.locator('#read-feed').click()
+            expect(page.locator('#q')).to_have_value('/feed ')
+            body = '<rss><channel><title>Audit feed</title><item><title>Review event</title><link>https://example.org/event</link></item></channel></rss>'
+            try:
+                with patch.object(net, 'read_public_page', return_value=(body, 'application/rss+xml')) as read:
+                    send(page, '/feed https://example.org/feed')
+                    expect(page.locator('#pending')).to_have_class('on')
+                    assert read.call_count == 0
+                    page.locator('#p-no').click()
+                    expect(last_reply(page)).to_contain_text('Cancelled')
+                    assert read.call_count == 0
+                    send(page, '/feed https://example.org/feed')
+                    expect(page.locator('#pending')).to_have_class('on')
+                    page.locator('#p-yes').click()
+                    expect(last_reply(page)).to_contain_text('Review event')
+                    assert read.call_count == 1
+            finally:
+                cfg['allow_internet_tools'] = False
+                page.evaluate("api('/api/state').then(setToggles)")
+
+        @check("US weather forecast", "approve coordinates with NWS fixtures", "exact coordinates reviewed and real response fields displayed")
+        def _():
+            cfg['allow_internet_tools'] = True
+            page.evaluate("api('/api/state').then(setToggles)")
+            page.locator('#read-weather').click()
+            expect(page.locator('#q')).to_have_value('/weather ')
+            url='https://api.weather.gov/gridpoints/PSR/159,76/forecast'
+            responses=[(json.dumps({'properties':{'forecast':url}}),'application/geo+json'),
+                       (json.dumps({'properties':{'updated':'2026-11-27T12:00:00Z','periods':[{
+                           'name':'Afternoon','startTime':'2026-11-27T12:00:00-07:00','temperature':72,
+                           'temperatureUnit':'F','shortForecast':'Sunny','windSpeed':'5 mph','windDirection':'NE'}]}}),'application/geo+json')]
+            try:
+                with patch.object(net, 'read_public_page', side_effect=responses) as read:
+                    send(page, '/weather 33.49,-111.92')
+                    expect(page.locator('#pending')).to_have_class('on')
+                    expect(page.locator('#pending-text')).to_contain_text('33.4900, -111.9200')
+                    assert read.call_count == 0
+                    page.locator('#p-yes').click()
+                    expect(last_reply(page)).to_contain_text('72 F')
+                    assert read.call_count == 2
+            finally:
+                cfg['allow_internet_tools'] = False
+                page.evaluate("api('/api/state').then(setToggles)")
 
         # ---------------------------------------------------------------- header controls
         @check("Mode menu", "select each mode", "body, app state and saved config change; Talk hides tools")

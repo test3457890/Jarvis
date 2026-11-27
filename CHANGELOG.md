@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Approved manual RSS/Atom reads with bounded XML parsing, publisher links and reported dates.
+- Approved NWS coordinate/forecast reads with destination confinement and validation of actual response fields.
+- Keep provider settings within the phone-width layout; the regression found by the browser audit is fixed.
+
 - Optional loopback-only chat-completions adapter with explicit configuration, bounded complete responses, validated tool IDs and existing approvals; no cloud fallback.
 - Restore the three original concept images separately from actual application captures and retain legacy screenshots.
 

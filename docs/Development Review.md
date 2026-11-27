@@ -52,3 +52,9 @@ The follow-up branch `feature/workspace-views-and-github` adds the three selecta
 PR #38 at `8b5847fa071d02daa1238c4a3d4d333122e892f1` passed all four GitHub CI jobs, including the workspace-view browser checks. Its CI artifacts contain the initial Command Center and Ambient application captures using synthetic test data.
 
 The next branch adds a numeric-loopback-only chat-completions adapter with a selected model ID, saved setup, real HTTP fixture tests, strict completed-tool parsing and no automatic fallback. It does not establish real inference quality or performance. The three original design concepts are also restored without altering their source bytes. All other outstanding roadmap entries retain their documented status.
+
+## Approved feed and weather follow-up
+
+PR #39 at `fe60a5ce91c337b3ec992e1fc5f9a93020ab0bb2` passed all four GitHub CI jobs. Its initial browser run found a phone-width overflow in the new provider form; the form was changed to a constrained grid, and the full rerun passed, including the 390-pixel layout check.
+
+The next increment adds approved manual RSS/Atom reads and NWS forecasts for explicitly supplied coordinates. These adapters use the existing public-IP-pinned, no-redirect HTTPS reader with narrow content types. Fixture tests cover XML limits, exact approval, injection rejection, coordinate validation, forecast destination confinement and refusal to invent missing readings. Live publisher/NWS verification remains outstanding. No subscriptions or automatic external polling are claimed.

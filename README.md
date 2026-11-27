@@ -7,7 +7,7 @@ Download the Windows source ZIP and checksum from [Jarvis v1.3.0](https://github
 [Install Jarvis](#install-once) · [First launch](#first-launch-setup-wizard) · [File tasks](#file-tasks-in-selected-folders) · [Jarvis and TUKI](#jarvis-and-tuki) · [Project NOMAD](#project-nomad-integration) · [What is in this repository](#what-is-in-this-repository)
 
 See [CHANGELOG.md](CHANGELOG.md), the [capability matrix](docs/Capabilities.md) and the [HUD control report](docs/ControlReport.md).
-For future features and the comparison with other assistants, see the [master development plan](docs/Master%20Development%20Plan.md).
+For future features and the comparison with other assistants, see the [master development plan](docs/Master%20Development%20Plan.md) and the [44-item status audit](docs/Roadmap%20Status.md).
 
 For the November 2026 owner/Claude hardware pass, use the [Windows verification checklist](docs/Windows%20Verification.md).
 Automated HTTP/model fixtures and existing screenshot examples do not establish
@@ -218,6 +218,22 @@ replies and validated tool calls use the same permissions and confirmation contr
 The adapter uses keyword memory recall and has no cloud fallback. Its protocol tests
 use a real loopback fixture; an actual inference server/model still needs verification.
 See the [local provider guide](docs/Local%20Chat%20Provider.md) for setup and limits.
+
+## RSS, Atom and US weather
+
+With Internet on, use `/feed https://publisher.example/feed` to review up to twenty
+RSS/Atom entries after approving the exact URL. Output retains source links and
+feed-reported dates. Articles are not fetched, feed instructions cannot run tools,
+and XML entity/DTD declarations are refused. This is a manual read; subscriptions,
+background feed polling and automatic news briefings are not added.
+
+Use `/weather latitude,longitude` for a supported US location. Jarvis previews the
+coordinates and NWS service before making a points lookup and reading its forecast.
+No GPS is accessed. The returned grid must remain on the approved `api.weather.gov`
+forecast path. Temperatures, units, period times, source and update time come from
+the response; missing readings are never replaced by demonstration data. See the
+[NWS service documentation](https://www.weather.gov/documentation/services-web-api).
+Live service availability and forecasts remain separate from the fixture tests.
 
 ## Weekly planner
 
