@@ -162,6 +162,27 @@ def test_failure_output_files_are_added_as_context(project, monkeypatch):
     assert "ZeroDivisionError" in requests[0]["task"]
 
 
+def test_investigate_last_approved_failure_without_model_or_command(project, monkeypatch):
+    cfg, _, brain, root, _, requests = project
+    assert 'failed test run' in brain.ask('/investigate-tests')
+    output = (f'Traceback (most recent call last):\n  File "{root / "cart.py"}", line 5\n'
+              'ZeroDivisionError: division by zero\nFAILED tests/test_cart.py::test_total')
+    calls = []
+    monkeypatch.setattr(coder, '_run_in_job', lambda command, cwd, timeout: (calls.append(cwd) or (1, output, '')))
+    brain.ask('/test shop/cart.py')
+    assert brain.ctx.pending['name'] == 'run_project_tests' and calls == []
+    brain.confirm_pending(True)
+    report = brain.ask('/investigate-tests')
+    assert 'ZeroDivisionError' in report and 'shop/cart.py' in report
+    assert 'shop/tests/test_cart.py' in report and '/fix-tests shop/cart.py' in report
+    assert len(calls) == 1 and requests == []
+    monkeypatch.setattr(coder, '_run_in_job', lambda command, cwd, timeout: (0, '1 passed', ''))
+    brain.ask('/test shop/cart.py')
+    brain.confirm_pending(True)
+    assert 'failed test run' in brain.ask('/investigate-tests')
+    assert 'failed test run' in brain.ask('/fix-tests shop/cart.py | fix it')
+
+
 def test_build_and_test_commands_are_risky_and_manual():
     for name in ("run_project_build", "run_project_tests", "run_code"):
         assert skills.SKILLS[name]["risky"]

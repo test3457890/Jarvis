@@ -25,6 +25,7 @@ models or audio but has not been verified with real models, a microphone or spea
 | Coding | Focused multi-file patches, preview, apply, undo, approved tests | Working (stubbed model) | `tests/test_coding_patches.py`, HUD audit |
 | Coding | Relevant-file selection, profile-sized context, bounded scans, link refusal | Working (stubbed model) | `tests/test_coding_phase2.py` |
 | Coding | Approved build command, failure files fed back, undo after restart | Working (stubbed model) | `tests/test_coding_phase2.py`, HUD audit |
+| Coding | Read-only review of last failed approved test output and likely workspace files | Working in automated tests; real project errors unverified | `/investigate-tests`, `tests/test_coding_phase2.py` |
 | Coding | Explicit selection of an existing local Git repository as a scoped workspace | Working in automated tests; local Windows repository untested | `tests/test_repository_workspace.py` |
 | Benchmarks | Reply time, first sentence, peak memory, coding suite | Harness working; no results yet | `tests/test_benchmark_harness.py`, `docs/Benchmarks.md` |
 | Coding | Patch success rate with real coding models | Untested on hardware | |

@@ -753,14 +753,37 @@ def _run_command(ctx, kind, root, command):
     except subprocess.TimeoutExpired:
         ctx.last_test_output = f"The {kind} ran longer than {COMMAND_TIMEOUT} seconds and was stopped. No result."
         ctx.last_test_root = str(root)
+        ctx.last_test_failed = False
+        ctx.last_test_kind = kind
         return ctx.last_test_output
     output = (stdout[-3000:] + ("\n" + stderr[-2000:] if stderr.strip() else "")).strip()
     ctx.last_test_output = output
     ctx.last_test_root = str(root)
+    ctx.last_test_failed = code != 0
+    ctx.last_test_kind = kind
     status = "passed" if code == 0 else f"failed with exit code {code}"
     follow = "" if code == 0 else " Type /fix-tests file | what to fix to propose a fix using this output."
     label = "Tests" if kind == "tests" else "Build"
     return f"{label} {status}.{follow}\n{output or '(no output)'}"
+
+
+def inspect_test_failure(ctx):
+    """Summarize the last approved failed test run without invoking a model or command."""
+    if ctx.last_test_kind != 'tests' or not ctx.last_test_failed:
+        return 'Run /test and confirm the exact command first. A failed test run is needed for investigation.'
+    root = Path(ctx.last_test_root or code_dir(ctx.cfg))
+    if root.resolve() != code_dir(ctx.cfg).resolve() and not root.resolve().is_relative_to(code_dir(ctx.cfg).resolve()):
+        return 'The coding workspace changed. Run /test again in the selected workspace.'
+    output = ctx.last_test_output[-5000:]
+    files = files_in_output(ctx.cfg, root, output, limit=5)
+    lines = [line.strip()[:260] for line in output.splitlines()
+             if re.search(r'(?i)(^FAILED\b|^ERROR\b|Traceback|AssertionError|Error:|Exception:|exit code)', line)]
+    lines = lines[:8]
+    summary = '\n'.join(lines) if lines else 'No recognizable error line. Review the test output in the previous reply.'
+    names = ', '.join(files) if files else 'No workspace file identified in the output.'
+    hint = (f'Use /fix-tests {files[0]} | describe the intended behavior, then review /diff before /apply.'
+            if files else 'Choose a workspace file and use /fix-tests file | intended behavior.')
+    return f'Last approved test failure:\n{summary}\nLikely files: {names}\n{hint}'
 
 
 @skill("Build or byte-compile the coding project after the user approves the exact command.",
