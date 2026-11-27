@@ -1,8 +1,11 @@
 import hashlib
 import json
 import os
+import posixpath
+import re
 import subprocess
 import zipfile
+from urllib.parse import unquote
 from pathlib import Path
 
 import pytest
@@ -86,6 +89,24 @@ def test_release_has_no_batch_launcher_and_ships_diagnostics(tmp_path):
     assert not any(name.lower().endswith(('.bat', '.cmd', '.exe', '.vbs')) for name in names)
     assert 'Jarvis/scripts/check_defender.ps1' in names and 'Jarvis/jarvis/setupwizard.py' in names
     assert 'Jarvis/CHANGELOG.md' in names and 'Jarvis/AGENTS.md' in names
+
+
+def test_packaged_documentation_links_resolve_inside_source_bundle(tmp_path):
+    archive = build(tmp_path)
+    missing = []
+    with zipfile.ZipFile(archive) as bundle:
+        names = set(bundle.namelist())
+        for name in names:
+            if not name.endswith('.md'):
+                continue
+            for raw in re.findall(r'!?\[[^\]]*\]\(([^)]+)\)', bundle.read(name).decode('utf-8')):
+                target = raw.split('#', 1)[0].strip('<>')
+                if not target or '://' in target or target.startswith('mailto:'):
+                    continue
+                destination = posixpath.normpath(posixpath.join(posixpath.dirname(name), unquote(target)))
+                if destination not in names and not any(item.startswith(destination.rstrip('/') + '/') for item in names):
+                    missing.append((name, target))
+    assert not missing, missing
 
 
 @pytest.mark.skipif(os.name != 'nt', reason='Windows installer integration')

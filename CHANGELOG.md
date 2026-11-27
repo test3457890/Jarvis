@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Include the screenshot-gallery README and linked benchmark JSON in source packages, with a packaged-documentation link check.
+
 - Preserve saved named voices while the HUD loads its installed-voice inventory. Explicit TUKI choices now take priority even if the owner chooses the same voice as Jarvis; Automatic still prefers a different voice.
 
 - Approved manual RSS/Atom reads with bounded XML parsing, publisher links and reported dates.
