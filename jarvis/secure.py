@@ -101,6 +101,7 @@ _ACTIVITY_NAMES = {
     'rate_limited': 'Action blocked by rate limit',
     'send_email': 'Email sent', 'draft_email': 'Email draft opened',
     'text_message': 'Text prepared', 'phone_call': 'Call started',
+    'connection_revoked': 'Connection credential removed',
 }
 
 
@@ -139,6 +140,8 @@ def recent_activity(limit=50):
                 target = str(detail.get('skill') or detail.get('source') or '')[:80]
             elif action == 'network_blocked':
                 target = str(detail.get('purpose', ''))[:80]
+            elif action == 'connection_revoked':
+                target = str(detail.get('service', ''))[:80]
             events.append({'time': str(item.get('time', ''))[:25], 'action': _ACTIVITY_NAMES[action],
                            'target': target, 'undo': ('Coding mode: /undo' if action == 'code_edit_applied'
                                                      else 'File tasks: Show task history' if action == 'execute_folder_job'

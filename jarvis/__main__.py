@@ -18,7 +18,7 @@ import threading
 import time
 import webbrowser
 
-from . import appactions, assistants, config, documents, extensions, filejobs, images, net, nomad, planner, recovery, secure, setupwizard, skills, watchchecks
+from . import appactions, assistants, config, connections, documents, extensions, filejobs, images, net, nomad, planner, recovery, secure, setupwizard, skills, watchchecks
 from .brain import Brain
 from .memory import Memory
 
@@ -109,6 +109,21 @@ class App:
 
     def activity_operation(self):
         return secure.recent_activity()
+
+    def connections_operation(self, data=None):
+        if data is not None:
+            with self.brain._lock, self._settings_lock:
+                if self.cfg.get('lockdown'):
+                    raise ValueError('Turn off Lockdown to change connections.')
+                service = data.get('service')
+                if data.get('action') != 'revoke' or data.get('confirmed') is not True or service not in connections.REVOCABLE:
+                    raise ValueError('Choose a supported connection and confirm credential removal.')
+                secure.set_secret(connections.REVOCABLE[service], '')
+                if service == 'Canvas calendar feed':
+                    planner.CANVAS_CACHE.unlink(missing_ok=True)
+                secure.audit('connection_revoked', {'service': service})
+        return {'internet': bool(self.cfg.get('allow_internet_tools')),
+                'services': connections.status(self.cfg)}
 
     def models_operation(self, data=None):
         """Inspect locally installed Ollama models and assign one to an assistant role."""

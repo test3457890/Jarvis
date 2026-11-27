@@ -438,6 +438,19 @@ secrets. Jarvis keeps the local `actions.log` for troubleshooting; newly logged
 approved tools record field names instead of raw arguments and results. Existing
 older log entries are not rewritten, so review the file itself before sharing it.
 
+## Connection center
+
+Open Connections in the HUD to review the built-in Canvas, Brave, GitHub upload,
+SMTP email, Project NOMAD and local image generation settings. The panel reads
+local configuration and whether credentials are saved; it does not test the
+remote service or reveal credentials. It shows each service's current scope and
+the command to reconnect through setup. For credential-backed services, Remove
+saved credential requires an explicit confirmation and disconnects Jarvis locally.
+It does not revoke the credential with the provider. Removing the Canvas feed
+credential also clears its local calendar cache; previously imported tasks and
+events remain until you manage them separately. The Internet toggle pauses
+Brave and GitHub tools, while Canvas sync and approved SMTP use their own controls.
+
 ## Local model inventory
 
 Setup can show Ollama's installed local models and their reported disk sizes.
