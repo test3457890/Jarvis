@@ -780,6 +780,7 @@
         <input id="vs-test-text" type="text" placeholder="Enter test sentence (e.g. Good evening, sir. TUKI verified SQLite telemetry.)" maxlength="400" aria-label="Voice Studio test sentence">
         <button id="vs-preview-jarvis" type="button">Preview Jarvis</button>
         <button id="vs-preview-tuki" type="button">Preview TUKI</button>
+        <button id="vs-cancel" type="button">Cancel Speech</button>
       </div>
       <div id="vs-status" class="hint" role="status"></div>
       <div class="ng-table-wrap"><table class="ng-table" id="vs-packs-table"><thead><tr><th scope="col">Optional Voice Pack</th><th scope="col">License</th><th scope="col">Est. Size</th><th scope="col">Status</th></tr></thead><tbody></tbody></table></div>
@@ -2823,7 +2824,9 @@ function renderVoiceStudio(st) {
   $('vs-pron').value = pronLines.join('\n');
   const rec = st.recommended_profile || {};
   const rt = st.runtime || {};
-  $('vs-rec').textContent = `Recommended: ${rec.profile || 'balanced'} (${rec.device || 'auto'}) · Runtime: ${rt.ok ? 'Python ' + rt.python + ' neural worker READY' : 'Not installed'} · Active Jarvis: ${st.jarvis?.resolved?.selected || 'none'} · Active TUKI: ${st.tuki?.resolved?.selected || 'none'}`;
+  const provs = (rt.ort_providers || []).join(', ') || 'CPU';
+  const accel = rt.cuda_available ? 'CUDA GPU ready' : 'CPU only';
+  $('vs-rec').textContent = `Recommended: ${rec.profile || 'balanced'} (${rec.device || 'auto'}) · Runtime: ${rt.ok ? 'Python ' + rt.python + ' READY (' + accel + '; ' + provs + ')' : 'Not installed'} · Active Jarvis: ${st.jarvis?.resolved?.selected || 'none'} · Active TUKI: ${st.tuki?.resolved?.selected || 'none'}`;
   const tbody = $('vs-packs-table').querySelector('tbody');
   tbody.replaceChildren();
   for (const p of (st.storage?.packs || [])) {
@@ -2895,10 +2898,18 @@ async function previewStudioVoice(who) {
   $('vs-status').textContent = `Synthesizing ${who.toUpperCase()} preview locally…`;
   const res = await api('/api/voice-studio', {action:'preview', assistant:who, text:$('vs-test-text').value.trim(), speak:false});
   if (res.error) $('vs-status').textContent = res.error;
-  else $('vs-status').textContent = `${res.assistant.toUpperCase()} preview (${res.engine} / ${res.voice || 'default'}): ${res.audio_seconds}s audio in ${res.total_seconds}s (RTF ${res.rtf ?? 'N/A'}) · Spoken: "${res.spoken_text}"`;
+  else {
+    const prov = res.actual_provider ? ` · ${res.actual_provider}` : '';
+    const fb = res.fallback_used && res.fallback_reason ? ` · Fallback: ${res.fallback_reason}` : '';
+    $('vs-status').textContent = `${res.assistant.toUpperCase()} preview (${res.engine} / ${res.voice || 'default'}${prov}): ${res.audio_seconds}s audio in ${res.total_seconds}s (TTFA ${res.ttfa_seconds ?? res.total_seconds}s · RTF ${res.rtf ?? 'N/A'})${fb} · Spoken: "${res.spoken_text}"`;
+  }
 }
 $('vs-preview-jarvis').onclick = () => previewStudioVoice('jarvis');
 $('vs-preview-tuki').onclick = () => previewStudioVoice('tuki');
+$('vs-cancel').onclick = async () => {
+  const res = await api('/api/voice-studio', {action:'cancel'});
+  $('vs-status').textContent = res.error || 'Cancelled active neural speech synthesis.';
+};
 </script>
 </body>
 </html>

@@ -144,3 +144,135 @@ def test_voice_studio_http_api_auth_save_reset_and_lockdown(tmp_path, monkeypatc
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_download_security_redirect_offline_lockdown_and_preload_sha256(tmp_path):
+    from jarvis import voice_runtime
+
+    # 1. URL allowlist & redirect hop validation
+    assert voice_runtime.validate_download_url(
+        "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx"
+    ).startswith("https://github.com/")
+    with pytest.raises(PermissionError):
+        voice_runtime.validate_download_url("http://github.com/evil.onnx")
+    with pytest.raises(PermissionError):
+        voice_runtime.validate_download_url("https://evil.example/kokoro-v1.0.onnx")
+
+    handler = voice_runtime._AllowlistRedirectHandler()
+    dummy_req = urllib.request.Request("https://github.com/a/b")
+    with pytest.raises(PermissionError):
+        handler.redirect_request(dummy_req, None, 302, "Found", {}, "https://attacker.invalid/payload.onnx")
+
+    # 2. Offline & Lockdown guards on install_runtime and download_voice_pack
+    with pytest.raises(PermissionError):
+        voice_runtime.download_voice_pack("kokoro-v1.0-onnx-int8", cfg={"allow_internet_tools": False, "lockdown": False})
+    with pytest.raises(PermissionError):
+        voice_runtime.download_voice_pack("kokoro-v1.0-onnx-int8", cfg={"allow_internet_tools": True, "lockdown": True})
+    with pytest.raises(PermissionError):
+        voice_runtime.install_runtime(cfg={"allow_internet_tools": False, "lockdown": False})
+    with pytest.raises(PermissionError):
+        voice_runtime.install_runtime(cfg={"allow_internet_tools": True, "lockdown": True})
+
+    # 3. Trusted SHA-256 verification rejects tampered model BEFORE load
+    fake_pack = tmp_path / "kokoro-v1.0-onnx-int8"
+    fake_pack.mkdir(parents=True)
+    tampered = fake_pack / "kokoro-v1.0.int8.onnx"
+    tampered.write_bytes(b"TAMPERED-MODEL-DATA" * 100)
+    (fake_pack / "voices-v1.0.bin").write_bytes(b"TAMPERED-VOICES" * 100)
+
+    ok, msg = voice_runtime.verify_file_integrity(tampered)
+    assert ok is False and "SHA-256 mismatch" in msg
+
+    if voice_runtime.runtime_available():
+        with pytest.raises(RuntimeError, match="integrity check failed"):
+            voice_runtime.CLIENT.request({
+                "cmd": "synthesize", "engine": "kokoro_onnx", "voice": "bm_george",
+                "text": "Security check.", "speed": 1.0, "device": "cpu", "prefer_fp32": False,
+                "model_dir": str(tmp_path), "out_path": str(tmp_path / "out.wav"),
+            }, timeout=30.0)
+
+
+def test_worker_active_cancellation_timeout_providers_and_streaming(tmp_path):
+    import threading
+    import time
+    from jarvis import voice_runtime
+
+    avail = speech_engines.engine_availability(config.DEFAULTS)
+    if not avail.get("kokoro_onnx", {}).get("ready"):
+        pytest.skip("Isolated Python 3.12 Kokoro ONNX runtime/pack not installed on this runner")
+
+    mdir = str(speech_engines.model_storage_dir())
+
+    # 1. Explicit CPU vs GPU provider routing
+    cpu_res = voice_runtime.CLIENT.request({
+        "cmd": "synthesize", "engine": "kokoro_onnx", "voice": "bm_george",
+        "text": "CPU check.", "speed": 1.0, "device": "cpu",
+        "model_dir": mdir, "out_path": str(tmp_path / "cpu.wav"),
+    }, timeout=45.0)
+    assert cpu_res["actual_provider"] == "CPUExecutionProvider"
+
+    health = voice_runtime.CLIENT.health(force=True)
+    if health.get("cuda_available"):
+        gpu_res = voice_runtime.CLIENT.request({
+            "cmd": "synthesize", "engine": "kokoro_onnx", "voice": "bm_george",
+            "text": "GPU check.", "speed": 1.0, "device": "gpu",
+            "model_dir": mdir, "out_path": str(tmp_path / "gpu.wav"),
+        }, timeout=45.0)
+        assert gpu_res["actual_provider"] == "CUDAExecutionProvider"
+
+    # 2. Genuine incremental streaming emits chunk 0 before total completion
+    cfg = dict(config.DEFAULTS, voice_performance_profile="balanced", jarvis_speech_engine="kokoro_onnx")
+    arrived = []
+    t_start = time.perf_counter()
+    stream_res = speech_engines.synthesize_stream(
+        cfg,
+        "First sentence ready quickly. Second sentence synthesizes concurrently. Third sentence finishes smoothly.",
+        assistant="jarvis",
+        out_dir=tmp_path / "stream",
+        on_chunk=lambda c: arrived.append((c["chunk"], time.perf_counter() - t_start)),
+    )
+    assert stream_res["chunks"] == 3
+    assert len(arrived) == 3
+    assert arrived[0][0] == 0
+    assert stream_res["ttfa_seconds"] < stream_res["total_seconds"]
+
+    # 3. Non-blocking cancellation DURING active neural inference + clean recovery
+    err_box = []
+    long_text = " ".join(["This is a deliberately long sentence to keep neural synthesis active during cancellation."] * 8)
+
+    def _run_long():
+        try:
+            voice_runtime.CLIENT.request({
+                "cmd": "synthesize", "engine": "kokoro_onnx", "voice": "bm_george",
+                "text": long_text, "speed": 1.0, "device": "cpu", "prefer_fp32": False,
+                "model_dir": mdir, "out_path": str(tmp_path / "cancelled.wav"),
+            }, timeout=60.0)
+        except Exception as exc:
+            err_box.append(exc)
+
+    t = threading.Thread(target=_run_long, daemon=True)
+    t.start()
+    time.sleep(0.15)
+    t_cancel = time.perf_counter()
+    voice_runtime.CLIENT.cancel()
+    cancel_elapsed = time.perf_counter() - t_cancel
+    t.join(timeout=3.0)
+    assert not t.is_alive()
+    assert cancel_elapsed < 1.0
+    assert err_box and isinstance(err_box[0], RuntimeError)
+
+    # Worker must recover cleanly after cancellation
+    rec = voice_runtime.CLIENT.health(force=True)
+    assert rec["ok"] is True
+
+    # 4. Enforced timeout deadline
+    t_to = time.perf_counter()
+    with pytest.raises(TimeoutError):
+        voice_runtime.CLIENT.request({
+            "cmd": "synthesize", "engine": "kokoro_onnx", "voice": "bm_george",
+            "text": long_text, "speed": 1.0, "device": "cpu", "prefer_fp32": False,
+            "model_dir": mdir, "out_path": str(tmp_path / "timeout.wav"),
+        }, timeout=0.1)
+    assert (time.perf_counter() - t_to) < 3.0
+    assert voice_runtime.CLIENT.health(force=True)["ok"] is True
+    voice_runtime.CLIENT.shutdown()

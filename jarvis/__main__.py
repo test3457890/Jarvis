@@ -1139,20 +1139,26 @@ class App:
             if self.cfg.get("lockdown"):
                 raise ValueError("Turn off Lockdown to delete voice packs.")
             return {"storage": speech_engines.delete_voice_pack(str(data.get("pack_id") or ""))}
+        if action == "cancel":
+            from . import voice_runtime
+            voice_runtime.CLIENT.cancel()
+            if self.speaker:
+                self.speaker.stop()
+            return {"ok": True, "cancelled": True}
         if action == "install_runtime":
             if self.cfg.get("lockdown"):
                 raise ValueError("Turn off Lockdown to install the neural speech runtime.")
             from . import voice_runtime
-            res = voice_runtime.install_runtime()
+            res = voice_runtime.install_runtime(cfg=self.cfg)
             voice_runtime.CLIENT.health(force=True)
             return {**res, "studio": speech_engines.studio_state(self.cfg)}
         if action == "download_pack":
             if self.cfg.get("lockdown"):
                 raise ValueError("Turn off Lockdown to download voice packs.")
             from . import voice_runtime
-            res = voice_runtime.download_voice_pack(str(data.get("pack_id") or ""))
+            res = voice_runtime.download_voice_pack(str(data.get("pack_id") or ""), cfg=self.cfg)
             return {**res, "studio": speech_engines.studio_state(self.cfg)}
-        raise ValueError("Choose save, preview, reset, install_runtime, download_pack, or delete_pack.")
+        raise ValueError("Choose save, preview, cancel, reset, install_runtime, download_pack, or delete_pack.")
 
     def confirm(self, yes: bool, expected_id: str):
         result = self.brain.confirm_pending(yes, expected_id=expected_id)

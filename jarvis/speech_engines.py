@@ -542,6 +542,8 @@ def synthesize_to_wav(
                 "ok": True,
                 "assistant": who,
                 "engine": res["engine"],
+                "model_file": res.get("model_file", ""),
+                "actual_provider": res.get("actual_provider", ""),
                 "voice": res["voice"],
                 "fallback_used": fallback_used,
                 "fallback_reason": fallback_reason,
@@ -583,6 +585,7 @@ def synthesize_to_wav(
         "ok": True,
         "assistant": who,
         "engine": eng,
+        "actual_provider": "WindowsSAPI5" if eng == "windows_sapi" else "ExternalPiperCLI",
         "voice": voice_used,
         "fallback_used": fallback_used,
         "fallback_reason": fallback_reason,
@@ -593,6 +596,56 @@ def synthesize_to_wav(
         "total_seconds": total_s,
         "audio_seconds": duration_s,
         "rtf": rtf,
+    }
+
+
+def synthesize_stream(
+    cfg: dict,
+    text: str,
+    *,
+    assistant: str = "jarvis",
+    out_dir: str | Path | None = None,
+    voice_override: str | None = None,
+    on_chunk=None,
+    timeout: float = 90.0,
+) -> dict:
+    """Incrementally synthesize Kokoro ONNX sentence-by-sentence, invoking on_chunk as each WAV is ready."""
+    who = "tuki" if assistant == "tuki" else "jarvis"
+    spoken = apply_pronunciation(str(text or "").strip(), cfg.get("voice_pronunciations"))
+    if not spoken:
+        raise ValueError("Provide text to synthesize.")
+    resolved = resolve_engine(cfg, who)
+    voice_id = voice_override or str(
+        cfg.get("tuki_neural_voice" if who == "tuki" else "jarvis_neural_voice")
+        or ("bf_emma" if who == "tuki" else "bm_george")
+    )
+    rate_wpm = int(cfg.get("tuki_speech_rate" if who == "tuki" else "speech_rate", 200 if who == "tuki" else 185))
+    speed = round(max(0.6, min(1.8, rate_wpm / 185.0)), 2)
+    target_dir = Path(out_dir) if out_dir else Path(tempfile.mkdtemp(prefix=f"jarvis_stream_{who}_"))
+    target_dir.mkdir(parents=True, exist_ok=True)
+    res = voice_runtime.CLIENT.request({
+        "cmd": "synthesize_stream",
+        "voice": voice_id,
+        "text": spoken,
+        "speed": speed,
+        "device": resolved["device"],
+        "model_dir": str(model_storage_dir()),
+        "out_dir": str(target_dir),
+    }, timeout=timeout, on_chunk=on_chunk)
+    return {
+        "ok": True,
+        "assistant": who,
+        "engine": res.get("engine", "kokoro_onnx"),
+        "model_file": res.get("model_file", ""),
+        "actual_provider": res.get("actual_provider", ""),
+        "voice": res.get("voice", voice_id),
+        "spoken_text": spoken,
+        "chunks": res.get("chunks", 0),
+        "wav_paths": res.get("wav_paths", []),
+        "ttfa_seconds": res.get("ttfa_seconds"),
+        "total_seconds": res.get("total_seconds"),
+        "audio_seconds": res.get("audio_seconds"),
+        "rtf": res.get("rtf"),
     }
 
 

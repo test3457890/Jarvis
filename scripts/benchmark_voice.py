@@ -9,6 +9,8 @@ and EchoGuard barge-in latency. Never substitutes SAPI audio as neural speech.
 """
 import json
 import platform
+import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -62,6 +64,8 @@ def run_benchmark(out_dir: Path | None = None) -> dict:
             neural_results.append({
                 "assistant": assistant,
                 "engine": first["engine"],
+                "model_file": first.get("model_file", ""),
+                "actual_provider": first.get("actual_provider", ""),
                 "voice": first["voice"],
                 "cold_seconds": first["total_seconds"] if idx == 0 else None,
                 "warm_seconds": warm["total_seconds"],
@@ -71,6 +75,87 @@ def run_benchmark(out_dir: Path | None = None) -> dict:
                 "sample_wav": str(wav_path).replace("\\", "/"),
                 "sample_bytes": warm["bytes"],
             })
+
+    # 1b. Hardware & Precision Matrix (GPU vs CPU x FP32 vs int8) + Streaming TTFA + Active Cancellation
+    matrix_results = []
+    streaming_result = {}
+    cancel_latency_ms = None
+    if avail.get("kokoro_onnx", {}).get("ready"):
+        mdir = str(speech_engines.model_storage_dir())
+        with tempfile.TemporaryDirectory() as td:
+            for label, dev, fp32 in (
+                ("gpu_fp32", "gpu", True),
+                ("gpu_int8", "gpu", False),
+                ("cpu_fp32", "cpu", True),
+                ("cpu_int8", "cpu", False),
+            ):
+                try:
+                    r1 = voice_runtime.CLIENT.request({
+                        "cmd": "synthesize", "engine": "kokoro_onnx", "voice": "bm_george",
+                        "text": JARVIS_SENTENCE, "speed": 1.0, "device": dev, "prefer_fp32": fp32,
+                        "model_dir": mdir, "out_path": str(Path(td) / f"{label}_cold.wav"),
+                    }, timeout=60.0)
+                    r2 = voice_runtime.CLIENT.request({
+                        "cmd": "synthesize", "engine": "kokoro_onnx", "voice": "bm_george",
+                        "text": JARVIS_SENTENCE, "speed": 1.0, "device": dev, "prefer_fp32": fp32,
+                        "model_dir": mdir, "out_path": str(Path(td) / f"{label}_warm.wav"),
+                    }, timeout=60.0)
+                    matrix_results.append({
+                        "config": label,
+                        "requested_device": dev,
+                        "actual_provider": r2["actual_provider"],
+                        "model_file": r2["model_file"],
+                        "cold_seconds": r1["total_seconds"],
+                        "warm_seconds": r2["total_seconds"],
+                        "audio_seconds": r2["audio_seconds"],
+                        "warm_rtf": r2["rtf"],
+                    })
+                except Exception as exc:
+                    matrix_results.append({"config": label, "error": str(exc)})
+
+            # Streaming TTFA benchmark (3 sentences)
+            chunks_log = []
+            t_s = time.perf_counter()
+            sres = speech_engines.synthesize_stream(
+                cfg,
+                f"{JARVIS_SENTENCE} {TUKI_SENTENCE}",
+                assistant="jarvis",
+                out_dir=Path(td) / "stream",
+                on_chunk=lambda c: chunks_log.append({
+                    "chunk": c["chunk"],
+                    "arrived_seconds": round(time.perf_counter() - t_s, 3),
+                    "audio_seconds": c["audio_seconds"],
+                }),
+            )
+            streaming_result = {
+                "actual_provider": sres["actual_provider"],
+                "model_file": sres["model_file"],
+                "chunks": chunks_log,
+                "ttfa_seconds": sres["ttfa_seconds"],
+                "total_seconds": sres["total_seconds"],
+                "audio_seconds": sres["audio_seconds"],
+                "rtf": sres["rtf"],
+            }
+
+            # Real active cancellation latency during neural inference
+            long_text = " ".join([JARVIS_SENTENCE] * 6)
+            def _bg():
+                try:
+                    voice_runtime.CLIENT.request({
+                        "cmd": "synthesize", "engine": "kokoro_onnx", "voice": "bm_george",
+                        "text": long_text, "speed": 1.0, "device": "cpu", "prefer_fp32": False,
+                        "model_dir": mdir, "out_path": str(Path(td) / "cancel.wav"),
+                    }, timeout=60.0)
+                except Exception:
+                    pass
+            th = threading.Thread(target=_bg, daemon=True)
+            th.start()
+            time.sleep(0.15)
+            tc = time.perf_counter()
+            voice_runtime.CLIENT.cancel()
+            th.join(timeout=3.0)
+            cancel_latency_ms = round((time.perf_counter() - tc) * 1000.0, 2)
+            voice_runtime.CLIENT.health(force=True)
 
     # 2. Windows SAPI5 compatibility baseline (explicitly labeled as windows_sapi)
     if avail.get("windows_sapi", {}).get("ready"):
@@ -117,6 +202,9 @@ def run_benchmark(out_dir: Path | None = None) -> dict:
         "gpus": after["gpus"],
         "engine_availability": avail,
         "barge_in_detection_ms": interrupt_ms,
+        "active_cancellation_ms": cancel_latency_ms,
+        "hardware_precision_matrix": matrix_results,
+        "streaming_benchmark": streaming_result,
         "neural_benchmarks": neural_results,
         "sapi_baseline_benchmarks": sapi_results,
     }

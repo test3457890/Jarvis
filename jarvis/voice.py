@@ -162,7 +162,7 @@ class Speaker:
                 time.sleep(0.02)
 
     def _try_neural_speak(self, text: str, assistant: str, generation: int) -> bool:
-        """Attempt neural TTS via the unified speech_engines resolver; return True if spoken."""
+        """Attempt neural TTS via the unified speech_engines resolver; streams Kokoro chunks incrementally."""
         if "_windows_voice" in self.__dict__:
             return False
         try:
@@ -173,6 +173,71 @@ class Speaker:
         eng = resolved.get("selected")
         if eng not in ("kokoro_onnx", "kokoro", "qwen3_tts", "chatterbox"):
             return False
+
+        # Genuine incremental streaming playback for Kokoro ONNX:
+        # start playing chunk 0 immediately while chunk 1+ is still being synthesized.
+        if eng == "kokoro_onnx":
+            stream_dir = tempfile.mkdtemp(prefix=f"jarvis_live_stream_{assistant}_")
+            play_q: queue.Queue = queue.Queue(maxsize=2)
+            created_files: list[str] = []
+
+            def _player() -> None:
+                while True:
+                    item = play_q.get()
+                    if item is None:
+                        play_q.task_done()
+                        return
+                    wav_path, dur = item
+                    try:
+                        if not self._stopped(generation):
+                            self._play_wav_interruptible(wav_path, generation, dur)
+                    finally:
+                        try:
+                            os.unlink(wav_path)
+                        except OSError:
+                            pass
+                        play_q.task_done()
+
+            player_thread = threading.Thread(target=_player, daemon=True, name="tts-stream-play")
+            player_thread.start()
+
+            def _on_chunk(chunk_info: dict) -> None:
+                wpath = chunk_info.get("wav_path")
+                if not wpath:
+                    return
+                created_files.append(wpath)
+                if self._stopped(generation):
+                    return
+                play_q.put((wpath, float(chunk_info.get("audio_seconds") or 1.0)))
+
+            try:
+                res = speech_engines.synthesize_stream(
+                    self.cfg, text, assistant=assistant, out_dir=stream_dir, on_chunk=_on_chunk,
+                )
+                self.last_engine = res.get("engine", eng)
+                self.last_voice = res.get("voice", "")
+                self.last_provider = res.get("actual_provider", "")
+                play_q.put(None)
+                player_thread.join(timeout=120.0)
+                return True
+            except Exception as exc:
+                play_q.put(None)
+                player_thread.join(timeout=2.0)
+                if self._stopped(generation):
+                    return True
+                print(f"[voice] Neural streaming engine '{eng}' unavailable ({exc}); falling back to system voice.")
+                return False
+            finally:
+                for fp in created_files:
+                    try:
+                        os.unlink(fp)
+                    except OSError:
+                        pass
+                try:
+                    os.rmdir(stream_dir)
+                except OSError:
+                    pass
+
         fd, wav = tempfile.mkstemp(prefix=f"jarvis_live_{assistant}_", suffix=".wav")
         os.close(fd)
         try:
@@ -181,11 +246,14 @@ class Speaker:
             )
             self.last_engine = res.get("engine", eng)
             self.last_voice = res.get("voice", "")
+            self.last_provider = res.get("actual_provider", "")
             if self._stopped(generation):
                 return True
             self._play_wav_interruptible(wav, generation, res.get("audio_seconds", 1.0))
             return True
         except Exception as exc:
+            if self._stopped(generation):
+                return True
             print(f"[voice] Neural engine '{eng}' unavailable ({exc}); falling back to system voice.")
             return False
         finally:
