@@ -86,11 +86,11 @@ _BLOCKED_HOTKEYS = frozenset({"ctrl+alt+del", "ctrl+alt+delete", "win+r", "win+x
 
 def set_window_state(title_query: str, state: str) -> str:
     """Minimize, maximize, or restore a visible window by partial title (Windows only)."""
-    if os.name != "nt":
-        raise ValueError("Window state control is currently supported on Windows.")
     st = str(state or "").strip().lower()
     if st not in _WINDOW_STATES:
         raise ValueError(f"Choose a supported window state: {', '.join(sorted(_WINDOW_STATES))}.")
+    if os.name != "nt":
+        raise ValueError("Window state control is currently supported on Windows.")
     needle = str(title_query or "").strip().lower()
     matches = [w for w in list_windows(80) if needle and needle in w["title"].lower()]
     if not matches:
