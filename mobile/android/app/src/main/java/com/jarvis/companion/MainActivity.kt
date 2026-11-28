@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
@@ -27,12 +28,19 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun JarvisCompanionScreen() {
+    val context = LocalContext.current
+    val tokenStore = remember { runCatching { SecureTokenStore(context) }.getOrNull() }
     val scope = rememberCoroutineScope()
     var baseUrl by remember { mutableStateOf("http://127.0.0.1:8765") }
     var pairCode by remember { mutableStateOf("") }
     var deviceName by remember { mutableStateOf("Android Companion") }
-    var token by remember { mutableStateOf<String?>(null) }
-    var statusText by remember { mutableStateOf("Not paired. Use ADB reverse or private VPN.") }
+    var token by remember { mutableStateOf(tokenStore?.loadToken()) }
+    var statusText by remember {
+        mutableStateOf(
+            if (token != null) "Paired token loaded from EncryptedSharedPreferences."
+            else "Not paired. Use ADB reverse (127.0.0.1) or an authenticated HTTPS VPN."
+        )
+    }
     var commandOutput by remember { mutableStateOf("") }
 
     Column(
@@ -77,7 +85,9 @@ fun JarvisCompanionScreen() {
                         statusText = "Pairing…"
                         val res = JarvisApiClient(baseUrl).completePairing(pairCode, deviceName)
                         res.onSuccess { obj ->
-                            token = obj.optString("token")
+                            val newTok = obj.optString("token")
+                            token = newTok
+                            tokenStore?.saveToken(newTok)
                             statusText = "Paired as ${obj.optString("name")} (${obj.optString("device_id")})"
                             pairCode = ""
                         }.onFailure { err ->
@@ -105,8 +115,9 @@ fun JarvisCompanionScreen() {
 
                 OutlinedButton(onClick = {
                     token = null
+                    tokenStore?.clearToken()
                     commandOutput = ""
-                    statusText = "Disconnected locally."
+                    statusText = "Disconnected and cleared encrypted token."
                 }) { Text("Disconnect") }
             }
 

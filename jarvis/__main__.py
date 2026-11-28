@@ -944,6 +944,17 @@ class App:
                 data.get("baseline", ""), data.get("actual", ""),
                 key_col=str(data.get("key_col") or "item"), value_col=str(data.get("value_col") or "amount"),
             )
+        if action == "xlsx_variance":
+            import base64
+            try:
+                base_raw = base64.b64decode(str(data.get("baseline_b64") or ""), validate=True)
+                act_raw = base64.b64decode(str(data.get("actual_b64") or ""), validate=True)
+            except Exception as exc:
+                raise ValueError("Invalid base64 XLSX payload.") from exc
+            return pro_workspace.compare_xlsx_tables(
+                base_raw, act_raw,
+                key_col=str(data.get("key_col") or "item"), value_col=str(data.get("value_col") or "amount"),
+            )
         if action == "doc_diff":
             return pro_workspace.compare_revisions(
                 data.get("text_a", ""), data.get("text_b", ""),
@@ -968,10 +979,35 @@ class App:
         action = str(data.get("action") or "").strip().lower()
         if action == "pair_code":
             return companion.create_pairing_code(self.cfg)
+        if action == "complete_pair":
+            return companion.complete_pairing(
+                self.memory, self.cfg,
+                code=str(data.get("code") or ""),
+                device_name=str(data.get("device_name") or ""),
+                platform=str(data.get("platform") or "android"),
+            )
+        if action == "device_status":
+            tok = str(data.get("token") or "")
+            dev = companion.verify_device_token(self.memory, self.cfg, tok)
+            if not dev:
+                raise PermissionError("Unauthorized, expired, or revoked companion device token.")
+            return {
+                "device": dev,
+                "vitals": telemetry.snapshot(include_processes=False),
+                "tasks": bgtasks.list_tasks(self.memory, limit=10),
+                "notifications": companion.recent_notifications(10),
+            }
+        if action == "command":
+            return companion.execute_approved_command(
+                self.memory, self.brain.ctx,
+                token=str(data.get("token") or ""),
+                tool=str(data.get("tool") or ""),
+                args=data.get("args") if isinstance(data.get("args"), dict) else {},
+            )
         if action == "revoke":
             companion.revoke_device(self.memory, str(data.get("id") or ""))
             return companion.list_devices(self.memory, self.cfg)
-        raise ValueError("Choose pair_code or revoke.")
+        raise ValueError("Choose pair_code, complete_pair, device_status, command, or revoke.")
 
     def geospatial_operation(self, data=None):
         if data is None:
@@ -986,7 +1022,9 @@ class App:
             km = geospatial.haversine_km(data["lat1"], data["lon1"], data["lat2"], data["lon2"])
             brg = geospatial.initial_bearing_deg(data["lat1"], data["lon1"], data["lat2"], data["lon2"])
             return {"distance_km": km, "bearing_deg": brg}
-        raise ValueError("Choose sar_grid or distance.")
+        if action == "feed":
+            return geospatial.fetch_public_feed(self.cfg, str(data.get("feed_id") or ""))
+        raise ValueError("Choose sar_grid, distance, or feed.")
 
     def preview_voice(self, assistant="jarvis"):
         if not self.speaker:

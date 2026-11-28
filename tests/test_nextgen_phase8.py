@@ -80,3 +80,54 @@ def test_geospatial_offline_geodesy_sar_grid_and_fail_closed_feeds():
     cfg = dict(config.DEFAULTS)
     with pytest.raises(net.NetworkBlockedError):
         geospatial.fetch_public_feed(cfg, "usgs_earthquakes")
+
+
+def test_companion_end_to_end_against_live_desktop_server(tmp_path, monkeypatch):
+    import json
+    import re
+    import socket
+    import urllib.request
+    from jarvis import __main__ as jarvis_main, webui
+
+    monkeypatch.setattr(config, "APP_DIR", tmp_path)
+    monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr(memory, "DB_PATH", tmp_path / "mem.db")
+    companion.reset_rate_limiter()
+
+    cfg = dict(config.DEFAULTS, remote_companion_enabled=True, notes_dir=str(tmp_path / "notes"))
+    (tmp_path / "notes").mkdir(exist_ok=True)
+    config.save(cfg)
+
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+
+    app = jarvis_main.App(cfg, use_voice=False)
+    server = webui.serve(app, port)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        html = urllib.request.urlopen(base + "/", timeout=5).read().decode("utf-8")
+        key = re.search(r"\bKEY\s*=\s*['\"]([^'\"]+)['\"]", html).group(1)
+        hdrs = {"X-Jarvis-Key": key, "Origin": base, "Content-Type": "application/json"}
+
+        def _post(body):
+            req = urllib.request.Request(base + "/api/companion", data=json.dumps(body).encode(), headers=hdrs, method="POST")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return json.loads(resp.read())
+
+        code = _post({"action": "pair_code"})["code"]
+        paired = _post({"action": "complete_pair", "code": code, "device_name": "Pixel Test", "platform": "android"})
+        tok = paired["token"]
+
+        st = _post({"action": "device_status", "token": tok})
+        assert st["device"]["name"] == "Pixel Test"
+        assert "vitals" in st and "tasks" in st and "notifications" in st
+
+        cmd = _post({"action": "command", "token": tok, "tool": "get_time_date"})
+        assert cmd["ok"] is True and cmd["output"]
+
+        rev = _post({"action": "revoke", "id": paired["device_id"]})
+        assert rev["devices"][0]["revoked"] is True
+    finally:
+        server.shutdown()
+        server.server_close()

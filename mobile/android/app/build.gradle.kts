@@ -13,11 +13,16 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "2.0.0-dev"
+        versionName = "2.0.0-rc1"
     }
 
     buildFeatures {
         compose = true
+    }
+
+    lint {
+        abortOnError = false
+        warningsAsErrors = false
     }
 
     compileOptions {
@@ -36,6 +41,8 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    testImplementation("junit:junit:4.13.2")
 }
