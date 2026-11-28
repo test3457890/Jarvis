@@ -6,6 +6,7 @@ Legacy HUD link, and captures authentic screenshots under docs/screenshots/.
 """
 import os
 from pathlib import Path
+import re
 import socket
 import tempfile
 
@@ -73,8 +74,9 @@ def run_audit() -> tuple[int, int]:
 
                 check("Console live vitals refresh & authentic screenshot", lambda: (
                     page.get_by_role("button", name="Refresh Live Vitals").click(),
-                    page.wait_for_timeout(1200),
-                    page.screenshot(path=str(shots_dir / "command-center-console.png")),
+                    expect(page.locator(".cc-card").filter(has_text="CPU Load (Live)")).to_contain_text(
+                        re.compile(r"\d+(?:\.\d+)?%"), timeout=15000),
+                    page.locator(".cc-grid").first.screenshot(path=str(shots_dir / "command-center-vitals-2026-11.png")),
                 ))
 
                 # Verify all 19 workspaces switch cleanly
@@ -84,8 +86,32 @@ def run_audit() -> tuple[int, int]:
                         expect(btn).to_be_visible()
                         btn.click()
                         expect(btn).to_have_class(re.compile(r"\bactive\b"))
-                import re
                 check("All 19 Command Center workspaces render and switch cleanly", verify_all_19)
+
+                # Each workspace must reach a real authenticated backend route. This
+                # verifies data wiring; it does not claim every control is end-to-end.
+                backend_routes = {
+                    "console": "/api/vitals", "computer": "/api/uia", "globe": "/api/geospatial",
+                    "sentinel": "/api/sentinel-ops", "agents": "/api/coop-agents",
+                    "research": "/api/office", "developer": "/api/tools/catalogue",
+                    "academic": "/api/office", "professional": "/api/office",
+                    "communications": "/api/connections", "smarthome": "/api/smarthome",
+                    "automation": "/api/coop-agents", "containers": "/api/containers",
+                    "voice": "/api/voice-studio", "models": "/api/providers",
+                    "connections": "/api/catalogue", "audit": "/api/activity",
+                    "repair": "/api/recovery", "settings": "/api/setup",
+                }
+                for workspace, route in backend_routes.items():
+                    def verify_backend(ws=workspace, ep=route):
+                        page.locator(f"button[data-cc-ws='{ws}']").click()
+                        expect(page.locator("main .cc-card").first).to_be_visible()
+                        response = page.evaluate("""async path => {
+                            const res = await fetch(path, {headers: {'X-Jarvis-Key': window.__JARVIS_SESSION__}});
+                            const body = await res.json();
+                            return {status: res.status, keys: Object.keys(body || {})};
+                        }""", ep)
+                        assert response["status"] == 200 and response["keys"], response
+                    check(f"{workspace} workspace authenticated backend read", verify_backend)
 
                 check("Global Intelligence 3D Globe: SAR grid, voice nav & authentic screenshot", lambda: (
                     page.locator("button[data-cc-ws='globe']").click(),
@@ -95,7 +121,7 @@ def run_audit() -> tuple[int, int]:
                     page.get_by_placeholder("Voice nav:").fill("fly to Tokyo"),
                     page.get_by_role("button", name="Navigate").click(),
                     expect(page.locator("[role='status']")).to_contain_text("Tokyo"),
-                    page.screenshot(path=str(shots_dir / "command-center-globe.png")),
+                    page.screenshot(path=str(shots_dir / "command-center-globe-2026-11.png")),
                 ))
 
                 check("Sentinel Cybersecurity: FIM verify & defensive firewall preview", lambda: (

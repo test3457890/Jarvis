@@ -86,6 +86,16 @@ def serve(app, port: int):
                 return False
             return secrets.compare_digest(self.headers.get("X-Jarvis-Key", ""), token)
 
+        def _drain_rejected_body(self):
+            """Consume only bytes already arriving for a rejected POST before Windows closes it."""
+            try:
+                self.connection.settimeout(0.2)
+                buffered = self.rfile.peek(4096)
+                if buffered:
+                    self.rfile.read(min(len(buffered), 4096))
+            except (OSError, TimeoutError):
+                pass
+
         def do_GET(self):
             if not self._host_ok():
                 return self._json({"error": "forbidden"}, 403)
@@ -262,21 +272,17 @@ def serve(app, port: int):
 
         def do_POST(self):
             if not self._host_ok() or not self._authed():
-                # Drain tiny unauthenticated bodies so Windows sockets do not emit TCP RST before the 403 is read.
-                try:
-                    raw_len = int(self.headers.get("Content-Length", "0"))
-                    if 0 < raw_len <= 4096:
-                        self.rfile.read(raw_len)
-                except (ValueError, OSError):
-                    pass
+                self._drain_rejected_body()
                 return self._json({"error": "forbidden"}, 403)
             try:
                 lengths = self.headers.get_all("Content-Length", [])
                 if len(lengths) != 1 or self.headers.get("Transfer-Encoding"):
+                    self._drain_rejected_body()
                     return self._json({"error": "one content length required; transfer encoding is unsupported"}, 400)
                 length = int(lengths[0])
                 limit = images.MAX_UPLOAD_JSON if self.path in ("/api/images/lookup", "/api/documents/preview") else 100_000
                 if not 0 <= length <= limit:
+                    self._drain_rejected_body()
                     return self._json({"error": "invalid content length"}, 400)
                 self.connection.settimeout(REQUEST_BODY_TIMEOUT)
                 body = self.rfile.read(length)
@@ -428,7 +434,10 @@ def serve(app, port: int):
                     return self._json({"error": "expected a boolean confirmation"}, 400)
                 if not isinstance(data.get("id"), str) or not data["id"]:
                     return self._json({"error": "expected a request identifier"}, 400)
-                self._json(app.confirm(data["yes"], data["id"]))
+                try:
+                    self._json(app.confirm(data["yes"], data["id"]))
+                except (ValueError, PermissionError, OSError, RuntimeError) as error:
+                    self._json({"error": str(error)}, 400)
             else:
                 self._json({"error": "not found"}, 404)
 

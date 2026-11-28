@@ -11,6 +11,7 @@ import datetime as dt
 import getpass
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -29,7 +30,7 @@ from .memory import Memory
 
 
 class App:
-    def __init__(self, cfg, use_voice=True):
+    def __init__(self, cfg, use_voice=True, start_watchdog=None):
         from .webui import EventBus
         self.cfg = cfg
         self.bus = EventBus()
@@ -44,6 +45,10 @@ class App:
         self._workflow_lock = threading.Lock()
         self._settings_lock = threading.Lock()
         self._turn_lock = threading.Lock()
+        self._sensitive_lock = threading.Lock()
+        self._sensitive_pending = None
+        self._watchdog_stop = threading.Event()
+        self._watchdog_thread = None
         self._stream_spoken = 0
         self._allow_stream_speech = False
         self.echo_guard = voice_profile.EchoGuard()
@@ -71,7 +76,10 @@ class App:
             print(f"[voice] Speaker unavailable: {e}")
         if use_voice:
             threading.Thread(target=self._start_listener, daemon=True, name="listener").start()
-        threading.Thread(target=self._watchdog, daemon=True, name="watchdog").start()
+        should_start_watchdog = use_voice if start_watchdog is None else bool(start_watchdog)
+        if should_start_watchdog:
+            self._watchdog_thread = threading.Thread(target=self._watchdog, daemon=True, name="watchdog")
+            self._watchdog_thread.start()
 
     # ------------------------------------------------------------ plumbing
     def emit(self, kind, data):
@@ -447,6 +455,8 @@ class App:
     def stop(self):
         self.brain.cancelled.set()
         self._workflow_cancelled.set()
+        with self._sensitive_lock:
+            self._sensitive_pending = None
         if self.listener:
             self.listener.cancel_manual()
         if self.speaker:
@@ -455,6 +465,13 @@ class App:
         self.emit("pending", None)
         self.emit("stream", "")
         return {"ok": True}
+
+    def shutdown(self):
+        """Stop background work before the owning application closes its memory database."""
+        self._watchdog_stop.set()
+        self.stop()
+        if self._watchdog_thread and self._watchdog_thread is not threading.current_thread():
+            self._watchdog_thread.join(timeout=5)
 
     def dictation_operation(self, data):
         if not self.listener:
@@ -1188,13 +1205,18 @@ class App:
                 is_password=bool(data.get("is_password", False)),
             )
         if action == "execute":
-            return uia_control.execute_approved_action(
-                self.cfg,
-                str(data.get("desktop_action") or ""),
-                target=str(data.get("target") or ""),
-                value=str(data.get("value") or ""),
-                approved=bool(data.get("approved", False)),
-                is_password=bool(data.get("is_password", False)),
+            desktop_action = str(data.get("desktop_action") or "")
+            target = str(data.get("target") or "")
+            value = str(data.get("value") or "")
+            is_password = bool(data.get("is_password", False))
+            preview = uia_control.preview_desktop_action(desktop_action, target=target, value=value, is_password=is_password)
+            if self.cfg.get("lockdown") or preview["blocked"]:
+                raise PermissionError(preview["reason"] if preview["blocked"] else "Desktop automation is blocked during Lockdown.")
+            return self._queue_sensitive_action(
+                f"Desktop {desktop_action}: {target or value}",
+                lambda: uia_control.execute_approved_action(
+                    self.cfg, desktop_action, target=target, value=value,
+                    approved=True, is_password=is_password),
             )
         if action == "cancel":
             return uia_control.cancel_active()
@@ -1207,26 +1229,41 @@ class App:
             return smarthome.workspace_state(self.memory)
         action = str(data.get("action") or "").strip().lower()
         if action == "register":
-            dev = smarthome.register_device(
-                self.memory, self.cfg,
-                device_id=str(data.get("id") or ""),
-                name=str(data.get("name") or ""),
-                kind=str(data.get("kind") or ""),
-                endpoint=str(data.get("endpoint") or ""),
-                zone=str(data.get("zone") or "General"),
-                owner_authorized=bool(data.get("owner_authorized", False)),
-                credential=str(data.get("credential") or ""),
+            if not data.get("owner_authorized"):
+                raise PermissionError("Explicit owner authorization is required to register a device.")
+            if self.cfg.get("lockdown"):
+                raise PermissionError("Cannot register devices during Lockdown.")
+            device_id = str(data.get("id") or "")
+            name = str(data.get("name") or "")
+            kind = str(data.get("kind") or "")
+            endpoint = smarthome._validate_endpoint(kind, str(data.get("endpoint") or ""))
+            zone = str(data.get("zone") or "General")
+            credential = str(data.get("credential") or "")
+            return self._queue_sensitive_action(
+                f"Register {kind} device {name or device_id} at {endpoint}",
+                lambda: smarthome.register_device(
+                    self.memory, self.cfg, device_id=device_id, name=name, kind=kind,
+                    endpoint=endpoint, zone=zone, owner_authorized=True, credential=credential),
             )
-            return {"device": dev, "workspace": smarthome.workspace_state(self.memory)}
         if action == "remove":
-            res = smarthome.remove_device(self.memory, self.cfg, str(data.get("id") or ""))
-            return {**res, "workspace": smarthome.workspace_state(self.memory)}
-        if action == "recording":
-            dev = smarthome.set_recording(
-                self.memory, self.cfg, str(data.get("id") or ""),
-                bool(data.get("enabled", False)), approved=bool(data.get("approved", False)),
+            device_id = str(data.get("id") or "")
+            dev = smarthome.get_device(self.memory, device_id)
+            if self.cfg.get("lockdown"):
+                raise PermissionError("Cannot remove devices during Lockdown.")
+            return self._queue_sensitive_action(
+                f"Remove device {dev['name']} ({device_id})",
+                lambda: smarthome.remove_device(self.memory, self.cfg, device_id),
             )
-            return {"device": dev, "workspace": smarthome.workspace_state(self.memory)}
+        if action == "recording":
+            device_id = str(data.get("id") or "")
+            enabled = bool(data.get("enabled", False))
+            dev = smarthome.get_device(self.memory, device_id)
+            if self.cfg.get("lockdown") or dev["kind"] == "public_webcam":
+                raise PermissionError("Camera recording control is unavailable for this device or mode.")
+            return self._queue_sensitive_action(
+                f"{'Enable' if enabled else 'Disable'} recording on {dev['name']}",
+                lambda: smarthome.set_recording(self.memory, self.cfg, device_id, enabled, approved=True),
+            )
         if action == "event":
             ev = smarthome.record_event(
                 self.memory, str(data.get("id") or ""), str(data.get("kind") or "motion"), str(data.get("summary") or ""),
@@ -1272,8 +1309,14 @@ class App:
             )
             return {"ok": True, "dry_run": True, "command": args}
         if action == "kill":
-            return containers.emergency_kill_container(
-                self.cfg, str(data.get("id") or ""), approved=bool(data.get("approved", False)),
+            container_id = str(data.get("id") or "")
+            if self.cfg.get("lockdown"):
+                raise PermissionError("Container actions are blocked during Lockdown.")
+            if not containers._SAFE_NAME_RE.fullmatch(container_id):
+                raise ValueError("Invalid container ID or name.")
+            return self._queue_sensitive_action(
+                f"Kill container {container_id}",
+                lambda: containers.emergency_kill_container(self.cfg, container_id, approved=True),
             )
         raise ValueError("Choose preview_run or kill.")
 
@@ -1370,12 +1413,35 @@ class App:
         return {"count": len(tools), "tools": tools}
 
     def confirm(self, yes: bool, expected_id: str):
+        with self._sensitive_lock:
+            pending = self._sensitive_pending
+            if pending and pending["id"] == expected_id:
+                self._sensitive_pending = None
+            else:
+                pending = None
+        if pending:
+            self.emit("pending", None)
+            if not yes:
+                return {"result": "Action cancelled."}
+            if time.monotonic() > pending["expires_at"]:
+                return {"result": "Approval expired. Preview the action again."}
+            result = pending["execute"]()
+            return {"result": result}
         result = self.brain.confirm_pending(yes, expected_id=expected_id)
         self.reply(result, speak=True)
         if self.speaker:
             self.speaker.wait()
         self.emit("status", "listening" if self.listener else "idle")
         return {"result": result}
+
+    def _queue_sensitive_action(self, summary, execute):
+        """Hold exact server-side action arguments for one user confirmation, for at most 60 seconds."""
+        pending = {"id": secrets.token_urlsafe(18), "summary": summary[:180],
+                   "expires_at": time.monotonic() + 60, "execute": execute}
+        with self._sensitive_lock:
+            self._sensitive_pending = pending
+        self.emit("pending", {"id": pending["id"], "text": pending["summary"]})
+        return {"pending": True, "id": pending["id"], "summary": pending["summary"]}
 
     def _start_listener(self):
         try:
@@ -1397,10 +1463,11 @@ class App:
     def _watchdog(self):
         """Runs in the background: reminders, event heads-ups, deadline nudges,
         the daily briefing, and Canvas syncing. This is what stops things slipping."""
-        time.sleep(3)
+        if self._watchdog_stop.wait(3):
+            return
         self.greet()
         last_canvas = 0
-        while True:
+        while not self._watchdog_stop.is_set():
             try:
                 for text in self.memory.pop_due_reminders():
                     self.notify(f"Reminder: {text}")
@@ -1416,7 +1483,7 @@ class App:
                     planner.sync_canvas_now(self.memory, self.cfg)
             except Exception as e:
                 print(f"[watchdog] {e}")
-            time.sleep(30)
+            self._watchdog_stop.wait(30)
 
     def _event_heads_up(self):
         lead = self.cfg.get("event_heads_up_minutes", 15) * 60
@@ -1853,11 +1920,11 @@ def main(argv=None):
         return 0
     if args.text:
         cfg["speak_replies"] = False
-        text_chat(App(cfg, use_voice=False))
+        text_chat(App(cfg, use_voice=False, start_watchdog=True))
         return 0
 
     from .webui import serve
-    app = App(cfg, use_voice=not args.no_voice and cfg.get("voice_enabled", True))
+    app = App(cfg, use_voice=not args.no_voice and cfg.get("voice_enabled", True), start_watchdog=True)
     port = cfg.get("web_port", 8765)
     serve(app, port)
     url = f"http://127.0.0.1:{port}"

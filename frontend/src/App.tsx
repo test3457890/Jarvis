@@ -8,7 +8,7 @@ export const App: React.FC = () => {
     workspace, setWorkspace, sidebarWidth, setSidebarWidth,
     fullscreen, toggleFullscreen, reducedMotion, toggleReducedMotion,
     floatingMode, toggleFloatingMode, paletteOpen, setPaletteOpen,
-    coreStatus, activeAssistant, setCoreStatus, setAppState, addMessage, setPendingApproval,
+    coreStatus, activeAssistant, setCoreStatus, setAppState, addMessage, pendingApproval, setPendingApproval,
   } = useCCStore();
   const [palQuery, setPalQuery] = useState('');
 
@@ -20,8 +20,8 @@ export const App: React.FC = () => {
         const who = ev.data.assistant === 'tuki' ? 'tuki' : 'jarvis';
         setCoreStatus('idle', who);
         addMessage(who, ev.data.text);
-      } else if (ev.kind === 'confirm' && ev.data?.id) {
-        setPendingApproval({ id: ev.data.id, summary: ev.data.summary || 'Confirm action' });
+      } else if (ev.kind === 'pending') {
+        setPendingApproval(ev.data?.id ? { id: ev.data.id, summary: ev.data.text || 'Confirm action' } : null);
       }
     });
     return unsub;
@@ -74,6 +74,26 @@ export const App: React.FC = () => {
             <a href="/" style={{ color: 'var(--cyan)', fontSize: 13, textDecoration: 'none', padding: '6px 10px', border: '1px solid var(--line)', borderRadius: 8 }}>Legacy HUD</a>
           </div>
         </header>
+
+        {pendingApproval && (
+          <div className="cc-card" role="alertdialog" aria-label="Action approval" style={{ borderColor: 'var(--warn)', margin: 8 }}>
+            <strong>Action approval required:</strong> {pendingApproval.summary}
+            <div className="cc-row" style={{ marginTop: 8 }}>
+              <button className="primary" type="button" onClick={async () => {
+                try {
+                  const response = await api('/api/confirm', { yes: true, id: pendingApproval.id });
+                  addMessage('system', typeof response.result === 'string' ? response.result : JSON.stringify(response.result));
+                  setPendingApproval(null);
+                }
+                catch (e: any) { addMessage('system', e.message); }
+              }}>Approve</button>
+              <button className="danger" type="button" onClick={async () => {
+                try { await api('/api/confirm', { yes: false, id: pendingApproval.id }); setPendingApproval(null); }
+                catch (e: any) { addMessage('system', e.message); }
+              }}>Deny</button>
+            </div>
+          </div>
+        )}
 
         <div className="cc-body">
           {!fullscreen && !floatingMode && (

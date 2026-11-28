@@ -21,6 +21,7 @@ Jarvis is built around a fail-closed, local-first security posture. Every capabi
    - Risky skills (file modifications, code/test/build execution, web searches, GitHub reads/writes, cloud prompts, calls/texts/emails, power controls) ALWAYS require explicit user approval with a human-readable preview and unique confirmation ID.
    - `skill_permissions` can disable (`off`) or require confirmation (`ask`) for any tool; risky skills can NEVER be promoted to `allowed`.
    - One-click **Lockdown** immediately blocks all risky skills, settings mutations, workflows, MCP calls, and clears pending approvals.
+   - Command Center desktop actions, device enrollment/removal, camera recording changes, and container kills queue exact arguments server-side. The confirmation ID is single-use and expires after 60 seconds. An `approved` field in the request does not authorize execution. Other HTTP mutations still need the same per-action audit; see `Development Tracker.md`.
 
 4. **Prompt Injection Defense (`jarvis/secure.py`)**
    - All untrusted tool outputs are wrapped in `<<<OUTSIDE CONTENT START ... OUTSIDE CONTENT END>>>` fences and scanned for injection patterns.
@@ -40,6 +41,8 @@ Jarvis is built around a fail-closed, local-first security posture. Every capabi
 
 ## Known Security Boundaries & Limitations
 
+- The loopback session key and browser origin checks protect against foreign web pages. They are not an isolation boundary against a different process running as the same Windows user. The Command Center action confirmation must be clicked in the HUD, but a same-user process that obtains its session key can submit that confirmation. OS-level separation remains future work.
+- Accessibility click/type actions currently refuse execution because the UIA implementation has no verified control operation. Window focus/state and hotkeys use their own action paths.
 - Extensions and local stdio MCP servers run as the current Windows user without an OS AppContainer/VM sandbox. Only enable extensions and MCP servers you trust.
 - Release packages and PowerShell scripts are not Authenticode code-signed yet; verify downloads via `SHA256SUMS.txt`. See [WindowsDefender.md](WindowsDefender.md).
 - SQLite backups in `%APPDATA%\Jarvis\backups\` are local unencrypted files; keep them private.

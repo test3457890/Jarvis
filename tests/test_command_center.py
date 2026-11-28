@@ -2,9 +2,12 @@
 import json
 import re
 import socket
+import threading
+import time
 import urllib.error
 import urllib.request
 import zipfile
+from types import SimpleNamespace
 import pytest
 
 from jarvis import (
@@ -40,14 +43,86 @@ def test_uia_control_blocks_passwords_uac_and_requires_approval():
     with pytest.raises(PermissionError, match="password"):
         uia_control.execute_approved_action(cfg, "type_control", target="Password", approved=True, is_password=True)
 
-    ok = uia_control.execute_approved_action(cfg, "click_control", target="Save Document", approved=True)
-    assert ok["ok"] is True
+    with pytest.raises(PermissionError, match="not implemented"):
+        uia_control.execute_approved_action(cfg, "click_control", target="Save Document", approved=True)
 
     cfg_lock = dict(config.DEFAULTS, lockdown=True)
     with pytest.raises(PermissionError, match="Lockdown"):
         uia_control.execute_approved_action(cfg_lock, "click_control", target="Save Document", approved=True)
 
     assert uia_control.cancel_active()["cancelled"] is True
+
+
+def test_http_uia_approval_is_bound_to_exact_action_and_expires(monkeypatch):
+    app = object.__new__(jarvis_main.App)
+    app.cfg = dict(config.DEFAULTS, lockdown=False)
+    app._sensitive_lock = threading.Lock()
+    app._sensitive_pending = None
+    events = []
+    app.emit = lambda kind, data: events.append((kind, data))
+    app.brain = SimpleNamespace(confirm_pending=lambda yes, expected_id: "No matching approval.")
+    app.reply = lambda *args, **kwargs: None
+    app.speaker = None
+    app.listener = None
+    focused = []
+    monkeypatch.setattr(uia_control.desktop, "focus_window", lambda target: focused.append(target) or "Focused")
+
+    pending = app.uia_operation({"action": "execute", "desktop_action": "focus_window",
+                                 "target": "Notes", "approved": True})
+    assert pending["pending"] and focused == []
+    assert app.confirm(True, "wrong-id")["result"] == "No matching approval."
+    assert focused == []
+    assert app.confirm(True, pending["id"])["result"]["result"] == "Focused"
+    assert focused == ["Notes"]
+    assert app.confirm(True, pending["id"])["result"] == "No matching approval."
+
+    pending = app.uia_operation({"action": "execute", "desktop_action": "focus_window", "target": "Other"})
+    app._sensitive_pending["expires_at"] = time.monotonic() - 1
+    assert "expired" in app.confirm(True, pending["id"])["result"]
+    assert focused == ["Notes"]
+    assert events[-1] == ("pending", None)
+
+    killed = []
+    monkeypatch.setattr(containers, "emergency_kill_container",
+                        lambda cfg, cid, approved=False: killed.append((cid, approved)) or {"killed": cid})
+    pending = app.containers_operation({"action": "kill", "id": "job-123", "approved": True})
+    assert killed == []
+    assert app.confirm(False, pending["id"])["result"] == "Action cancelled."
+    assert killed == []
+    pending = app.containers_operation({"action": "kill", "id": "job-123"})
+    assert app.confirm(True, pending["id"])["result"] == {"killed": "job-123"}
+    assert killed == [("job-123", True)]
+
+
+def test_embedded_app_does_not_leave_watchdog_after_database_close(isolated_app):
+    cfg, _, _, _ = isolated_app
+    app = jarvis_main.App(cfg, use_voice=False)
+    assert app._watchdog_thread is None
+    app.shutdown()
+    app.memory.db.close()
+
+
+def test_http_smarthome_enrollment_and_removal_need_bound_confirmation(isolated_app):
+    cfg, _, _, _ = isolated_app
+    app = jarvis_main.App(cfg, use_voice=False)
+    try:
+        request = {"action": "register", "id": "desk_cam", "name": "Desk Camera",
+                   "kind": "onvif_camera", "endpoint": "https://192.168.1.50/onvif",
+                   "owner_authorized": True, "approved": True}
+        pending = app.smarthome_operation(request)
+        assert pending["pending"]
+        assert smarthome.list_devices(app.memory) == []
+        assert app.confirm(True, pending["id"])["result"]["id"] == "desk_cam"
+        removal = app.smarthome_operation({"action": "remove", "id": "desk_cam", "approved": True})
+        assert len(smarthome.list_devices(app.memory)) == 1
+        app.confirm(False, removal["id"])
+        assert len(smarthome.list_devices(app.memory)) == 1
+        removal = app.smarthome_operation({"action": "remove", "id": "desk_cam"})
+        app.confirm(True, removal["id"])
+        assert smarthome.list_devices(app.memory) == []
+    finally:
+        app.shutdown()
+        app.memory.db.close()
 
 
 def test_geospatial_global_intelligence_annotations_orbit_and_voice_nav(tmp_path, monkeypatch):
@@ -162,11 +237,23 @@ def test_containers_hardened_policy_blocks_docker_sock_and_escapes(tmp_path):
     assert "--cap-drop=ALL" in args
     assert "--user" in args and "65534:65534" in args
     assert "--network" in args and "none" in args
+    assert "--pull=never" in args
+    with pytest.raises(PermissionError, match="destination allowlist"):
+        containers.build_hardened_run_args("python:3.12-slim", ["python", "-V"], allow_network=True)
 
     with pytest.raises(PermissionError, match="docker.sock"):
         containers.validate_mount_path("/var/run/docker.sock", tmp_path)
     with pytest.raises(PermissionError, match="approved workspace root"):
         containers.validate_mount_path(tmp_path.parent, work)
+
+
+def test_container_inventory_timeout_is_reported(monkeypatch):
+    import subprocess
+    monkeypatch.setattr(containers, "docker_available", lambda: {"cli_installed": True, "daemon_running": True, "version": "test", "reason": "Ready"})
+    monkeypatch.setattr(containers, "list_containers", lambda: (_ for _ in ()).throw(subprocess.TimeoutExpired("docker ps", 8)))
+    status = containers.workspace_state()
+    assert status["containers"] == []
+    assert "TimeoutExpired" in status["docker"]["inventory_error"]
 
 
 def test_coop_agents_bounded_recursion_dependencies_and_automations(tmp_path, monkeypatch):

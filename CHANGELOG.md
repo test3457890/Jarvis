@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Command Center remediation (November 28, 2026)
+
+- Corrected the modern HUD approval event and made approvals visible in every workspace.
+- Bound desktop, device enrollment/removal, camera recording, and container-kill confirmations to exact server-side actions with one-use 60-second expiry.
+- Refused unimplemented accessibility click/type operations instead of reporting false success.
+- Stopped embedded App watchdog threads from outliving their test databases and fixed intermittent Windows malformed-request TCP resets.
+- Made Docker inventory timeouts visible, disallowed implicit image pulls and container network access without destination allowlists, and verified a hardened run with an existing local image.
+- Expanded the modern browser audit to read authenticated backend state in all 19 workspaces. Current evidence: 409 Python tests passed, 7 skipped; 6 Rust tests passed; 73 legacy HUD and 31 modern HUD browser checks passed.
+
 ## 2.0.0-rc1 (Release Candidate — Pre-Release)
 
 - **Live System Vitals & Dedicated Workspaces**: Real-time CPU, RAM, NVIDIA GPU/VRAM/temperature, disk, battery, network throughput, SVG sparklines, top 8 processes (`jarvis/telemetry.py`), and dedicated Console, Vitals, Audit, Repair, Runs, Professional, and Settings workspaces preserving all 6 legacy themes and 3 legacy views.

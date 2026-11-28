@@ -1,9 +1,34 @@
 # Jarvis Next Generation — Master Development Tracker
 
 **Updated:** November 28, 2026  
-**Active Branch:** `feature/jarvis-next-phase` (synchronized with `main` / `v1.4.1` security patch @ `3f930ec`)  
+**Active Branch:** `feature/jarvis-command-center` (base `4a48f4c`; current verification and remediation recorded below)
 **Stable Release Preserved:** `v1.4.1` (remains stable until Next-Gen PRs are independently reviewed and merged)  
 **Reference Inventory:** See [Reference Comparison and Inventory](Reference%20Comparison%20and%20Inventory.md), [Third Party Attribution](Third%20Party%20Attribution.md), and [Mobile Companion Architecture](Mobile%20Companion%20Architecture.md).
+
+---
+
+## Command Center continuation — November 28, 2026
+
+This section supersedes older branch and test-count statements below. Earlier phase entries describe the previous agent's reported results; they do not establish current end-to-end verification.
+
+| Capability | Current classification | Evidence and next gate |
+|---|---|---|
+| Local HTTP and 19-workspace HUD | Implemented but only partially verified | React build succeeds; 19 navigation targets and API routes exist. Functional controls and real integrations still need a workspace-by-workspace browser audit. The modern approval event mismatch was fixed in this slice. |
+| Windows desktop control | Partially implemented | Window focus/state and approved hotkeys have execution paths; accessibility tree inspection exists. Click/type control actions were placeholders returning false success and are now explicitly blocked. Real Windows UI execution and multi-monitor workflows remain unverified. |
+| Sensitive action approval | Partially implemented | Desktop, device enrollment/removal, camera recording, and container-kill API requests now create an exact-action, one-use, 60-second server-side confirmation instead of accepting a caller-supplied `approved` boolean. Other sensitive routes still require a full authorization audit. This is an application-level gate; local processes running as the same OS user are not isolated from the loopback session. |
+| Agent plans and automation | Partially implemented | Cooperative plan and automation persistence have tests; the visual builder does not establish unattended, verified multi-app execution. |
+| Local model routing and neural voice | Implemented but only partially verified | Model/voice adapters and fixtures exist. Live hardware concurrency, licensing review, physical microphone and speaker behavior still need verification. |
+| Docker execution | Partially implemented; requires additional software on other hosts | The HTTP workspace offers preview and kill, but no actual run action. Docker Desktop daemon and a local `python:3.12-slim` image were present on this host; an actual network-disabled, non-root, read-only-rootfs run exited 0 and reported Python 3.12.16. The argument builder now forbids automatic pulls and network access pending destination allowlists. |
+| Smart home and cameras | Requires external credentials and physical hardware | Registry and local event records exist. Device connectivity, real camera previews, and actual recording control are not verified. |
+| Cloud providers and productivity connectors | Requires external credentials | Provider and connector registries exist; live OAuth/API workflows are not established by fixtures. |
+| Mobile companion | Requires additional software, physical hardware, and another operating system for iOS | Pairing code and architecture exist. Device communication, Android and iOS builds are outstanding. |
+| Covert tracking, authentication bypass, retaliatory cyber actions | Inappropriate or unsupported | Explicitly outside product scope. |
+
+**Priority continuation:** P0 finish the authorization audit across all HTTP actions, fix remaining regression and watchdog lifecycle defects, and run all 19 HUD workspaces against the live server. P1 implement actual accessibility click/type only with control identity verification and cancellation; run container jobs only after Docker daemon verification; test real model and voice paths. P2 complete connector and workflow execution with credentials and device-specific grants. P3 mobile builds, clean installation, performance and release checks.
+
+**Repository audit:** Remote branches fetched; specified commits `c05f335`, `4a48f4c`, and `028d133` exist. GitHub currently has no issues or open PRs; the most recent merged PR is #44 for v1.4.1. The earlier reference comparison is preserved in `Reference Comparison and Inventory.md`. No external code was copied in this slice.
+
+**Current verification:** The initial system Python 3.15 run yielded 400 passed, 5 failed, 7 skipped before dependencies and fixes. After fixing watchdog lifecycle and intermittent Windows HTTP rejection resets, the clean `.venv` combined suite completed with **409 passed, 7 skipped in 113.07 seconds**. Ten repeated malformed HTTP framing sets passed (50 cases). Rust: **6 passed**. React/TypeScript production build: passed. Legacy HUD browser audit: **73/73**. Modern Command Center browser audit: **31/31**, including authenticated backend reads for all 19 workspaces; this does not assert full feature completion.
 
 ---
 

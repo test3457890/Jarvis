@@ -130,6 +130,8 @@ def build_hardened_run_args(
     img = str(image or "").strip()
     if not _SAFE_IMAGE_RE.match(img):
         raise ValueError("Invalid container image reference.")
+    if allow_network:
+        raise PermissionError("Container network access requires a destination allowlist, which is not implemented.")
     if not command or not isinstance(command, list):
         raise ValueError("Provide a non-empty command list to run inside the container.")
     mem = max(64, min(int(memory_mb), 4096))
@@ -137,7 +139,7 @@ def build_hardened_run_args(
     pids = max(16, min(int(pids_limit), 512))
 
     args = [
-        "docker", "run", "--rm",
+        "docker", "run", "--rm", "--pull=never",
         "--read-only",
         "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
         "--user", "65534:65534",
@@ -146,7 +148,7 @@ def build_hardened_run_args(
         "--memory", f"{mem}m",
         "--cpus", f"{cpu:.2f}",
         "--pids-limit", str(pids),
-        "--network", "bridge" if allow_network else "none",
+        "--network", "none",
     ]
     if name:
         clean = str(name).strip()
@@ -187,10 +189,18 @@ def emergency_kill_container(cfg: dict, container_id: str, *, approved: bool = F
 
 def workspace_state() -> dict:
     st = docker_available()
+    container_rows = []
+    image_rows = []
+    if st["daemon_running"]:
+        try:
+            container_rows = list_containers()
+            image_rows = list_images()
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            st = {**st, "inventory_error": f"Docker inventory unavailable: {type(exc).__name__}. Retry later."}
     return {
         "docker": st,
-        "containers": list_containers() if st["daemon_running"] else [],
-        "images": list_images() if st["daemon_running"] else [],
+        "containers": container_rows,
+        "images": image_rows,
         "security_defaults": {
             "non_root_uid_gid": "65534:65534",
             "read_only_rootfs": True,

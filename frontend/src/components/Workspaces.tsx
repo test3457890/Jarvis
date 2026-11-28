@@ -4,7 +4,7 @@ import { useCCStore, WorkspaceId } from '../store';
 import { Globe3D } from './Globe3D';
 
 export const WorkspaceView: React.FC<{ id: WorkspaceId }> = ({ id }) => {
-  const { messages, addMessage, vitals, setVitals, appState, pendingApproval, setPendingApproval } = useCCStore();
+  const { messages, addMessage, vitals, setVitals, appState } = useCCStore();
   const [input, setInput] = useState('');
   const [data, setData] = useState<any>(null);
   const [statusMsg, setStatusMsg] = useState('');
@@ -93,16 +93,6 @@ export const WorkspaceView: React.FC<{ id: WorkspaceId }> = ({ id }) => {
             <button type="button" onClick={refreshVitals}>Refresh Live Vitals</button>
           </div>
         </div>
-
-        {pendingApproval && (
-          <div className="cc-card" style={{ borderColor: 'var(--warn)' }}>
-            <strong>Action Approval Required:</strong> {pendingApproval.summary}
-            <div className="cc-row" style={{ marginTop: 8 }}>
-              <button className="primary" type="button" onClick={async () => { await api('/api/confirm', { yes: true, id: pendingApproval.id }); setPendingApproval(null); }}>Approve</button>
-              <button className="danger" type="button" onClick={async () => { await api('/api/confirm', { yes: false, id: pendingApproval.id }); setPendingApproval(null); }}>Deny</button>
-            </div>
-          </div>
-        )}
 
         <div className="cc-card" style={{ maxHeight: 300, overflowY: 'auto' }}>
           {messages.map((m) => (

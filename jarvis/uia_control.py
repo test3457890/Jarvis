@@ -156,6 +156,8 @@ def preview_desktop_action(action: str, *, target: str = "", value: str = "", is
             desktop.validate_hotkey(value or target)
         except Exception as exc:
             blocked, reason = True, str(exc)
+    if act in ("click_control", "type_control") and not blocked:
+        blocked, reason = True, "Accessibility click and typing are not implemented yet."
     return {
         "ok": not blocked,
         "action": act,
@@ -200,8 +202,7 @@ def execute_approved_action(
             res = desktop.send_approved_hotkey(value or target, dry_run=False)
             msg = f"Sent hotkey: {'+'.join(res['keys'])}"
         else:
-            # Accessibility control click/type previewed and verified cleanly
-            msg = f"Accessibility action '{act}' verified for control '{target}'."
+            raise ValueError(f"Accessibility action '{act}' is not implemented yet.")
         with _TASK_LOCK:
             _ACTIVE_TASK.update({"running": False, "step": msg, "progress": 100})
         secure.audit("uia_action_executed", {"action": act, "target": target[:80]})

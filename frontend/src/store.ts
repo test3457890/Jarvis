@@ -108,7 +108,7 @@ export const useCCStore = create<CommandCenterState>((set) => ({
     {
       id: 'welcome',
       role: 'jarvis',
-      text: 'Jarvis & TUKI Advanced Command Center online. All 19 workspaces are connected to local loopback APIs.',
+      text: 'Jarvis & TUKI Command Center ready. Check each workspace for available actions and integration status.',
       ts: new Date().toLocaleTimeString(),
     },
   ],
