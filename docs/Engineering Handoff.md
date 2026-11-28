@@ -8,7 +8,12 @@ Branch: `feature/jarvis-full-integration`
 - Stacked PR #41 tip (starting base of `feature/jarvis-full-integration`): `655d115599b2f8a4438b7dc17711647c1c3204bb`
 
 ## 2. Ending Git Commit
-- Recorded in git history on branch `feature/jarvis-full-integration` (final commit SHA appended after verification).
+- Branch: `feature/jarvis-full-integration`
+- Feature & Rust commits:
+  - `c3d030f` — Add hardware advisor, multi-agent review, MCP client, connectors, worktrees, and Sentinel audit
+  - `ea6609a` — Upgrade HUD controls, fix Windows PowerShell 5.1 installer and 390px layout, expand Chrome audit
+  - `0d94867` — Add zero-dependency Rust jarvis-core policy and audit verifier crate
+  - `fadd14d` — Update roadmap audit, tracker, architecture, security docs, Phase 2 captures, and handoff (followed by final commit recording SHAs)
 
 ## 3. Branches and Pull Requests Reviewed
 - `main` (`2bbc584`)
