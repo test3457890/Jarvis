@@ -150,7 +150,9 @@ def audit(app, cfg, code, files, url):
             answers["accept"] = False
             seen = len(dialogs)
             page.get_by_role("button", name="Download and finish").click()
-            page.wait_for_timeout(500)
+            deadline = time.monotonic() + 6.0
+            while len(dialogs) < seen + 1 and time.monotonic() < deadline:
+                page.wait_for_timeout(100)
             answers["accept"] = True
             assert len(dialogs) == seen + 1 and "budget" in dialogs[-1], "no budget warning dialog"
             assert not setupwizard.load_state().get("steps"), "downloads started"
@@ -819,26 +821,32 @@ def audit(app, cfg, code, files, url):
             expect(page.locator("#screen-preview")).to_be_hidden()
 
         # ---------------------------------------------------------------- apps and extensions
-        @check("App actions: refuse a shell", "add /bin/sh", "refused with a reason, nothing saved")
+        @check("App actions: refuse a shell", "add a system shell", "refused with a reason, nothing saved")
         def _():
+            shell_path = os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe") if os.name == "nt" else "/bin/sh"
             page.locator("#apps summary").click()
             page.locator("#apps-name").fill("Shell")
-            page.locator("#apps-program").fill("/bin/sh")
+            page.locator("#apps-program").fill(shell_path)
             page.get_by_role("button", name="Add app action").click()
             expect(page.locator("#apps-status")).to_contain_text("can run any command")
             assert not app.cfg.get("app_actions")
 
-        @check("App actions: add, run, stop, remove", "approve sleep, Confirm, Stop", "program starts, then is closed")
+        @check("App actions: add, run, stop, remove", "approve safe program, Confirm, Stop", "program starts, then is closed")
         def _():
             import shutil as _shutil
-            program = _shutil.which("sleep")
-            assert program, "needs a sleep program"
+            if os.name == "nt":
+                program = _shutil.which("ping") or r"C:\Windows\System32\PING.EXE"
+                cmd_args = [program, "-n", "30", "127.0.0.1"]
+            else:
+                program = _shutil.which("sleep")
+                cmd_args = [program, "30"]
+            assert program, "needs a test program"
             page.locator("#apps-name").fill("Wait")
             page.locator("#apps-program").fill(program)
             page.get_by_role("button", name="Add app action").click()
             expect(page.locator("#apps-list")).to_contain_text("Wait")
             from jarvis import appactions as _apps
-            with patch.object(_apps, "_command", lambda cfg, name, file="": ({"name": "Wait", "program": program}, [program, "30"])):
+            with patch.object(_apps, "_command", lambda cfg, name, file="": ({"name": "Wait", "program": program}, cmd_args)):
                 page.get_by_role("button", name="Run Wait").click()
                 expect(page.locator("#pending")).to_be_visible()
                 page.locator("#p-yes").click()
@@ -879,6 +887,30 @@ def audit(app, cfg, code, files, url):
             page.locator("#setup-form button").click()
             expect(page.locator("#setup-status")).to_contain_text("Saved")
             until(lambda: json.loads(config.CONFIG_PATH.read_text()).get("ocr_enabled") is True)
+
+        @check("Sentinel security & MCP", "run local security audit and inspect MCP", "defensive checks reported, zero unapproved MCP servers")
+        def _():
+            page.locator("#sentinel-panel summary").click()
+            page.locator("#sentinel-refresh").click()
+            expect(page.locator("#sentinel-status")).to_contain_text("defensive checks completed")
+            expect(page.locator("#sentinel-list")).to_contain_text("HUD loopback binding")
+            page.locator("#mcp-refresh").click()
+            expect(page.locator("#mcp-list")).to_contain_text("No local MCP servers configured")
+            page.screenshot(path=OUT / "audit-sentinel.png")
+            page.locator("#sentinel-panel summary").click()
+
+        @check("Hardware & Temp chat", "inspect hardware and toggle Temp chat", "hardware summary shown and temporary chat toggles")
+        def _():
+            page.locator("#setup-panel summary").click()
+            page.locator("#hardware-refresh").click()
+            expect(page.locator("#hardware-summary")).to_contain_text("Recommended:")
+            page.locator("#t-temp").click()
+            expect(page.locator("#t-temp")).to_have_attribute("aria-pressed", "true")
+            assert app.cfg.get("temporary_chat") is True
+            page.locator("#t-temp").click()
+            expect(page.locator("#t-temp")).to_have_attribute("aria-pressed", "false")
+            assert app.cfg.get("temporary_chat") is False
+            page.locator("#setup-panel summary").click()
 
         # ---------------------------------------------------------------- layout and connection
         @check("Phone layout", "390 px wide", "no sideways scrolling")
@@ -945,6 +977,7 @@ def main():
                 finally:
                     server.shutdown()
                     server.server_close()
+                    app.memory.db.close()
     ok = write_report()
     print(f"{sum(r[3] == 'PASS' for r in RESULTS)}/{len(RESULTS)} passed. Report: {OUT / 'control-report.md'}")
     return 0 if ok else 1

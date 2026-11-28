@@ -28,6 +28,11 @@ def test_release_is_reproducible_and_contains_only_manifest_files(tmp_path):
     assert (tmp_path/'SHA256SUMS.txt').read_text().strip() == hashlib.sha256(first).hexdigest() + '  ' + archive.name
 
 
+def _powershell():
+    import shutil
+    return shutil.which('pwsh') or shutil.which('powershell') or 'powershell'
+
+
 @pytest.mark.skipif(os.name!='nt',reason='Windows source updater integration')
 def test_windows_updater_and_restore(tmp_path):
     import shutil
@@ -40,11 +45,12 @@ def test_windows_updater_and_restore(tmp_path):
     original.write_text('# previous version\n')
     archive=build(tmp_path/'packages')
     env={**os.environ,'APPDATA':str(tmp_path/'appdata')}
-    result=subprocess.run(['pwsh','-NoProfile','-File',str(home/'upgrade.ps1'),'-Package',str(archive),'-Checksum',hashlib.sha256(archive.read_bytes()).hexdigest()],env=env,capture_output=True,text=True)
+    ps=_powershell()
+    result=subprocess.run([ps,'-NoProfile','-ExecutionPolicy','Bypass','-File',str(home/'upgrade.ps1'),'-Package',str(archive),'-Checksum',hashlib.sha256(archive.read_bytes()).hexdigest()],env=env,capture_output=True,text=True)
     assert result.returncode==0,result.stdout+result.stderr
     assert original.read_text()!='# previous version\n'
     backup=next((tmp_path/'appdata'/'Jarvis'/'Program Backups').iterdir())
-    result=subprocess.run(['pwsh','-NoProfile','-File',str(home/'upgrade.ps1'),'-Restore',str(backup)],env=env,capture_output=True,text=True)
+    result=subprocess.run([ps,'-NoProfile','-ExecutionPolicy','Bypass','-File',str(home/'upgrade.ps1'),'-Restore',str(backup)],env=env,capture_output=True,text=True)
     assert result.returncode==0,result.stdout+result.stderr
     assert original.read_text()=='# previous version\n'
 
@@ -76,7 +82,8 @@ function Copy-Item {
 & $Updater -Package $Package -Checksum $Checksum
 ''')
     env={**os.environ,'APPDATA':str(tmp_path/'appdata')}
-    result=subprocess.run(['pwsh','-NoProfile','-File',str(wrapper),'-Updater',str(home/'upgrade.ps1'),'-Package',str(archive),'-Checksum',hashlib.sha256(archive.read_bytes()).hexdigest()],env=env,capture_output=True,text=True)
+    ps=_powershell()
+    result=subprocess.run([ps,'-NoProfile','-ExecutionPolicy','Bypass','-File',str(wrapper),'-Updater',str(home/'upgrade.ps1'),'-Package',str(archive),'-Checksum',hashlib.sha256(archive.read_bytes()).hexdigest()],env=env,capture_output=True,text=True)
     assert result.returncode!=0
     assert (home/'jarvis'/'__main__.py').read_text()=='previous main'
     assert (home/'README.md').read_text()=='previous readme'
@@ -121,7 +128,8 @@ def test_windows_installer_creates_direct_shortcut_and_keeps_settings(tmp_path):
     (appdata / 'Jarvis').mkdir(parents=True)
     (appdata / 'Jarvis' / 'config.json').write_text(json.dumps({'honorific': 'Brett', 'user_name': 'Brett T'}))
     env = {**os.environ, 'APPDATA': str(appdata)}
-    command = ['pwsh', '-NoProfile', '-File', str(home / 'install.ps1'), '-SkipPackages', '-Profile', 'low-memory']
+    ps = _powershell()
+    command = [ps, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(home / 'install.ps1'), '-SkipPackages', '-Profile', 'low-memory']
     result = subprocess.run(command, env=env, capture_output=True, text=True, cwd=home)
     assert result.returncode == 0, result.stdout + result.stderr
     saved = json.loads((appdata / 'Jarvis' / 'config.json').read_text())
@@ -130,7 +138,7 @@ def test_windows_installer_creates_direct_shortcut_and_keeps_settings(tmp_path):
     link = appdata / 'Microsoft' / 'Windows' / 'Start Menu' / 'Programs' / 'Jarvis.lnk'
     query = ("$l=(New-Object -ComObject WScript.Shell).CreateShortcut('%s'); "
              "Write-Output $l.TargetPath; Write-Output $l.Arguments" % link)
-    output = subprocess.run(['pwsh', '-NoProfile', '-Command', query], capture_output=True, text=True).stdout
+    output = subprocess.run([ps, '-NoProfile', '-Command', query], capture_output=True, text=True).stdout
     assert output.splitlines()[0].lower().endswith('\\.venv\\scripts\\python.exe')
     assert output.splitlines()[1] == '-m jarvis'
     # A second run (an upgrade or repair) keeps everything and succeeds.
