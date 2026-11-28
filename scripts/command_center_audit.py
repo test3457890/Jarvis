@@ -104,7 +104,7 @@ def run_audit() -> tuple[int, int]:
                 for workspace, route in backend_routes.items():
                     def verify_backend(ws=workspace, ep=route):
                         page.locator(f"button[data-cc-ws='{ws}']").click()
-                        expect(page.locator("main .cc-card").first).to_be_visible()
+                        expect(page.locator("main .cc-card:visible").first).to_be_visible()
                         response = page.evaluate("""async path => {
                             const res = await fetch(path, {headers: {'X-Jarvis-Key': window.__JARVIS_SESSION__}});
                             const body = await res.json();
