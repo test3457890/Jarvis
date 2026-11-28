@@ -57,6 +57,13 @@ class Memory:
                 id INTEGER PRIMARY KEY, ts REAL, text TEXT, embedding TEXT);
             CREATE TABLE IF NOT EXISTS reminders (
                 id INTEGER PRIMARY KEY, due REAL, text TEXT, done INTEGER DEFAULT 0);
+            CREATE TABLE IF NOT EXISTS conversations (
+                id TEXT PRIMARY KEY, title TEXT NOT NULL, project TEXT NOT NULL DEFAULT '',
+                created REAL NOT NULL, updated REAL NOT NULL, summary TEXT NOT NULL DEFAULT '');
+            CREATE TABLE IF NOT EXISTS projects (
+                id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, description TEXT NOT NULL DEFAULT '',
+                code_dir TEXT NOT NULL DEFAULT '', document_folders TEXT NOT NULL DEFAULT '[]',
+                created REAL NOT NULL);
             """
         )
         fact_columns = {row[1] for row in self.db.execute('PRAGMA table_info(facts)')}
@@ -64,21 +71,125 @@ class Memory:
             self.db.execute('ALTER TABLE facts ADD COLUMN expires REAL')
         if 'origin' not in fact_columns:
             self.db.execute("ALTER TABLE facts ADD COLUMN origin TEXT DEFAULT 'Saved before source tracking'")
+        if 'project' not in fact_columns:
+            self.db.execute("ALTER TABLE facts ADD COLUMN project TEXT NOT NULL DEFAULT ''")
+        msg_columns = {row[1] for row in self.db.execute('PRAGMA table_info(messages)')}
+        if 'conversation_id' not in msg_columns:
+            self.db.execute("ALTER TABLE messages ADD COLUMN conversation_id TEXT NOT NULL DEFAULT 'default'")
         self.db.commit()
 
-    # ---------- diary ----------
-    def log(self, role: str, content: str) -> None:
+    # ---------- diary & conversations ----------
+    def log(self, role: str, content: str, conversation_id: str = "default") -> None:
+        now = time.time()
+        cid = (conversation_id or "default")[:64]
         with self._lock:
-            self.db.execute("INSERT INTO messages(ts, role, content) VALUES (?,?,?)",
-                            (time.time(), role, redact(content)))
+            self.db.execute(
+                "INSERT INTO messages(ts, role, content, conversation_id) VALUES (?,?,?,?)",
+                (now, role, redact(content), cid),
+            )
+            self.db.execute(
+                "INSERT OR IGNORE INTO conversations(id, title, project, created, updated, summary) VALUES (?,?,?,?,?,?)",
+                (cid, "Main conversation" if cid == "default" else f"Conversation {cid[:8]}", "", now, now, ""),
+            )
+            self.db.execute("UPDATE conversations SET updated=? WHERE id=?", (now, cid))
             self.db.commit()
 
-    def recent_messages(self, limit: int) -> list:
+    def recent_messages(self, limit: int, conversation_id: str = "default") -> list:
+        cid = (conversation_id or "default")[:64]
         with self._lock:
             rows = self.db.execute(
-                "SELECT role, content FROM messages ORDER BY id DESC LIMIT ?", (limit,)
+                "SELECT role, content FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT ?", (cid, limit)
             ).fetchall()
         return [{"role": r, "content": c} for r, c in reversed(rows)]
+
+    def create_conversation(self, title: str, project: str = "") -> dict:
+        import uuid
+        title = redact(str(title or "").strip())[:100]
+        if not title:
+            raise ValueError("Enter a conversation title between 1 and 100 characters.")
+        project = str(project or "").strip()[:60]
+        cid = uuid.uuid4().hex[:16]
+        now = time.time()
+        with self._lock, self.db:
+            self.db.execute(
+                "INSERT INTO conversations(id, title, project, created, updated, summary) VALUES (?,?,?,?,?,?)",
+                (cid, title, project, now, now, ""),
+            )
+        return {"id": cid, "title": title, "project": project, "created": now, "updated": now, "summary": ""}
+
+    def list_conversations(self, project: str = "") -> list:
+        with self._lock:
+            if project:
+                rows = self.db.execute(
+                    "SELECT id, title, project, created, updated, summary FROM conversations WHERE project=? ORDER BY updated DESC LIMIT 100",
+                    (project,),
+                ).fetchall()
+            else:
+                rows = self.db.execute(
+                    "SELECT id, title, project, created, updated, summary FROM conversations ORDER BY updated DESC LIMIT 100"
+                ).fetchall()
+        return [dict(zip(("id", "title", "project", "created", "updated", "summary"), row)) for row in rows]
+
+    def rename_conversation(self, cid: str, title: str) -> bool:
+        title = redact(str(title or "").strip())[:100]
+        if not title:
+            raise ValueError("Enter a conversation title between 1 and 100 characters.")
+        with self._lock, self.db:
+            res = self.db.execute("UPDATE conversations SET title=?, updated=? WHERE id=?", (title, time.time(), cid))
+            return res.rowcount == 1
+
+    def delete_conversation(self, cid: str) -> bool:
+        with self._lock, self.db:
+            self.db.execute("DELETE FROM messages WHERE conversation_id=?", (cid,))
+            res = self.db.execute("DELETE FROM conversations WHERE id=?", (cid,))
+            return res.rowcount == 1
+
+    def set_conversation_summary(self, cid: str, summary: str) -> bool:
+        with self._lock, self.db:
+            res = self.db.execute("UPDATE conversations SET summary=?, updated=? WHERE id=?",
+                                  (redact(str(summary or "")[:2000]), time.time(), cid))
+            return res.rowcount == 1
+
+    # ---------- projects / knowledge spaces (R03) ----------
+    def save_project(self, name: str, description: str = "", code_dir: str = "", document_folders=None) -> dict:
+        import uuid
+        name = str(name or "").strip()[:60]
+        if not name:
+            raise ValueError("Enter a project name between 1 and 60 characters.")
+        folders = [str(f).strip() for f in (document_folders or []) if isinstance(f, str) and f.strip()][:20]
+        now = time.time()
+        with self._lock, self.db:
+            row = self.db.execute("SELECT id, created FROM projects WHERE name=?", (name,)).fetchone()
+            if row:
+                pid, created = row
+                self.db.execute(
+                    "UPDATE projects SET description=?, code_dir=?, document_folders=? WHERE id=?",
+                    (redact(str(description or "")[:500]), str(code_dir or "")[:500], json.dumps(folders), pid),
+                )
+            else:
+                pid, created = uuid.uuid4().hex[:16], now
+                self.db.execute(
+                    "INSERT INTO projects(id, name, description, code_dir, document_folders, created) VALUES (?,?,?,?,?,?)",
+                    (pid, name, redact(str(description or "")[:500]), str(code_dir or "")[:500], json.dumps(folders), created),
+                )
+        return {"id": pid, "name": name, "description": str(description or "")[:500],
+                "code_dir": str(code_dir or "")[:500], "document_folders": folders, "created": created}
+
+    def list_projects(self) -> list:
+        with self._lock:
+            rows = self.db.execute(
+                "SELECT id, name, description, code_dir, document_folders, created FROM projects ORDER BY name"
+            ).fetchall()
+        return [
+            {"id": r[0], "name": r[1], "description": r[2], "code_dir": r[3],
+             "document_folders": json.loads(r[4] or "[]"), "created": r[5]}
+            for r in rows
+        ]
+
+    def delete_project(self, name: str) -> bool:
+        with self._lock, self.db:
+            res = self.db.execute("DELETE FROM projects WHERE name=?", (name,))
+            return res.rowcount == 1
 
     def search_diary(self, query: str, limit: int = 8) -> list:
         terms = _words(query)
@@ -100,14 +211,72 @@ class Memory:
         ]
 
     # ---------- facts ----------
-    def remember(self, text: str) -> int:
+    def remember(self, text: str, origin: str = "Jarvis memory tool", project: str = "") -> int:
         text = redact(text.strip())
         vec = self.embed(text) if self.embed else None
         with self._lock:
-            cur = self.db.execute("INSERT INTO facts(ts, text, embedding, origin) VALUES (?,?,?,?)",
-                                  (time.time(), text, json.dumps(vec) if vec else None, 'Jarvis memory tool'))
+            cur = self.db.execute(
+                "INSERT INTO facts(ts, text, embedding, origin, project) VALUES (?,?,?,?,?)",
+                (time.time(), text, json.dumps(vec) if vec else None, str(origin)[:80], str(project or "")[:60]),
+            )
             self.db.commit()
             return cur.lastrowid
+
+    def find_duplicate_facts(self, similarity_threshold: float = 0.8) -> list:
+        """Identify exact or near-duplicate facts for review and deduplication."""
+        facts = self.fact_details()
+        groups = []
+        seen = set()
+        for i, first in enumerate(facts):
+            if first["id"] in seen:
+                continue
+            w1 = _words(first["text"])
+            cluster = [first]
+            for second in facts[i + 1:]:
+                if second["id"] in seen:
+                    continue
+                if first["text"].casefold().strip() == second["text"].casefold().strip():
+                    sim = 1.0
+                else:
+                    w2 = _words(second["text"])
+                    union = len(w1 | w2)
+                    sim = (len(w1 & w2) / union) if union else 0.0
+                if sim >= similarity_threshold:
+                    cluster.append(second)
+                    seen.add(second["id"])
+            if len(cluster) > 1:
+                seen.add(first["id"])
+                groups.append(cluster)
+        return groups
+
+    def deduplicate_facts(self) -> int:
+        """Remove duplicate facts keeping the newest item in each duplicate cluster."""
+        groups = self.find_duplicate_facts()
+        removed = 0
+        for cluster in groups:
+            keep = max(cluster, key=lambda item: item["id"])
+            for item in cluster:
+                if item["id"] != keep["id"] and self.delete_fact(item["id"]):
+                    removed += 1
+        return removed
+
+    def import_facts(self, items: list, project: str = "") -> int:
+        """Safely import validated, redacted facts from a JSON list."""
+        if not isinstance(items, list) or len(items) > 500:
+            raise ValueError("Import accepts a list of at most 500 facts.")
+        existing = {text.casefold().strip() for _, text in self.all_facts()}
+        added = 0
+        for item in items:
+            raw = item.get("text") if isinstance(item, dict) else item
+            if not isinstance(raw, str) or not 1 <= len(raw.strip()) <= 4000:
+                continue
+            cleaned = redact(raw.strip())
+            if cleaned.casefold() in existing:
+                continue
+            self.remember(cleaned, origin="Imported JSON", project=project)
+            existing.add(cleaned.casefold())
+            added += 1
+        return added
 
     def all_facts(self) -> list:
         self.purge_expired()
@@ -122,8 +291,8 @@ class Memory:
     def fact_details(self) -> list:
         self.purge_expired()
         with self._lock:
-            rows = self.db.execute('SELECT id, text, ts, origin, expires FROM facts ORDER BY id').fetchall()
-        return [dict(zip(('id', 'text', 'saved', 'origin', 'expires'), row)) for row in rows]
+            rows = self.db.execute('SELECT id, text, ts, origin, expires, project FROM facts ORDER BY id').fetchall()
+        return [dict(zip(('id', 'text', 'saved', 'origin', 'expires', 'project'), row)) for row in rows]
 
     def set_fact_expiry(self, fact_id: int, expires) -> bool:
         if expires is not None and (type(expires) not in (int, float) or
@@ -154,19 +323,26 @@ class Memory:
             self.db.commit()
         return [t for _, t in matches]
 
-    def recall(self, query: str, k: int = 5) -> list:
+    def recall(self, query: str, k: int = 5, project: str = "") -> list:
         self.purge_expired()
         with self._lock:
-            rows = self.db.execute("SELECT text, embedding FROM facts").fetchall()
+            if project:
+                rows = self.db.execute(
+                    "SELECT text, embedding, project FROM facts WHERE project='' OR project=?", (project,)
+                ).fetchall()
+            else:
+                rows = self.db.execute("SELECT text, embedding, project FROM facts").fetchall()
         if not rows:
             return []
         qvec = self.embed(query) if self.embed else None
         q_words = _words(query)
         scored = []
-        for text, emb in rows:
+        for text, emb, proj in rows:
             score = len(q_words & _words(text)) * 0.15
             if qvec and emb:
                 score += _cosine(qvec, json.loads(emb))
+            if project and proj == project and score > 0:
+                score += 0.1  # boost facts scoped to the active project
             scored.append((score, text))
         scored.sort(reverse=True)
         threshold = 0.45 if qvec else 0.15

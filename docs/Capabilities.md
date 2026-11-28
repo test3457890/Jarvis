@@ -13,11 +13,16 @@ models or audio but has not been verified with real models, a microphone or spea
 | Upgrade | Upgrade from 1.1.1 and 1.2.1 with their own updater, rollback | Working | `tests/test_upgrade_paths.py` (Windows CI) |
 | Upgrade | Code-signed releases | Not implemented | `docs/WindowsDefender.md` |
 | HUD | Every visible control | Working | `docs/ControlReport.md` (54 checks) |
+| HUD | Classic, Command Center and glance-private Ambient views, with shared state | Unit tests and DOM syntax pass; expanded view audit in CI | `tests/test_workspace_views.py`, HUD audit |
 | HUD | Six themes with contrast checks, phone-width layout | Working | `tests/test_themes.py`, HUD audit |
 | Chat | Jarvis and TUKI routing, streaming, Stop and Escape | Working (stubbed model) | HUD audit, unit tests |
 | Chat | Answer quality and speed with real models | Untested on hardware | `docs/Benchmarks.md` |
 | Voice | Spoken replies, separate TUKI voice | Untested on hardware | Voice selection unit tests only |
+| Voice | Installed system voice list and separate Jarvis/TUKI named selection | Automated tests pass; Windows voice inventory and playback unverified | `tests/test_voice_inventory.py` |
 | Voice | Wake word and microphone input | Untested on hardware | |
+| Voice | Hold-to-record with editable transcript, manual-only mode, page shortcut and cancellation | Automated sample-buffer and cancellation tests; Windows microphone unverified | `tests/test_manual_voice.py`; HUD audit |
+| HUD | Compact browser layout, keyboard focus and skip link | JavaScript syntax checked; browser audit in CI and screen-reader review required | `scripts/hud_control_audit.py` |
+| Workflows | Confirmed local read workflows, checkpoints, resume, export and deletion | Automated tests pass; Windows document/OCR behavior unverified | `tests/test_workflows.py`; HUD audit |
 | Voice | Configurable follow-up and temporary room context; pause clears context and ignores pending transcription | Working in unit tests; untested on microphone hardware | Setup controls, `tests/test_phase3.py` |
 | Voice | Opt-in local `voice-check` diagnostic | Working with stubbed audio; untested on Windows hardware | Requires microphone, local Whisper model and audible speaker confirmation |
 | Voice | "Jarvis, stop" cancels a reply still being prepared; wider hallucination filter | Working (unit tests); untested with a microphone | `tests/test_phase3.py` |
@@ -39,15 +44,27 @@ models or audio but has not been verified with real models, a microphone or spea
 | Recurring checks | Daily selected-folder document query, local last-run state, change-only notification, pause/resume/delete | Working in automated tests; Windows schedule and notification untested | `tests/test_document_watches.py` |
 | Planner | Tasks, weekly plan, Canvas feed | Working | `tests/test_week_planner.py` |
 | Briefing | User-selected local time, automatic show/mute and manual replay | Working in automated tests; real speech unverified | `tests/test_briefing_controls.py` |
+| Models | Optional loopback-only chat-completions server, explicit model ID, bounded completed replies and validated tool calls | Real local HTTP fixtures pass; actual inference/model compatibility unverified | `tests/test_local_provider.py`; `docs/Local Chat Provider.md` |
 | Models | Read-only local Ollama inventory with reported disk sizes and explicit model role selection | Working in automated tests; model compatibility and real timings unverified | `tests/test_model_inventory.py` |
 | Connections | Local built-in service status, declared scopes, and confirmed removal of saved credentials | Working in automated tests; Windows credential storage unverified | `tests/test_connections_status.py` |
+| GitHub | Approved issue list/detail/comment reads and explicitly drafted issue creation in the configured repository | Mocked API tests pass; real token scopes unverified | `tests/test_github_issues.py` |
 | GitHub | Approved read-only metadata and README of configured repository, up to 12,000 README characters | Working with fake API responses; private repository access unverified | `/repo`, `tests/test_github_context.py` |
 | Memory | Facts, history, backup and restore | Working | unit tests, HUD audit |
 | Memory | Saved date, source category and per-fact expiration with deletion on due | Working in automated tests; Windows local-date UI untested | `tests/test_memory_expiry.py` |
 | Audit | Bounded human-readable action timeline with redacted metadata and undo hints | Working in automated tests; Windows HUD review untested | `tests/test_activity_timeline.py` |
+| Feeds | Approved manual RSS/Atom reads, up to 20 source-attributed entries, no article fetching | Parsing, confirmation, XML limits and shared network boundaries tested with fixtures; live feeds unverified | `tests/test_feeds.py` |
+| Weather | Approved coordinates to NWS points and an exact-host grid forecast, no GPS | Mocked response and destination/reading validation tests pass; live API unverified | `tests/test_weather.py` |
 | Online | Brave search, source pages, GitHub upload | Optional | Needs keys; mocked in tests |
 | Images | Local image lookup and generation | Optional | Needs a vision model or Stable Diffusion |
 | NOMAD | Offline library search | Optional | Needs a Project NOMAD server |
 | Screen | One user-chosen window or screen still, previewed, sent to the local vision model only on Ask | Working (fake capture source); vision answer needs a vision model | HUD audit |
 | Apps | Approved programs (absolute path, no shells), files from selected folders, confirm, Stop, failure reports | Working on Linux; untested on Windows | `tests/test_phase3.py`, HUD audit |
 | Extensions | Manifest with permissions, inputs, outputs and tests; off until approved; separate process | Working | `tests/test_phase3.py`, HUD audit, `docs/Extensions.md` |
+| Hardware | CPU, RAM, disk, and NVIDIA GPU/VRAM detection with honest profile recommendations | Working (verified on Windows 10) | `jarvis/hardware.py`, `tests/test_full_integration.py`, `python -m jarvis doctor` |
+| Providers | Loopback OpenAI-compatible SSE streaming & DPAPI Bearer auth; opt-in per-request-consented cloud AI (OpenAI, Anthropic, Gemini) | Working (fixture-tested); live accounts/servers unverified | `jarvis/localprovider.py`, `jarvis/cloudprovider.py`, `tests/test_full_integration.py` |
+| Multi-Agent | Specialist profiles (`jarvis`, `tuki`, `researcher`, `coder`, `planner`, `reviewer`) and Jarvis + TUKI cooperative independent review with recursion guard | Working (stubbed models); live model quality unverified | `jarvis/agents.py`, `tests/test_full_integration.py` |
+| Memory & Projects | Named conversations, temporary/ephemeral chat toggle, project knowledge spaces, duplicate fact cleanup, redacted JSON import | Working (verified on Windows 10) | `jarvis/memory.py`, `tests/test_full_integration.py` |
+| MCP Client | Local stdio JSON-RPC 2.0 MCP client with disabled-by-default approval screen, shell rejection, timeouts, and injection fencing | Working (verified on Windows 10) | `jarvis/mcp_client.py`, `tests/test_full_integration.py` |
+| Connectors | GitHub PR reads (`/prs`), saved RSS/Atom subscriptions, PKCE OAuth 2.0 scaffolding for Google Workspace & Microsoft 365 | Partial (fixtures pass; live OAuth accounts require user client IDs) | `jarvis/connectors.py`, `jarvis/online.py`, `tests/test_full_integration.py` |
+| Coding Git | Read-only `/git-status` and isolated sibling Git worktree create/remove | Working (verified on real local Git repo) | `jarvis/coder.py`, `tests/test_full_integration.py` |
+| Security & Rust | Local defensive Sentinel security audit (`security-audit`, `/api/security`), Finance/Health fail-closed boundaries, and Rust `jarvis-core` verifier | Working (verified on Windows 10 + `cargo test`) | `jarvis/sentinel.py`, `jarvis/domains.py`, `rust/jarvis-core/`, `tests/test_full_integration.py` |

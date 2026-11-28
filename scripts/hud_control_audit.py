@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, patch
 from PIL import Image
 from playwright.sync_api import expect, sync_playwright
 
-from jarvis import config, memory, nomad, setupwizard, webui
+from jarvis import config, memory, net, nomad, setupwizard, webui
 from jarvis.__main__ import App
 
 OUT = Path("hud-captures")
@@ -150,7 +150,9 @@ def audit(app, cfg, code, files, url):
             answers["accept"] = False
             seen = len(dialogs)
             page.get_by_role("button", name="Download and finish").click()
-            page.wait_for_timeout(500)
+            deadline = time.monotonic() + 6.0
+            while len(dialogs) < seen + 1 and time.monotonic() < deadline:
+                page.wait_for_timeout(100)
             answers["accept"] = True
             assert len(dialogs) == seen + 1 and "budget" in dialogs[-1], "no budget warning dialog"
             assert not setupwizard.load_state().get("steps"), "downloads started"
@@ -175,6 +177,200 @@ def audit(app, cfg, code, files, url):
             page.wait_for_function("es.readyState === EventSource.OPEN")
             page.wait_for_timeout(400)
             expect(page.locator("#wizard")).to_be_hidden()
+
+        @check("Compact view", "toggle, reload, return to full view", "view is saved without changing assistant mode")
+        def _():
+            mode = app.cfg["mode"]
+            page.locator("#compact-view").click()
+            expect(page.locator("body")).to_have_attribute("data-compact", "true")
+            expect(page.locator(".col.left")).to_be_hidden()
+            page.reload()
+            page.wait_for_function("es.readyState === EventSource.OPEN")
+            expect(page.locator("body")).to_have_attribute("data-compact", "true")
+            page.locator("#compact-view").click()
+            assert app.cfg["mode"] == mode
+
+        @check("Saved system voice names", "select exact voices and reload", "stored names remain selected after inventory loads")
+        def _():
+            from jarvis import voice
+            with patch.object(voice, 'installed_voice_names', lambda:['Audit George', 'Audit Zira']):
+                page.locator('#refresh-voices').click()
+                until(lambda: page.locator('#sapi_voice_contains option').count() == 3)
+                page.locator('#sapi_voice_contains').select_option('Audit George')
+                until(lambda: cfg['sapi_voice_contains'] == 'Audit George')
+                page.locator('#tuki_sapi_voice_contains').select_option('Audit George')
+                until(lambda: cfg['tuki_sapi_voice_contains'] == 'Audit George')
+                page.reload()
+                page.wait_for_function('es.readyState === EventSource.OPEN')
+                expect(page.locator('#sapi_voice_contains')).to_have_value('Audit George')
+                expect(page.locator('#tuki_sapi_voice_contains')).to_have_value('Audit George')
+                page.locator('#sapi_voice_contains').select_option('')
+                page.locator('#tuki_sapi_voice_contains').select_option('')
+                until(lambda: not cfg['sapi_voice_contains'] and not cfg['tuki_sapi_voice_contains'])
+
+        @check("Local provider settings", "save local settings, reject remote URL, restore Ollama", "explicit local model shown and no remote configuration accepted")
+        def _():
+            page.locator("#setup-panel summary").first.click()
+            page.locator("#provider-load").click()
+            expect(page.locator("#provider-status")).to_contain_text("ollama")
+            page.locator("#chat-provider").select_option("openai_local")
+            page.locator("#local-chat-url").fill("http://127.0.0.1:8081")
+            page.locator("#local-chat-model").fill("audit-local-model")
+            page.locator("#provider-form button").first.click()
+            expect(page.locator("#provider-status")).to_contain_text("openai_local")
+            assert cfg["chat_provider"] == "openai_local"
+            page.locator("#local-chat-url").fill("https://remote.invalid")
+            page.locator("#provider-form button").first.click()
+            expect(page.locator("#provider-status")).to_contain_text("127.0.0.1")
+            assert cfg["local_chat_url"] == "http://127.0.0.1:8081"
+            page.locator("#local-chat-url").fill("http://127.0.0.1:8081")
+            page.locator("#chat-provider").select_option("ollama")
+            page.locator("#provider-form button").first.click()
+            expect(page.locator("#provider-status")).to_contain_text("ollama")
+            page.locator("#setup-panel summary").first.click()
+
+        @check("Workspace views", "Command Center and Ambient, then Classic", "shared settings and no private text in Ambient")
+        def _():
+            mode, theme = cfg["mode"], cfg["theme"]
+            page.locator("#workspace_view").select_option("command")
+            expect(page.locator("body")).to_have_attribute("data-view", "command")
+            expect(page.locator("#command-nav")).to_be_visible()
+            page.locator("#command-nav button[data-panel=workflows]").click()
+            assert page.locator("#workflows").evaluate("e => e.open")
+            page.locator("#workflows summary").first.click()
+            page.screenshot(path=OUT / "audit-phase2-command.png")
+            page.locator("#compact-view").click()
+            page.locator("#workspace_view").select_option("ambient")
+            expect(page.locator(".app")).to_be_hidden()
+            expect(page.locator("#ambient-view")).to_be_visible()
+            page.evaluate("setPending({id:'private-preview',text:'PRIVATE ACCOUNT DETAILS'})")
+            expect(page.locator("#ambient-pending")).to_contain_text("Open controls")
+            assert "PRIVATE" not in page.locator("#ambient-view").inner_text()
+            page.locator("#ambient-clock-toggle").click()
+            expect(page.locator("#ambient-clock")).to_be_hidden()
+            page.locator("#ambient-clock-toggle").click()
+            page.screenshot(path=OUT / "audit-phase2-ambient.png")
+            page.locator("#ambient-controls").click()
+            expect(page.locator("body")).to_have_attribute("data-view", "command")
+            page.locator("#compact-view").click()
+            page.locator("#workspace_view").select_option("classic")
+            expect(page.locator("body")).to_have_attribute("data-view", "classic")
+            page.evaluate("setPending(null)")
+            assert cfg["mode"] == mode and cfg["theme"] == theme
+
+        @check("Manual voice preview", "hold, release, review, copy to message, cancel", "transcript never submits itself")
+        def _():
+            import numpy as np
+            from types import SimpleNamespace
+            from jarvis import voice
+            with patch.object(voice, "load_whisper", lambda cfg: SimpleNamespace(transcribe=lambda *a, **kw:
+                    ([SimpleNamespace(text="review this transcript", no_speech_prob=0)], None))):
+                app.listener = voice.Listener(cfg, None, lambda *a: (_ for _ in ()).throw(AssertionError("dictation executed")), app.emit)
+            try:
+                page.evaluate("api('/api/state').then(setToggles)")
+                page.locator("#voice_input_mode").select_option("manual")
+                until(lambda: cfg["voice_input_mode"] == "manual")
+                count = page.locator("#log .user").count()
+                button = page.locator("#record-voice")
+                button.hover()
+                page.mouse.down()
+                until(lambda: app.listener._manual is not None)
+                app.listener._receive(np.ones((16000, 1), dtype="float32"))
+                page.mouse.up()
+                expect(page.locator("#dictation-text")).to_have_value("review this transcript")
+                assert page.locator("#log .user").count() == count
+                page.locator("#dictation-use").click()
+                expect(page.locator("#q")).to_have_value("review this transcript")
+                assert page.locator("#log .user").count() == count
+                page.locator("#q").fill("")
+                page.keyboard.down("Control")
+                page.keyboard.down("Shift")
+                page.keyboard.down("Space")
+                until(lambda: app.listener._manual is not None)
+                page.keyboard.press("Escape")
+                page.keyboard.up("Space")
+                page.keyboard.up("Shift")
+                page.keyboard.up("Control")
+                until(lambda: app.listener._manual is None)
+                expect(page.locator("#dictation")).to_be_hidden()
+            finally:
+                app.listener.cancel_manual()
+                app.listener = None
+                page.evaluate("api('/api/state').then(setToggles)")
+
+        @check("Local workflows", "save, preview, run, export and delete", "real calculation result and persisted completion")
+        def _():
+            page.locator("#workflows summary").first.click()
+            page.locator("#workflow-name").fill("Audit calculation")
+            page.locator("#workflow-kind").select_option("calculate")
+            page.locator("#workflow-value").fill("12 * 3")
+            page.locator("#workflow-add-step").click()
+            page.locator("#workflow-create button").last.click()
+            expect(page.locator("#workflow-list")).to_contain_text("Audit calculation")
+            answers["accept"] = False
+            page.get_by_role("button", name="Review and run", exact=True).click()
+            assert not app.workflows_operation()["runs"]
+            answers["accept"] = True
+            page.get_by_role("button", name="Review and run", exact=True).click()
+            expect(page.locator("#workflow-runs")).to_contain_text("completed (1/1 steps)")
+            page.locator("#workflow-runs summary").click()
+            expect(page.locator("#workflow-runs pre")).to_contain_text("12 * 3 = 36")
+            with page.expect_download() as downloaded:
+                page.get_by_role("button", name="Export results", exact=True).click()
+            assert downloaded.value.suggested_filename.startswith("Jarvis-Workflow-")
+            page.get_by_role("button", name="Delete results", exact=True).click()
+            expect(page.locator("#workflow-runs")).to_be_empty()
+            page.get_by_role("button", name="Delete workflow", exact=True).click()
+            expect(page.locator("#workflow-list")).to_be_empty()
+            page.locator("#workflows summary").first.click()
+
+        @check("RSS and Atom feed", "preview, cancel, then approve a fixture feed", "no fetch before approval and source-attributed output")
+        def _():
+            cfg['allow_internet_tools'] = True
+            page.evaluate("api('/api/state').then(setToggles)")
+            page.locator('#read-feed').click()
+            expect(page.locator('#q')).to_have_value('/feed ')
+            body = '<rss><channel><title>Audit feed</title><item><title>Review event</title><link>https://example.org/event</link></item></channel></rss>'
+            try:
+                with patch.object(net, 'read_public_page', return_value=(body, 'application/rss+xml')) as read:
+                    send(page, '/feed https://example.org/feed')
+                    expect(page.locator('#pending')).to_have_class('on')
+                    assert read.call_count == 0
+                    page.locator('#p-no').click()
+                    expect(last_reply(page)).to_contain_text('Cancelled')
+                    assert read.call_count == 0
+                    send(page, '/feed https://example.org/feed')
+                    expect(page.locator('#pending')).to_have_class('on')
+                    page.locator('#p-yes').click()
+                    expect(last_reply(page)).to_contain_text('Review event')
+                    assert read.call_count == 1
+            finally:
+                cfg['allow_internet_tools'] = False
+                page.evaluate("api('/api/state').then(setToggles)")
+
+        @check("US weather forecast", "approve coordinates with NWS fixtures", "exact coordinates reviewed and real response fields displayed")
+        def _():
+            cfg['allow_internet_tools'] = True
+            page.evaluate("api('/api/state').then(setToggles)")
+            page.locator('#read-weather').click()
+            expect(page.locator('#q')).to_have_value('/weather ')
+            url='https://api.weather.gov/gridpoints/PSR/159,76/forecast'
+            responses=[(json.dumps({'properties':{'forecast':url}}),'application/geo+json'),
+                       (json.dumps({'properties':{'updated':'2026-11-27T12:00:00Z','periods':[{
+                           'name':'Afternoon','startTime':'2026-11-27T12:00:00-07:00','temperature':72,
+                           'temperatureUnit':'F','shortForecast':'Sunny','windSpeed':'5 mph','windDirection':'NE'}]}}),'application/geo+json')]
+            try:
+                with patch.object(net, 'read_public_page', side_effect=responses) as read:
+                    send(page, '/weather 33.49,-111.92')
+                    expect(page.locator('#pending')).to_have_class('on')
+                    expect(page.locator('#pending-text')).to_contain_text('33.4900, -111.9200')
+                    assert read.call_count == 0
+                    page.locator('#p-yes').click()
+                    expect(last_reply(page)).to_contain_text('72 F')
+                    assert read.call_count == 2
+            finally:
+                cfg['allow_internet_tools'] = False
+                page.evaluate("api('/api/state').then(setToggles)")
 
         # ---------------------------------------------------------------- header controls
         @check("Mode menu", "select each mode", "body, app state and saved config change; Talk hides tools")
@@ -625,26 +821,32 @@ def audit(app, cfg, code, files, url):
             expect(page.locator("#screen-preview")).to_be_hidden()
 
         # ---------------------------------------------------------------- apps and extensions
-        @check("App actions: refuse a shell", "add /bin/sh", "refused with a reason, nothing saved")
+        @check("App actions: refuse a shell", "add a system shell", "refused with a reason, nothing saved")
         def _():
+            shell_path = os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe") if os.name == "nt" else "/bin/sh"
             page.locator("#apps summary").click()
             page.locator("#apps-name").fill("Shell")
-            page.locator("#apps-program").fill("/bin/sh")
+            page.locator("#apps-program").fill(shell_path)
             page.get_by_role("button", name="Add app action").click()
             expect(page.locator("#apps-status")).to_contain_text("can run any command")
             assert not app.cfg.get("app_actions")
 
-        @check("App actions: add, run, stop, remove", "approve sleep, Confirm, Stop", "program starts, then is closed")
+        @check("App actions: add, run, stop, remove", "approve safe program, Confirm, Stop", "program starts, then is closed")
         def _():
             import shutil as _shutil
-            program = _shutil.which("sleep")
-            assert program, "needs a sleep program"
+            if os.name == "nt":
+                program = _shutil.which("ping") or r"C:\Windows\System32\PING.EXE"
+                cmd_args = [program, "-n", "30", "127.0.0.1"]
+            else:
+                program = _shutil.which("sleep")
+                cmd_args = [program, "30"]
+            assert program, "needs a test program"
             page.locator("#apps-name").fill("Wait")
             page.locator("#apps-program").fill(program)
             page.get_by_role("button", name="Add app action").click()
             expect(page.locator("#apps-list")).to_contain_text("Wait")
             from jarvis import appactions as _apps
-            with patch.object(_apps, "_command", lambda cfg, name, file="": ({"name": "Wait", "program": program}, [program, "30"])):
+            with patch.object(_apps, "_command", lambda cfg, name, file="": ({"name": "Wait", "program": program}, cmd_args)):
                 page.get_by_role("button", name="Run Wait").click()
                 expect(page.locator("#pending")).to_be_visible()
                 page.locator("#p-yes").click()
@@ -685,6 +887,87 @@ def audit(app, cfg, code, files, url):
             page.locator("#setup-form button").click()
             expect(page.locator("#setup-status")).to_contain_text("Saved")
             until(lambda: json.loads(config.CONFIG_PATH.read_text()).get("ocr_enabled") is True)
+
+        @check("Sentinel security & MCP", "run local security audit, reject shell MCP, register and remove valid MCP", "defensive checks pass, shell rejected, disabled server added and removed")
+        def _():
+            page.locator("#sentinel-panel summary").click()
+            page.locator("#sentinel-refresh").click()
+            expect(page.locator("#sentinel-status")).to_contain_text("defensive checks completed")
+            expect(page.locator("#sentinel-list")).to_contain_text("HUD loopback binding")
+            page.locator("#mcp-refresh").click()
+            expect(page.locator("#mcp-list")).to_contain_text("No local MCP servers configured")
+            # Reject shell host
+            page.locator("#mcp-id").fill("bad-shell")
+            page.locator("#mcp-name").fill("Bad Shell")
+            page.locator("#mcp-command").fill("powershell.exe")
+            page.locator("#mcp-add-form button").click()
+            expect(page.locator("#mcp-status")).to_contain_text("not allowed")
+            # Register valid disabled MCP server, then remove it
+            page.locator("#mcp-id").fill("demo-mcp")
+            page.locator("#mcp-name").fill("Demo MCP")
+            page.locator("#mcp-command").fill(sys.executable)
+            page.locator("#mcp-args").fill("-V")
+            page.locator("#mcp-add-form button").click()
+            expect(page.locator("#mcp-list")).to_contain_text("Demo MCP (demo-mcp) · Disabled")
+            page.screenshot(path=OUT / "audit-sentinel.png")
+            page.locator("#mcp-list").get_by_role("button", name="Remove").click()
+            expect(page.locator("#mcp-list")).to_contain_text("No local MCP servers configured")
+            page.locator("#sentinel-panel summary").click()
+
+        @check("Projects & conversation history search", "save/activate/delete project and search history", "project scope updates and history search returns matches")
+        def _():
+            page.locator("#knowledge summary").click()
+            page.locator("#project-name").fill("AuditSpace")
+            page.locator("#project-desc").fill("Isolated test space")
+            page.locator("#project-form button").first.click()
+            expect(page.locator("#project-list")).to_contain_text("AuditSpace")
+            page.locator("#project-list").get_by_role("button", name="Activate").click()
+            expect(page.locator("#project-status")).to_contain_text("AuditSpace")
+            assert app.cfg.get("active_project") == "AuditSpace"
+            page.locator("#project-clear-active").click()
+            expect(page.locator("#project-status")).to_contain_text("Global")
+            page.locator("#project-list").get_by_role("button", name="Delete project").click()
+            expect(page.locator("#project-list")).not_to_contain_text("AuditSpace")
+            page.locator("#conv-search-input").fill("course")
+            page.locator("#conv-search-btn").click()
+            expect(page.locator("#conv-search-results")).not_to_have_text("")
+            page.locator("#knowledge summary").click()
+
+        @check("Saved RSS feed subscriptions", "add and remove HTTPS feed in Connections", "feed persisted and cleanly removed")
+        def _():
+            page.locator("#connections-panel summary").click()
+            page.locator("#connections-refresh").click()
+            expect(page.locator("#connections-list")).to_contain_text("Google Workspace")
+            page.locator("#feed-sub-name").fill("Example Feed")
+            page.locator("#feed-sub-url").fill("https://example.org/rss.xml")
+            page.locator("#feed-sub-form button").click()
+            expect(page.locator("#feed-sub-list")).to_contain_text("Example Feed")
+            page.locator("#feed-sub-list").get_by_role("button", name="Remove feed").click()
+            expect(page.locator("#feed-sub-list")).to_contain_text("No saved feed subscriptions")
+            page.locator("#connections-panel summary").click()
+
+        @check("Hardware, Modes & Temp chat", "inspect hardware, test Research/Cybersecurity/Both, toggle Temp chat", "hardware summary shown, new modes/assistant work, temporary chat toggles")
+        def _():
+            page.locator("#setup-panel summary").click()
+            page.locator("#hardware-refresh").click()
+            expect(page.locator("#hardware-summary")).to_contain_text("Recommended:")
+            page.locator("#audio-devices-refresh").click()
+            expect(page.locator("#audio-devices-list")).not_to_have_text("")
+            page.locator("#mode").select_option("research")
+            expect(page.locator("body")).to_have_attribute("data-mode", "research")
+            page.locator("#mode").select_option("cybersecurity")
+            expect(page.locator("body")).to_have_attribute("data-mode", "cybersecurity")
+            page.locator("#assistant").select_option("both")
+            until(lambda: app.cfg.get("assistant") == "both")
+            page.locator("#mode").select_option("everyday")
+            page.locator("#assistant").select_option("auto")
+            page.locator("#t-temp").click()
+            expect(page.locator("#t-temp")).to_have_attribute("aria-pressed", "true")
+            assert app.cfg.get("temporary_chat") is True
+            page.locator("#t-temp").click()
+            expect(page.locator("#t-temp")).to_have_attribute("aria-pressed", "false")
+            assert app.cfg.get("temporary_chat") is False
+            page.locator("#setup-panel summary").click()
 
         # ---------------------------------------------------------------- layout and connection
         @check("Phone layout", "390 px wide", "no sideways scrolling")
@@ -751,6 +1034,7 @@ def main():
                 finally:
                     server.shutdown()
                     server.server_close()
+                    app.memory.db.close()
     ok = write_report()
     print(f"{sum(r[3] == 'PASS' for r in RESULTS)}/{len(RESULTS)} passed. Report: {OUT / 'control-report.md'}")
     return 0 if ok else 1

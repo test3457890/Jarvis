@@ -38,8 +38,12 @@ if (-not (Test-Path -LiteralPath $venvPython)) {
     # Python 3.12 has the best support for the speech libraries.
     $created = $false
     if (Get-Command py -ErrorAction SilentlyContinue) {
-        & py -3.12 -c "import sys" 2>$null
-        if ($LASTEXITCODE -eq 0) {
+        $prevPref = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try { & py -3.12 -c "import sys" 2>$null | Out-Null } catch {}
+        $py312Exit = $LASTEXITCODE
+        $ErrorActionPreference = $prevPref
+        if ($py312Exit -eq 0) {
             Invoke-SetupCommand py @("-3.12", "-m", "venv", ".venv")
             $created = $true
         }

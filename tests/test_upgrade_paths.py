@@ -58,7 +58,8 @@ def test_upgrade_with_the_old_updater_then_roll_back(tmp_path, tag):
     archive = build(tmp_path / "package")
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     env = {**os.environ, "APPDATA": str(appdata)}
-    run = lambda *args: subprocess.run(["pwsh", "-NoProfile", "-File", str(home / "upgrade.ps1"), *args],
+    ps = shutil.which("pwsh") or shutil.which("powershell") or "powershell"
+    run = lambda *args: subprocess.run([ps, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(home / "upgrade.ps1"), *args],
                                        env=env, capture_output=True, text=True)
     result = run("-Package", str(archive), "-Checksum", digest)
     assert result.returncode == 0, result.stdout + result.stderr

@@ -7,7 +7,7 @@ import time
 import urllib.error
 import urllib.request
 
-from . import assistants, coder, net, online, planner, secure, skills, filejobs
+from . import agents, assistants, cloudprovider, coder, net, online, planner, secure, sentinel, skills, filejobs, localprovider
 
 _YES = re.compile(r"^\W*(yes|yeah|yep|yup|sure|do it|confirm(ed)?|go ahead|affirmative|please do|ok(ay)?)\b", re.I)
 _NO = re.compile(r"^\W*(no|nope|cancel|stop|don'?t|never ?mind|abort)\b", re.I)
@@ -40,10 +40,22 @@ class Brain:
         self.ctx.cancelled = self.cancelled
         self.on_stream = lambda text: None
         self.on_metrics = lambda values: None
-        self.history = memory.recent_messages(cfg.get("history_turns", 12))
+        self.conversation_id = "default"
+        self.last_trace = None
+        self.history = memory.recent_messages(cfg.get("history_turns", 12), conversation_id=self.conversation_id)
 
     # ------------------------------------------------------------ Ollama plumbing
     def _post(self, path, payload, timeout=300):
+        if self.cfg.get("chat_provider", "ollama") not in ("ollama", "openai_local"):
+            raise OllamaError("Unknown chat provider. Select a supported local provider in Setup.")
+        if path == "/api/chat" and self.cfg.get("chat_provider") == "openai_local":
+            try:
+                result = localprovider.chat(self.cfg, payload, self.cancelled, self.on_metrics, timeout,
+                                            on_stream=self.on_stream)
+                self.model_used = self.cfg["local_chat_model"]
+                return result
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                raise OllamaError(f"Local chat provider: {error}") from None
         req = urllib.request.Request(self.cfg["ollama_url"].rstrip("/") + path,
                                      data=json.dumps(payload).encode(),
                                      headers={"Content-Type": "application/json"})
@@ -113,11 +125,15 @@ class Brain:
                                      "thinking": thinking, "tool_calls": calls}}
 
     def installed_models(self) -> list:
+        if self.cfg.get("chat_provider") == "openai_local":
+            return localprovider.models(self.cfg)
         req = urllib.request.Request(self.cfg["ollama_url"].rstrip("/") + "/api/tags")
         with net.urlopen(req, self.cfg, timeout=5, purpose="ollama_tags") as r:
             return [m["name"] for m in json.loads(r.read().decode()).get("models", [])]
 
     def embed(self, text):
+        if self.cfg.get("chat_provider") == "openai_local":
+            return None  # Keyword recall; no silent dependency on a second model provider.
         if not self._embed_ok or not self.cfg.get("memory_embeddings", True):
             return None
         try:
@@ -136,7 +152,7 @@ class Brain:
         if result.get("done_reason") == "length":
             raise OllamaError("The coding model reached its output limit. Try a smaller change.")
         msg = result["message"]
-        self.model_used = payload["model"]
+        self.model_used = self.cfg["local_chat_model"] if self.cfg.get("chat_provider") == "openai_local" else payload["model"]
         return _THINK.sub("", msg.get("content", "")).strip()
 
     def _chat(self, messages, use_tools):
@@ -199,6 +215,14 @@ class Brain:
             lines.append("Coding mode: explain the likely cause, propose fixes using fix_code, "
                          "and give a short spoken summary of any diff. Applying a proposed edit "
                          "requires the user's /apply command. Never claim it was saved before that.")
+        elif mode == "research":
+            lines.append("Research mode: retrieve local documents or approved sources, compare evidence, "
+                         "explicitly separate Verified Facts from Assumptions, highlight contradictory claims, "
+                         "and never fabricate citations.")
+        elif mode == "cybersecurity":
+            lines.append("Cybersecurity mode (defensive only): focus on local defensive security posture, "
+                         "hardening, Sentinel/NOMAD diagnostics, and authorized systems only. Refuse offensive "
+                         "or unauthorized exploitation requests.")
         elif mode == "briefing":
             lines.append("Briefing mode: lead with the top priority and give actionably short summaries.")
         elif mode == "talk":
@@ -225,7 +249,7 @@ class Brain:
         else:
             lines.append("You are answering as Jarvis. For spelling and grammar, preserve the user's "
                          "meaning and style and return the corrected text. Keep ordinary explanations brief.")
-        facts = self.memory.recall(user_text, k=5)
+        facts = self.memory.recall(user_text, k=5, project=cfg.get("active_project", ""))
         if facts:
             lines.append("Things you remember about the user: " + " | ".join(facts))
         if mode != "talk":
@@ -254,12 +278,18 @@ class Brain:
                 if self.ctx.pending:
                     self.confirm_pending(False)
                 return self._command(command)
-            if self.ctx.pending and self.ctx.pending["name"] in ("github_upload", "github_repo_read", "web_search", "image_search", "read_source", "check_sources"):
+            if self.ctx.pending and self.ctx.pending["name"] in ("github_upload", "github_repo_read", "github_issues_read", "github_issue_read", "github_issue_create", "github_prs_read", "feed_read", "weather_read", "web_search", "image_search", "read_source", "check_sources", "cloud_ask"):
                 return self._confirm_online_text(command)
             self.tools_used = []
-            reply = self._ask(command, room_context)
-            if self.assistant == "tuki" and self.cfg.get("mode") != "talk" and not self.ctx.pending:
-                reply = assistants.label_uncertainty(reply, self.tools_used)
+            self.last_trace = None
+            if self.cfg.get("assistant") == "both" and self.cfg.get("mode") != "talk" and not self.ctx.pending:
+                reply, trace = agents.cooperative_review(self, command, room_context)
+                self.last_trace = trace
+                self.assistant = "tuki"
+            else:
+                reply = self._ask(command, room_context)
+                if self.assistant == "tuki" and self.cfg.get("mode") != "talk" and not self.ctx.pending:
+                    reply = assistants.label_uncertainty(reply, self.tools_used)
             if self.ctx.injection_seen:
                 reply = secure.scrub_claims(reply)
                 if self.ctx.pending:  # never leave an action queued up by outside content
@@ -270,8 +300,9 @@ class Brain:
                     self.ctx.pending = None
                     self.ctx.on_pending(None)
                 return "Stopped by the user."
-            self.memory.log("user", user_text)
-            self.memory.log("assistant", reply)
+            if not self.cfg.get("temporary_chat"):
+                self.memory.log("user", user_text, conversation_id=self.conversation_id)
+                self.memory.log("assistant", reply, conversation_id=self.conversation_id)
             self.history += [{"role": "user", "content": command},
                              {"role": "assistant", "content": reply}]
             self.history = self.history[-2 * self.cfg.get("history_turns", 12):]
@@ -317,6 +348,20 @@ class Brain:
                 if self.ctx.pending and claim.strip():
                     self.ctx.pending["source_claim"] = claim.strip()[:4000]
                 return result
+            if command == "/feed" and value.strip():
+                result = skills.run(self.ctx, "feed_read", {"url":value.strip()})
+                if self.ctx.pending:
+                    return self.ctx.pending["preview"] + ". Use Confirm or say “confirm feed”."
+                return result
+            if command == "/weather":
+                fields = value.split(',')
+                if len(fields) != 2:
+                    return "Use /weather latitude,longitude for a supported US location. Coordinates are previewed before sending."
+                lat, lon = online._weather_coordinates(*fields)
+                result = skills.run(self.ctx, "weather_read", {"latitude":float(lat), "longitude":float(lon)})
+                if self.ctx.pending:
+                    return self.ctx.pending["preview"] + ". Use Confirm or say “confirm weather”."
+                return result
             if command == "/search" and value.strip():
                 return skills.run(self.ctx, "web_search", {"query": value})
             if command == "/images" and value.strip():
@@ -349,8 +394,62 @@ class Brain:
             if command == "/repo" and not value.strip():
                 result = skills.run(self.ctx, "github_repo_read", {})
                 if self.ctx.pending and self.ctx.pending["name"] == "github_repo_read":
+                    self.ctx.pending["repository_snapshot"] = online._target(self.cfg)[0]
                     return self.ctx.pending["preview"] + ". Use Confirm or say “confirm repository”."
                 return result
+            if command in ("/issues", "/issue", "/new-issue"):
+                repo, _ = online._target(self.cfg)
+                if command == "/issues":
+                    if value.strip():
+                        return "Use /issues without arguments for the configured repository."
+                    name, args = "github_issues_read", {"repo":repo}
+                elif command == "/issue":
+                    if not value.strip().isdigit():
+                        return "Use /issue NUMBER for the configured repository."
+                    name, args = "github_issue_read", {"repo":repo, "number":int(value.strip())}
+                else:
+                    title, separator, body = value.partition(" | ")
+                    if not separator:
+                        return "Use /new-issue title | body. The complete text is previewed before publication."
+                    title, body = online._issue_draft(title, body)
+                    name, args = "github_issue_create", {"repo":repo, "title":title, "body":body}
+                result = skills.run(self.ctx, name, args)
+                if self.ctx.pending:
+                    return self.ctx.pending["preview"] + ". Use Confirm or say “confirm issue”."
+                return result
+            if command == "/prs" and not value.strip():
+                repo, _ = online._target(self.cfg)
+                result = skills.run(self.ctx, "github_prs_read", {"repo": repo})
+                if self.ctx.pending:
+                    return self.ctx.pending["preview"] + ". Use Confirm or say “confirm pull requests”."
+                return result
+            if command == "/git-status" and not value.strip():
+                return coder.git_status(self.ctx)
+            if command == "/worktree" and value.strip():
+                result = skills.run(self.ctx, "create_coding_worktree", {"branch": value.strip()})
+                if self.ctx.pending:
+                    return self.ctx.pending["preview"] + ". Use Confirm or cancel."
+                return result
+            if command == "/worktree-remove" and value.strip():
+                result = skills.run(self.ctx, "remove_coding_worktree", {"path": value.strip()})
+                if self.ctx.pending:
+                    return self.ctx.pending["preview"] + ". Use Confirm or cancel."
+                return result
+            if command == "/review" and value.strip():
+                reply, trace = agents.cooperative_review(self, value.strip())
+                self.last_trace = trace
+                return reply
+            if command == "/cloud" and value.strip():
+                result = skills.run(self.ctx, "cloud_ask", {"prompt": value.strip()})
+                if self.ctx.pending:
+                    return self.ctx.pending["preview"] + ". Use Confirm or say “confirm cloud”."
+                return result
+            if command == "/security-audit" and not value.strip():
+                report = sentinel.audit_posture(self.cfg)
+                lines = ["Sentinel Local Security Audit:"]
+                for chk in report["checks"]:
+                    lines.append(f"[{chk['status'].upper()}] {chk['label']}: {chk['detail']}")
+                return "\n".join(lines)
             if command == "/briefing" and not value:
                 return skills.run(self.ctx, "briefing", {})
             if command == "/fix" and self.cfg.get("mode") == "coding":
@@ -392,13 +491,16 @@ class Brain:
                 if command == "/undo":
                     return coder.undo_proposal(self.ctx)
             return ("Planning: /task title | due date | minutes, /tasks, /plan, /schedule today or /schedule week. "
-                    "Other commands: /docs query, /research-docs question, /research-all question | HTTPS URLs, /calc expression, /files filename, /search query, /images query, /upload file, /repo. "
+                    "Other commands: /docs query, /research-docs question, /research-all question | HTTPS URLs, /calc expression, /files filename, /search query, /images query, /upload file, /repo, /issues, /issue NUMBER, /new-issue title | body, /feed URL, /weather latitude,longitude. "
                     "In Coding mode: /fix, /diff, /apply, /undo, /test, /build, /investigate-tests, /fix-tests.")
         except (ValueError, OSError, OllamaError) as error:
             return f"Couldn't complete the request: {error}"
 
     def _confirm_online_text(self, text):
         expected = {"github_upload": "confirm upload", "github_repo_read": "confirm repository", "web_search": "confirm search",
+                    "github_issues_read":"confirm issue", "github_issue_read":"confirm issue", "github_issue_create":"confirm issue",
+                    "github_prs_read":"confirm pull requests", "cloud_ask":"confirm cloud",
+                    "feed_read":"confirm feed", "weather_read":"confirm weather",
                     "image_search": "confirm image search", "read_source": "confirm source", "check_sources": "confirm sources"}
         name = self.ctx.pending["name"]
         if text.casefold().rstrip(".!?") == expected[name]:
@@ -422,11 +524,26 @@ class Brain:
                 return "Cancelled. Nothing was done."
             if self.cfg.get("mode") == "talk":
                 return "Talk mode is active. No action was taken."
+            if pending["name"] == "github_repo_read":
+                try:
+                    current_repo = online._target(self.cfg)[0]
+                except ValueError:
+                    return "The GitHub repository changed. Start again and review the destination."
+                if pending.get("repository_snapshot") != current_repo:
+                    return "The GitHub repository changed. Start again and review the destination."
             self.ctx.injection_seen = False
             result = skills.run(self.ctx, pending["name"], pending["args"], confirmed=True)
-            if pending["name"] == "github_repo_read":
+            if pending["name"] in ("github_repo_read", "github_issues_read", "github_issue_read", "github_prs_read"):
                 if self.ctx.injection_seen:
                     return "Repository text contained suspicious instructions. It was discarded."
+                return result.removeprefix(secure.UNTRUSTED_NOTE).removesuffix(secure.UNTRUSTED_END)
+            if pending["name"] == "cloud_ask":
+                if self.ctx.injection_seen:
+                    return "Cloud response contained suspicious instructions. It was discarded."
+                return result.removeprefix(secure.UNTRUSTED_NOTE).removesuffix(secure.UNTRUSTED_END)
+            if pending["name"] in ("feed_read", "weather_read"):
+                if self.ctx.injection_seen:
+                    return "Feed or forecast text contained suspicious instructions. It was discarded."
                 return result.removeprefix(secure.UNTRUSTED_NOTE).removesuffix(secure.UNTRUSTED_END)
             if pending["name"] == "check_sources":
                 if self.ctx.injection_seen:
@@ -597,7 +714,10 @@ class Brain:
                         return self.ctx.pending["preview"] + ". Use Confirm or cancel."
                     if name in ("fix_code", "write_code") and "Preview only." in result and self.ctx.code_proposal:
                         return result.removeprefix(secure.UNTRUSTED_NOTE).removesuffix(secure.UNTRUSTED_END)
-                    messages.append({"role": "tool", "tool_name": fn.get("name", ""), "content": result})
+                    tool_message = {"role":"tool", "tool_name":fn.get("name", ""), "content":result}
+                    if call.get("id"):
+                        tool_message["tool_call_id"] = call["id"]
+                    messages.append(tool_message)
             msg = self._chat(messages, use_tools=False)
             return _THINK.sub("", msg.get("content", "")).strip() or "Done."
         except OllamaError as e:

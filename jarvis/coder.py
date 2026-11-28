@@ -786,6 +786,98 @@ def inspect_test_failure(ctx):
     return f'Last approved test failure:\n{summary}\nLikely files: {names}\n{hint}'
 
 
+def _git_exe():
+    exe = shutil.which("git")
+    if not exe:
+        raise ValueError("Git is not installed or not on PATH.")
+    return exe
+
+
+def git_status(ctx):
+    """Read-only Git branch, status, and recent commit summary for the selected coding repository."""
+    root = code_dir(ctx.cfg).resolve()
+    if not (root / ".git").exists():
+        return "The active coding workspace is not a Git repository. Select a Git repository in Setup."
+    git = _git_exe()
+    env = _sandbox_env()
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    status = subprocess.run([git, "status", "--short", "--branch"], cwd=root, capture_output=True, text=True,
+                            timeout=15, env=env, creationflags=flags)
+    log = subprocess.run([git, "log", "--oneline", "-n", "5"], cwd=root, capture_output=True, text=True,
+                         timeout=15, env=env, creationflags=flags)
+    if status.returncode != 0:
+        raise ValueError("Could not read Git status for this repository.")
+    return (
+        f"Git workspace: {root}\n"
+        f"Status:\n{(status.stdout or '(clean)').strip()[:2000]}\n\n"
+        f"Recent commits:\n{(log.stdout or '(no commits)').strip()[:1000]}"
+    )
+
+
+def create_worktree(ctx, branch_name: str) -> dict:
+    """Create an isolated Git worktree inside a sibling folder for safe reviewable coding (D02)."""
+    root = code_dir(ctx.cfg).resolve()
+    if not (root / ".git").exists():
+        raise ValueError("Select an existing Git repository in Setup before creating a worktree.")
+    clean = re.sub(r"[^A-Za-z0-9._/-]", "", str(branch_name or "").strip()).strip("./")
+    if not clean or ".." in clean or len(clean) > 80:
+        raise ValueError("Provide a valid branch name (letters, digits, dashes, slashes, max 80 chars).")
+    wt_base = root.parent / f"{root.name}-worktrees"
+    wt_base.mkdir(parents=True, exist_ok=True)
+    safe_folder = clean.replace("/", "-")
+    target = (wt_base / safe_folder).resolve()
+    if wt_base.resolve() not in target.parents or target.exists():
+        raise ValueError("That worktree path already exists or is invalid.")
+    git = _git_exe()
+    result = subprocess.run(
+        [git, "worktree", "add", "-b", clean, str(target)],
+        cwd=root, capture_output=True, text=True, timeout=30,
+        env=_sandbox_env(), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if result.returncode != 0:
+        raise ValueError("Could not create Git worktree: " + (result.stderr or result.stdout).strip()[:200])
+    secure.audit("worktree_created", {"branch": clean, "path": target.name})
+    return {"branch": clean, "path": str(target)}
+
+
+def remove_worktree(ctx, worktree_path: str) -> str:
+    """Remove an isolated Git worktree safely (refuses dirty worktrees unless clean)."""
+    root = code_dir(ctx.cfg).resolve()
+    if not (root / ".git").exists():
+        raise ValueError("Active coding workspace is not a Git repository.")
+    wt_base = (root.parent / f"{root.name}-worktrees").resolve()
+    target = Path(worktree_path).expanduser().resolve()
+    if wt_base not in target.parents:
+        raise ValueError("Only Jarvis-managed sibling worktrees can be removed here.")
+    git = _git_exe()
+    result = subprocess.run(
+        [git, "worktree", "remove", str(target)],
+        cwd=root, capture_output=True, text=True, timeout=30,
+        env=_sandbox_env(), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if result.returncode != 0:
+        raise ValueError("Could not remove worktree (commit or discard changes first): " + (result.stderr or "").strip()[:200])
+    secure.audit("worktree_removed", {"path": target.name})
+    return f"Removed isolated worktree {target.name}."
+
+
+@skill("Create an isolated sibling Git worktree on a new branch after user approval.",
+       params={"branch": ("string", "New branch name for the worktree", True)},
+       risky=True, manual=True,
+       preview=lambda ctx, branch: f"create an isolated Git worktree for branch '{branch}' next to {code_dir(ctx.cfg).resolve()}")
+def create_coding_worktree(ctx, branch):
+    info = create_worktree(ctx, branch)
+    return f"Created isolated worktree on branch '{info['branch']}' at {info['path']}. Select it in Setup to code inside it."
+
+
+@skill("Remove a Jarvis-managed sibling Git worktree after user approval.",
+       params={"path": ("string", "Full path to the managed worktree folder", True)},
+       risky=True, manual=True,
+       preview=lambda ctx, path: f"remove the clean isolated Git worktree at {path}")
+def remove_coding_worktree(ctx, path):
+    return remove_worktree(ctx, path)
+
+
 @skill("Build or byte-compile the coding project after the user approves the exact command.",
        params={"filename": ("string", "A file in the project", False)}, risky=True, manual=True,
        preview=_build_preview)

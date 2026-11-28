@@ -16,3 +16,5 @@ HANDOFF.md
 
 dist/
 hud-captures/
+rust/*/target/
+rust/*/Cargo.lock

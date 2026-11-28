@@ -6,6 +6,7 @@ every action needs a random session key that only the page Jarvis served knows."
 import json
 import queue
 import secrets
+import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -56,8 +57,21 @@ def serve(app, port: int):
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Cache-Control", "no-store")
+            if code >= 400:
+                self.send_header("Connection", "close")
             self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.wfile.write(body)
+                self.wfile.flush()
+                if code >= 400:
+                    # Half-close write side first so Windows delivers 4xx responses cleanly instead of TCP RST.
+                    self.close_connection = True
+                    try:
+                        self.connection.shutdown(socket.SHUT_WR)
+                    except OSError:
+                        pass
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                pass
 
         def _json(self, obj, code=200):
             self._send(code, json.dumps(obj).encode(), "application/json")
@@ -80,6 +94,7 @@ def serve(app, port: int):
                 page = (UI_FILE.read_text(encoding="utf-8").replace("__JARVIS_KEY__", token)
                         .replace("__JARVIS_THEME__", theme if theme in config.THEMES else "hud")
                         .replace("__JARVIS_MODE__", mode if mode in config.MODES else "everyday")
+                        .replace("__JARVIS_VIEW__", app.cfg.get("workspace_view") if app.cfg.get("workspace_view") in config.WORKSPACE_VIEWS else "classic")
                         .replace("__JARVIS_TUKI_NAME__", assistants.TUKI_NAME)
                         .replace("__JARVIS_TUKI_FULL_NAME__", assistants.TUKI_FULL_NAME))
                 csp = ("default-src 'self'; script-src 'self' 'unsafe-inline'; "
@@ -119,6 +134,26 @@ def serve(app, port: int):
                 return self._json({"error": "forbidden"}, 403)
             if self.path == "/api/state":
                 self._json(app.state())
+            elif self.path == "/api/voices":
+                from .voice import installed_voice_names, is_british_voice
+                names = installed_voice_names()
+                self._json({"voices": names, "british": [v for v in names if is_british_voice(v)]})
+            elif self.path == "/api/hardware":
+                self._json(app.hardware_operation())
+            elif self.path == "/api/audio-devices":
+                self._json(app.audio_devices_operation())
+            elif self.path == "/api/security":
+                self._json(app.security_operation())
+            elif self.path == "/api/agents":
+                self._json(app.agents_operation())
+            elif self.path == "/api/mcp":
+                self._json(app.mcp_operation())
+            elif self.path == "/api/conversations":
+                self._json(app.conversations_operation())
+            elif self.path == "/api/projects":
+                self._json(app.projects_operation())
+            elif self.path == "/api/feeds":
+                self._json(app.feeds_operation())
             elif self.path == "/api/memory":
                 self._json(app.memory_operation())
             elif self.path == "/api/watches":
@@ -139,22 +174,33 @@ def serve(app, port: int):
                 self._json(app.dashboard())
             elif self.path == "/api/activity":
                 self._json(app.activity_operation())
+            elif self.path == "/api/workflows":
+                self._json(app.workflows_operation())
             elif self.path == "/api/connections":
                 self._json(app.connections_operation())
             elif self.path == "/api/models":
                 self._json(app.models_operation())
+            elif self.path == "/api/provider":
+                self._json(app.provider_operation())
             else:
                 self._json({"error": "not found"}, 404)
 
         def do_POST(self):
             if not self._host_ok() or not self._authed():
+                # Drain tiny unauthenticated bodies so Windows sockets do not emit TCP RST before the 403 is read.
+                try:
+                    raw_len = int(self.headers.get("Content-Length", "0"))
+                    if 0 < raw_len <= 4096:
+                        self.rfile.read(raw_len)
+                except (ValueError, OSError):
+                    pass
                 return self._json({"error": "forbidden"}, 403)
             try:
                 lengths = self.headers.get_all("Content-Length", [])
                 if len(lengths) != 1 or self.headers.get("Transfer-Encoding"):
                     return self._json({"error": "one content length required; transfer encoding is unsupported"}, 400)
                 length = int(lengths[0])
-                limit = images.MAX_UPLOAD_JSON if self.path == "/api/images/lookup" else 100_000
+                limit = images.MAX_UPLOAD_JSON if self.path in ("/api/images/lookup", "/api/documents/preview") else 100_000
                 if not 0 <= length <= limit:
                     return self._json({"error": "invalid content length"}, 400)
                 self.connection.settimeout(REQUEST_BODY_TIMEOUT)
@@ -177,6 +223,11 @@ def serve(app, port: int):
                 self._json({"ok": True})
             elif self.path == "/api/stop":
                 self._json(app.stop())
+            elif self.path == "/api/dictation":
+                try:
+                    self._json(app.dictation_operation(data))
+                except ValueError as error:
+                    self._json({"error": str(error)}, 400)
             elif self.path == "/api/toggle":
                 self._json(app.toggle(str(data.get("what", ""))))
             elif self.path == "/api/preferences":
@@ -202,6 +253,16 @@ def serve(app, port: int):
                 except (ValueError, TypeError, OSError) as error:
                     return self._json({"error": str(error)}, 400)
                 self._json(result)
+            elif self.path == "/api/workflows":
+                try:
+                    self._json(app.workflows_operation(data))
+                except (ValueError, TypeError, OSError) as error:
+                    self._json({"error": str(error)}, 400)
+            elif self.path == "/api/provider":
+                try:
+                    self._json(app.provider_operation(data))
+                except (ValueError, TypeError, OSError) as error:
+                    self._json({"error": str(error)}, 400)
             elif self.path == "/api/connections":
                 try:
                     result = app.connections_operation(data)
@@ -248,6 +309,19 @@ def serve(app, port: int):
             elif self.path == "/api/repository":
                 try:
                     result = app.repository_operation(data)
+                except (ValueError, TypeError, OSError) as error:
+                    return self._json({"error": str(error)}, 400)
+                self._json(result)
+            elif self.path in ("/api/mcp", "/api/conversations", "/api/projects", "/api/feeds", "/api/documents/preview"):
+                try:
+                    ops = {
+                        "/api/mcp": app.mcp_operation,
+                        "/api/conversations": app.conversations_operation,
+                        "/api/projects": app.projects_operation,
+                        "/api/feeds": app.feeds_operation,
+                        "/api/documents/preview": app.document_preview_operation,
+                    }
+                    result = ops[self.path](data)
                 except (ValueError, TypeError, OSError) as error:
                     return self._json({"error": str(error)}, 400)
                 self._json(result)

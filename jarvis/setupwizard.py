@@ -61,24 +61,33 @@ def state_path():
 
 
 def load_state():
-    try:
-        data = json.loads(state_path().read_text(encoding="utf-8"))
-        if isinstance(data, dict) and isinstance(data.get("steps"), list):
-            return data
-    except (OSError, ValueError):
-        pass
-    return {"steps": [], "running": False, "error": ""}
+    with _LOCK:
+        try:
+            data = json.loads(state_path().read_text(encoding="utf-8"))
+            if isinstance(data, dict) and isinstance(data.get("steps"), list):
+                return data
+        except (OSError, ValueError):
+            pass
+        return {"steps": [], "running": False, "error": ""}
 
 
 def save_state(state):
-    config.APP_DIR.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", dir=config.APP_DIR, delete=False, encoding="utf-8") as stream:
-        json.dump(state, stream, indent=2)
-        temporary = Path(stream.name)
-    try:
-        temporary.replace(state_path())
-    finally:
-        temporary.unlink(missing_ok=True)
+    with _LOCK:
+        config.APP_DIR.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile("w", dir=config.APP_DIR, delete=False, encoding="utf-8") as stream:
+            json.dump(state, stream, indent=2)
+            temporary = Path(stream.name)
+        try:
+            for attempt in range(5):
+                try:
+                    temporary.replace(state_path())
+                    break
+                except PermissionError:
+                    if attempt == 4:
+                        raise
+                    time.sleep(0.02)
+        finally:
+            temporary.unlink(missing_ok=True)
 
 
 def ollama_models_dir():

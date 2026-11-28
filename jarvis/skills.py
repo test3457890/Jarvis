@@ -232,7 +232,7 @@ def cancel_reminder(ctx, text):
 @skill("Save a lasting fact about the user or their life (preferences, people, plans).",
        params={"fact": ("string", "The fact, written as a full sentence", True)})
 def remember(ctx, fact):
-    ctx.memory.remember(fact)
+    ctx.memory.remember(fact, project=ctx.cfg.get("active_project", ""))
     return "Saved to memory."
 
 
@@ -555,4 +555,4 @@ SKILLS["read_clipboard"]["untrusted"] = True
 SKILLS["read_note"]["untrusted"] = True
 
 # Load the other skill modules (they register themselves with @skill).
-from . import planner, comms, coder, nomad, online, images, documents, filejobs  # noqa: E402,F401
+from . import planner, comms, coder, nomad, online, images, documents, filejobs, cloudprovider  # noqa: E402,F401

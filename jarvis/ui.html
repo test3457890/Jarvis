@@ -25,10 +25,12 @@
   .brand small { font:500 10px var(--hud); letter-spacing:.3em; color:var(--dim); margin-left:10px; }
   .toggles { display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:8px; }
   header { flex-wrap:wrap; gap:12px; }
-  .prefs label { display:inline-flex; align-items:center; gap:6px; font-size:13px; }
-  .prefs { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  .prefs label { display:inline-flex; align-items:center; gap:6px; font-size:13px; max-width:100%; min-width:0; flex-wrap:wrap; }
+  .prefs { display:flex; flex-wrap:wrap; align-items:center; gap:8px; min-width:0; max-width:100%; }
   select { color:var(--text); background:var(--bg); border:1px solid var(--line2); border-radius:4px;
-           padding:5px 7px; font:inherit; }
+           padding:5px 7px; font:inherit; max-width:100%; min-width:0; }
+  #setup-form input, #setup-form select, #doc-preview-file { max-width:100%; min-width:0; box-sizing:border-box; }
+  #sentinel-list, #mcp-list, #hardware-summary, #audio-devices-list, #conv-list { overflow-wrap:anywhere; }
   :focus-visible { outline:2px solid var(--cyan); outline-offset:3px; }
   .assistant-name { flex-basis:100%; color:var(--dim); font-size:12px; }
   #activity { color:var(--dim); font-size:13px; }
@@ -44,11 +46,27 @@
   #setup-panel { padding:8px 16px; overflow:auto; max-height:40vh; }
   #activity-timeline { padding:8px 16px; overflow:auto; max-height:40vh; }
   #connections-panel { padding:8px 16px; overflow:auto; max-height:40vh; }
-  #setup-form { display:grid; }
-  #setup-form label { display:grid; gap:6px; }
+  #sentinel-panel { padding:8px 16px; overflow:auto; max-height:40vh; border-top:1px solid var(--line); }
+  #sentinel-panel summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
+  body[data-mode=talk] #sentinel-panel { display:none; }
+  #mic-meter-wrap { width:100%; height:6px; background:rgba(79,216,255,.12); border-radius:3px; overflow:hidden; margin-top:4px; }
+  #mic-meter { height:100%; width:0%; background:linear-gradient(90deg,var(--ok),var(--cyan),var(--warn)); transition:width .1s; }
+  .chat.drop-active { outline:2px dashed var(--cyan2); outline-offset:-4px; }
+  #t-temp.temp-on { color:var(--warn); border-color:var(--warn); background:rgba(255,179,71,.12); }
+  #setup-form { display:grid; min-width:0; }
+  #provider-form { display:grid; min-width:0; }
+  #provider-form label { display:grid; gap:6px; min-width:0; }
+  #provider-form input, #provider-form select { width:100%; min-width:0; max-width:100%; }
+  #provider-status { overflow-wrap:anywhere; }
+  #setup-form label { display:grid; gap:6px; min-width:0; }
+  #setup-form input[type=number] { width:100%; min-width:0; max-width:100%; box-sizing:border-box; }
+  #setup-panel button, #sentinel-panel button, #connections-panel button, #knowledge button { max-width:100%; white-space:normal; }
+  #feed-sub-form, #mcp-add-form, #project-form { display:grid; gap:6px; min-width:0; padding:8px 0; }
+  #feed-sub-form input, #mcp-add-form input, #project-form input, #conv-search-input, #workflow-filter { width:100%; min-width:0; max-width:100%; box-sizing:border-box; }
   #setup-folders { min-width:0; width:100%; box-sizing:border-box; padding:8px; font:inherit;
     color:var(--text); background:var(--panel); border:1px solid var(--line2); }
-  #knowledge { border-top:1px solid var(--line); padding:8px 16px; max-height:46%; overflow:auto; }
+  #knowledge { border-top:1px solid var(--line); padding:8px 16px; max-height:46%; overflow:auto; min-width:0; }
+  #knowledge input[type=file] { width:100%; max-width:100%; min-width:0; box-sizing:border-box; }
   #knowledge summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
   body[data-mode=talk] #knowledge { display:none; }
   .memory-actions { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0; }
@@ -85,7 +103,7 @@
   button.off { color:var(--dim); border-color:var(--line); }
   button.lock-on { color:#ff6b6b; border-color:#ff4d4d; background:rgba(255,77,77,.14); }
   button:disabled { opacity:.4; cursor:not-allowed; }
-  .panel { border:1px solid var(--line); background:var(--panel); border-radius:4px; padding:12px 14px; position:relative; min-height:0; }
+  .panel { border:1px solid var(--line); background:var(--panel); border-radius:4px; padding:12px 14px; position:relative; min-height:0; min-width:0; max-width:100%; }
   .panel::before, .panel::after { content:""; position:absolute; width:12px; height:12px; border-color:var(--cyan); border-style:solid; }
   .panel::before { top:-1px; left:-1px; border-width:2px 0 0 2px; } .panel::after { bottom:-1px; right:-1px; border-width:0 2px 2px 0; }
   h2 { margin:0 0 8px; font:500 11px var(--hud); letter-spacing:.3em; color:var(--cyan); text-transform:uppercase; }
@@ -193,7 +211,7 @@
     header { align-items:flex-start; } .toggles { justify-content:flex-start; }
     form { padding:10px; } #q { min-width:0; }
 
-    body { overflow:auto; } .app { grid-template-columns:1fr; height:auto; padding:10px; }
+    body { overflow:auto; } .app { grid-template-columns:minmax(0, 1fr); height:auto; padding:10px; }
     .left .systems, #heard, canvas#wave { display:none; } .reactor { width:110px; height:110px; }
     .r2 { inset:8px; } .r3 { inset:20px; border-width:4px; } .r4 { inset:32px; } .core { inset:40px; }
     .chat { height:70vh; } .msg { max-width:92%; } .brand small { display:none; }
@@ -258,31 +276,97 @@
   #apps-form label.inline { display:flex; gap:8px; align-items:center; }
   #apps-form label.inline input { flex:0 0 auto; width:auto; }
   #apps-status, #ext-status { color:var(--dim); font-size:13px; white-space:pre-wrap; }
+  :focus-visible { outline:3px solid var(--cyan2); outline-offset:3px; }
+  .skip-link { position:fixed; left:8px; top:-80px; z-index:100; padding:10px; background:var(--bg); }
+  .skip-link:focus { top:8px; }
+  #dictation { flex:0 0 auto; max-height:36vh; overflow:auto; margin:10px 0; padding:10px; border:1px solid var(--line); }
+  #dictation-text { width:100%; box-sizing:border-box; min-height:90px; font:inherit; }
+  #record-voice { touch-action:none; user-select:none; }
+  #record-voice[aria-pressed=true] { outline:3px solid var(--cyan2); }
+  #workflows { padding:8px 16px; overflow:auto; max-height:40vh; }
+  #workflows input { width:100%; min-width:0; font:inherit; }
+  #workflows label { display:block; margin:6px 0; }
+  #workflows form { display:block; }
+  #workflow-list { overflow-wrap:anywhere; }
+  #command-nav, #ambient-view { display:none; }
+  body[data-view=command] { background:var(--bg); }
+  body[data-view=command] .app { grid-template-columns:220px minmax(0, 1fr) 280px; }
+  body[data-view=command] #command-nav { display:flex; gap:8px; flex-wrap:wrap; padding:10px 16px; border-bottom:1px solid var(--line); }
+  body[data-view=command][data-mode=talk] #command-nav { display:none; }
+  body[data-view=command] .reactor { transform:scale(.7); margin:-30px; }
+  body[data-view=command] .brand { letter-spacing:.08em; }
+  body[data-view=ambient] .app, body[data-view=ambient] .grid, body[data-view=ambient] #boot,
+  body[data-view=ambient] .skip-link { display:none !important; }
+  body[data-view=command][data-mode=talk] .app { grid-template-columns:minmax(0,840px); }
+  body[data-view=ambient] { overflow:auto; background:#070d13; color:#d9f4ff; }
+  body[data-view=ambient] #ambient-view { min-height:100vh; padding:30px 20px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; }
+  #ambient-orbit { width:min(52vw, 340px); aspect-ratio:1; position:relative; border:2px solid #4fd8ff; border-radius:50%; box-shadow:0 0 60px #4fd8ff24; }
+  #ambient-orbit::before, #ambient-orbit::after { content:''; position:absolute; inset:10%; border:3px solid #4fd8ff; border-bottom-color:transparent; border-radius:50%; animation:spin 16s linear infinite; }
+  #ambient-orbit::after { inset:27%; border-width:12px; border-top-color:transparent; animation-direction:reverse; }
+  #ambient-view[data-assistant=tuki] #ambient-orbit, #ambient-view[data-assistant=tuki] #ambient-orbit::before,
+  #ambient-view[data-assistant=tuki] #ambient-orbit::after { border-color:#ffb347; }
+  #ambient-status { font-size:20px; letter-spacing:.12em; }
+  #ambient-clock { font-size:30px; }
+  #ambient-privacy { text-align:center; max-width:34rem; }
+  #ambient-view .ambient-actions { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+  @media (max-width:1100px) { body[data-view=command] .app { grid-template-columns:200px minmax(0,1fr); } }
+  @media (max-width:720px) { body[data-view=command] .app { grid-template-columns:minmax(0,1fr); } }
+  #workflow-runs pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:320px; overflow:auto; }
+  body[data-compact=true] { overflow:auto; }
+  body[data-compact=true] .app { display:flex; flex-direction:column; height:auto; min-height:100%; max-width:700px; margin:auto; }
+  body[data-compact=true] .col, body[data-compact=true] .brand small,
+  body[data-compact=true] .assistant-name { display:none; }
+  body[data-compact=true] header { flex-wrap:wrap; gap:8px; }
+  body[data-compact=true] .chat { min-height:60vh; flex-shrink:0; }
+  body[data-compact=true] #log { min-height:180px; max-height:40vh; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
 </style>
 </head>
-<body data-state="idle" data-theme="__JARVIS_THEME__" data-mode="__JARVIS_MODE__">
+<body data-state="idle" data-theme="__JARVIS_THEME__" data-mode="__JARVIS_MODE__" data-view="__JARVIS_VIEW__">
+<a class="skip-link" href="#q">Skip to message</a>
 <div class="grid"></div>
 <div id="boot"><pre id="bootlog"></pre></div>
+<section id="ambient-view" aria-label="Ambient assistant view">
+  <div id="ambient-orbit" aria-hidden="true"></div>
+  <div id="ambient-status" role="status">Starting</div>
+  <div id="ambient-clock" aria-label="Local time"></div>
+  <p id="ambient-privacy">Conversation, contacts and calendar details are hidden in this view.</p>
+  <p id="ambient-input" role="status"></p>
+  <p id="ambient-pending" role="status"></p>
+  <div class="ambient-actions"><button id="ambient-controls" type="button">Open controls</button>
+    <button id="ambient-stop" type="button">Stop</button><button id="ambient-mic" type="button">Pause Mic</button>
+    <button id="ambient-lock" type="button">Lockdown</button>
+    <button id="ambient-clock-toggle" type="button" aria-pressed="true">Hide clock</button></div>
+</section>
 <div class="app">
   <header>
     <div class="brand">J.A.R.V.I.S.<small>JUST A RATHER VERY INTELLIGENT SYSTEM</small></div>
     <div class="prefs">
+      <label>View <select id="workspace_view"><option value="classic">Classic Jarvis</option>
+        <option value="command">Command Center</option><option value="ambient">Ambient Intelligence</option></select></label>
       <label>Mode <select id="mode"><option value="everyday">Everyday</option><option value="coding">Coding</option>
+        <option value="research">Research</option><option value="cybersecurity">Cybersecurity</option>
         <option value="briefing">Briefing</option><option value="talk">Talk</option></select></label>
       <label>Assistant <select id="assistant"><option value="auto">Auto</option>
-        <option value="jarvis">Jarvis</option><option value="tuki">__JARVIS_TUKI_NAME__</option></select></label>
+        <option value="jarvis">Jarvis</option><option value="tuki">__JARVIS_TUKI_NAME__</option>
+        <option value="both">Jarvis + __JARVIS_TUKI_NAME__</option></select></label>
       <label>Theme <select id="theme"><option value="hud">Sci-fi HUD</option><option value="simple">Simple dark</option>
         <option value="light">Simple light</option><option value="contrast">High contrast</option>
         <option value="midnight">Midnight</option><option value="paper">Paper</option></select></label>
       <label>Voice <select id="voice_choice"><option value="auto">Automatic</option>
         <option value="windows">Windows</option><option value="piper">Piper</option></select></label>
+      <label>Jarvis system voice <select id="sapi_voice_contains"><option value="">Automatic</option></select></label>
       <button id="voice-preview" type="button">Try voice</button>
       <label>TUKI voice <select id="tuki_voice_choice"><option value="auto">Automatic, different from Jarvis</option>
         <option value="windows">Windows voice</option><option value="piper">Local Piper voice</option></select></label>
+      <label>TUKI system voice <select id="tuki_sapi_voice_contains"><option value="">Automatic</option></select></label>
+      <button id="refresh-voices" type="button">List installed voices</button>
       <button id="tuki-voice-preview" type="button">Try TUKI voice</button>
       <small class="assistant-name">__JARVIS_TUKI_NAME__ · __JARVIS_TUKI_FULL_NAME__</small>
     </div>
     <div class="toggles">
+      <button id="compact-view" type="button" aria-pressed="false">Compact view</button>
+      <button id="t-temp" type="button" aria-pressed="false" title="Temporary chat: messages are not saved to history">Temp chat</button>
       <button id="t-speak" title="Speak replies out loud">Voice</button>
       <button id="t-mic" title="Pause or resume listening">Mic</button>
       <button id="t-internet" title="Allow or block online tools">Internet</button>
@@ -295,6 +379,7 @@
       <div class="reactor"><div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div><div class="ring r4"></div><div class="core"></div></div>
       <div id="status">Starting</div>
       <canvas id="wave" width="260" height="40"></canvas>
+      <div id="mic-meter-wrap" aria-label="Live microphone input level"><div id="mic-meter"></div></div>
       <div id="heard"></div>
     </div>
     <div class="panel systems">
@@ -305,8 +390,16 @@
   </aside>
 
   <section class="panel chat">
+    <nav id="command-nav" aria-label="Command Center tools">
+      <button type="button" data-panel="planner">Plan</button><button type="button" data-panel="knowledge">Research</button>
+      <button type="button" data-panel="workflows">Workflows</button><button type="button" data-panel="connections-panel">Connections</button>
+      <button type="button" data-panel="sentinel-panel">Sentinel</button><button type="button" data-panel="setup-panel">Setup</button>
+    </nav>
     <div class="chat-tools">
       <span id="activity" role="status"></span>
+      <label>Voice input <select id="voice_input_mode"><option value="wake">Wake word</option><option value="manual">Hold to record only</option></select></label>
+      <button id="record-voice" type="button" aria-pressed="false" aria-describedby="dictation-help">Hold to record</button>
+      <span id="dictation-help">Ctrl+Shift+Space while this page is focused. Release to review. Escape cancels.</span>
       <button id="stop-reply" type="button">Stop</button>
       <span id="response-timing"></span>
       <button id="briefing" type="button">Read briefing</button>
@@ -316,8 +409,14 @@
       <button id="file-move" type="button">Move file</button>
       <button id="file-jobs" type="button">File task history</button>
       <button id="read-source" type="button">Read source page</button>
+      <button id="read-feed" type="button" hidden>Read RSS or Atom feed</button>
+      <button id="read-weather" type="button" hidden>Read US weather forecast</button>
       <button id="web-search" type="button" hidden>Web search</button>
       <button id="upload-file" type="button" hidden>Upload to GitHub</button>
+      <button id="github-issues" type="button" hidden>GitHub issues</button>
+      <button id="github-issue" type="button" hidden>Read GitHub issue</button>
+      <button id="github-new-issue" type="button" hidden>Draft GitHub issue</button>
+      <button id="github-prs" type="button" hidden>GitHub PRs</button>
       <div id="code-tools" class="chat-tools">
         <button id="code-fix" type="button">Propose fix</button>
         <button id="code-diff" type="button">Show diff</button>
@@ -326,9 +425,18 @@
         <button id="code-test" type="button">Run project tests</button>
         <button id="code-investigate" type="button">Investigate failure</button>
         <button id="code-build" type="button">Build project</button>
+        <button id="code-git-status" type="button">Git status</button>
+        <button id="code-worktree" type="button">Isolated worktree</button>
       </div>
     </div>
     <div id="log" role="log" aria-label="Conversation"></div>
+    <section id="dictation" hidden aria-label="Review recorded speech">
+      <p id="dictation-status" role="status"></p>
+      <label for="dictation-text">Transcript preview</label><textarea id="dictation-text" maxlength="4000"></textarea>
+      <button id="dictation-use" type="button">Use in message</button>
+      <button id="dictation-copy" type="button">Copy transcript</button>
+      <button id="dictation-discard" type="button">Discard recording</button>
+    </section>
     <div id="stream-draft" aria-label="Reply draft" hidden></div>
     <div id="pending"><b>AWAITING YOUR AUTHORISATION</b><p id="pending-text"></p>
       <button class="yes" id="p-yes">Confirm</button><button class="no" id="p-no">Cancel</button></div>
@@ -364,7 +472,31 @@
       <div class="memory-actions">
         <button id="memory-refresh" type="button">Review remembered facts</button>
         <button id="memory-export" type="button">Export remembered facts</button>
+        <button id="memory-import-btn" type="button">Import facts JSON</button>
+        <input type="file" id="memory-import-file" accept=".json" hidden>
+        <button id="memory-dedupe" type="button">Clean duplicate facts</button>
+        <button id="conv-refresh" type="button">Conversations</button>
+        <button id="conv-new" type="button">New conversation</button>
       </div>
+      <div class="memory-actions">
+        <input id="conv-search-input" type="search" aria-label="Search past conversations" placeholder="Search past conversations" maxlength="300">
+        <button id="conv-search-btn" type="button">Search history</button>
+      </div>
+      <div id="conv-search-results" class="hint"></div>
+      <div id="conv-list"></div>
+      <form id="project-form">
+        <label>Project knowledge space<input id="project-name" maxlength="60" placeholder="Project name (e.g. Thesis)" required></label>
+        <label>Description<input id="project-desc" maxlength="200" placeholder="Optional scope notes"></label>
+        <div class="memory-actions">
+          <button>Save project</button>
+          <button id="project-refresh" type="button">Review projects</button>
+          <button id="project-clear-active" type="button">Use global scope</button>
+        </div>
+      </form>
+      <div id="project-status" class="hint" role="status"></div>
+      <div id="project-list"></div>
+      <label class="hint">Preview a local document (.txt, .md, .pdf) without uploading: <input type="file" id="doc-preview-file" accept=".txt,.md,.pdf,.json,.csv,.py,.js"></label>
+      <pre id="doc-preview-out" hidden></pre>
       <p>Manage remembered facts here. Clear history removes saved conversation text and the current chat context.</p>
       <button id="history-clear" type="button">Clear conversation history</button>
       <button id="backup-create" type="button">Back up local data</button>
@@ -374,6 +506,26 @@
       <p id="backup-status" role="status"></p>
       <p id="memory-status" role="status"></p>
       <div id="memory-list"></div>
+    </details>
+    <details id="workflows" name="assistant-tools">
+      <summary>Local workflows and results</summary>
+      <p>Save up to 10 local read steps. Review all steps before running. Stop cancels at a step checkpoint. Saved results stay on this PC and are included in database backups.</p>
+      <form id="workflow-create">
+        <label>Name<input id="workflow-name" maxlength="80" required></label>
+        <label>Step<select id="workflow-kind"><option value="documents">Search selected documents</option>
+          <option value="schedule">Read saved schedule</option><option value="tasks">Read open tasks</option>
+          <option value="behind">Review deadlines</option><option value="calculate">Calculate</option>
+          <option value="reminders">Read reminders</option><option value="notes">List saved notes</option>
+          <option value="memory">Search local memory</option></select></label>
+        <label>Value<input id="workflow-value" maxlength="500" placeholder="Document query, expression, or today / tomorrow / week"></label>
+        <button id="workflow-add-step" type="button">Add step</button>
+        <ol id="workflow-steps"></ol>
+        <button>Save workflow</button>
+      </form>
+      <button id="workflow-refresh" type="button">Refresh workflows and results</button>
+      <label>Filter saved runs<input id="workflow-filter" type="search" placeholder="Search workflow names or results" maxlength="200"></label>
+      <p id="workflow-status" role="status"></p>
+      <div id="workflow-list"></div><div id="workflow-runs"></div>
     </details>
     <details id="setup-panel" name="assistant-tools">
       <summary>Setup</summary>
@@ -387,6 +539,9 @@
         <p id="setup-ocr-note" class="hint"></p>
         <label>Follow-up listening<select id="setup-follow-up"><option value="0">Off</option><option value="8">8 seconds</option><option value="20">20 seconds</option></select></label>
         <label>Nearby conversation context<select id="setup-room-context"><option value="0">Off</option><option value="30">30 seconds</option><option value="120">2 minutes</option></select></label>
+        <label>Jarvis speech speed (WPM)<input id="setup-speech-rate" type="number" min="100" max="320" value="185"></label>
+        <label>TUKI speech speed (WPM)<input id="setup-tuki-rate" type="number" min="100" max="320" value="200"></label>
+        <label>Microphone input device<select id="setup-mic-device"><option value="">OS default microphone</option></select></label>
         <label>Daily briefing time on this computer<input id="setup-briefing-time" type="time" value="08:00"></label>
         <label class="inline"><input id="setup-briefing-enabled" type="checkbox"> Show the daily briefing while Jarvis is open</label>
         <label class="inline"><input id="setup-briefing-speak" type="checkbox"> Speak the daily briefing</label>
@@ -394,6 +549,17 @@
         <button>Save setup</button>
       </form>
       <p id="setup-status" role="status"></p>
+      <form id="provider-form">
+        <label>Chat provider<select id="chat-provider"><option value="ollama">Ollama</option>
+          <option value="openai_local">Local chat-completions server</option></select></label>
+        <label>Local server address<input id="local-chat-url" value="http://127.0.0.1:8081" maxlength="200"></label>
+        <label>Exact local model ID<input id="local-chat-model" maxlength="200"></label>
+        <label class="inline"><input type="checkbox" id="local-chat-stream"> Stream text replies (SSE) from loopback server</label>
+        <button>Save chat provider</button><button id="provider-load" type="button">Load provider settings</button>
+        <button id="provider-models" type="button">List active provider models</button>
+      </form>
+      <p id="provider-status" role="status"></p>
+      <p class="hint">The optional server must use 127.0.0.1 on this PC. Save before listing its models. It receives chat and approved tool context, uses one model for chat and coding, returns completed replies, and uses keyword memory recall. Images and speech retain their separate setup. No cloud fallback.</p>
       <form id="repository-select">
         <label>Existing local Git repository for Coding mode<input id="repository-path" type="text" placeholder="C:\\Users\\you\\Projects\\MyApp" maxlength="1000" required></label>
         <button>Select repository</button>
@@ -409,6 +575,29 @@
         <button>Use model</button><button id="model-refresh" type="button">Refresh models</button>
       </form>
       <p id="model-status" role="status"></p><div id="model-list"></div>
+      <div class="memory-actions">
+        <button id="hardware-refresh" type="button">Inspect hardware &amp; recommendations</button>
+        <button id="audio-devices-refresh" type="button">List audio devices</button>
+      </div>
+      <div id="hardware-summary" class="hint"></div>
+      <div id="audio-devices-list" class="hint"></div>
+    </details>
+    <details id="sentinel-panel" name="assistant-tools">
+      <summary>Sentinel security &amp; MCP</summary>
+      <p class="hint">Defensive local security posture check, Finance/Health permission boundaries, and local stdio MCP server approvals. Nothing runs without explicit approval.</p>
+      <button id="sentinel-refresh" type="button">Run local security audit</button>
+      <div id="sentinel-status" role="status" class="hint"></div>
+      <div id="sentinel-list"></div>
+      <button id="mcp-refresh" type="button">Review MCP servers</button>
+      <form id="mcp-add-form">
+        <label>MCP server ID<input id="mcp-id" maxlength="40" placeholder="my-local-mcp" required></label>
+        <label>Display name<input id="mcp-name" maxlength="80" placeholder="Local Notes MCP" required></label>
+        <label>Executable path (no shells)<input id="mcp-command" maxlength="500" placeholder="C:\Path\to\python.exe" required></label>
+        <label>Arguments (space separated)<input id="mcp-args" maxlength="500" placeholder="server.py"></label>
+        <button>Register MCP server (disabled)</button>
+      </form>
+      <div id="mcp-status" role="status" class="hint"></div>
+      <div id="mcp-list" class="hint"></div>
     </details>
     <details id="activity-timeline" name="assistant-tools">
       <summary>Activity timeline</summary>
@@ -421,6 +610,14 @@
       <p>Built-in optional services. Status checks local settings and saved credentials; it does not contact the service. Removing a credential disconnects Jarvis locally but does not revoke it at the provider.</p>
       <button id="connections-refresh" type="button">Review connections</button>
       <p id="connections-status" role="status"></p><div id="connections-list"></div>
+      <form id="feed-sub-form">
+        <label>Saved RSS/Atom feed name<input id="feed-sub-name" maxlength="80" placeholder="Publisher name" required></label>
+        <label>HTTPS feed URL<input id="feed-sub-url" maxlength="2000" placeholder="https://example.org/feed.xml" required></label>
+        <label class="inline"><input type="checkbox" id="feed-sub-briefing"> Mark for briefing review</label>
+        <button>Save feed subscription</button>
+      </form>
+      <div id="feed-sub-status" role="status" class="hint"></div>
+      <div id="feed-sub-list"></div>
     </details>
     <details id="file-tasks" name="assistant-tools">
       <summary>File tasks</summary>
@@ -607,56 +804,92 @@ function add(role, text, via) {
 function setState(s) {
   document.body.dataset.state = s; $('status').textContent = s;
   $('activity').textContent = s ? s[0].toUpperCase() + s.slice(1) : '';
+  $('ambient-status').textContent = s ? s[0].toUpperCase() + s.slice(1) : 'Idle';
 }
 let pendingId = null;
 function setPending(request) {
   pendingId = request?.id || null;
   $('pending').classList.toggle('on', !!request);
   $('pending-text').textContent = request ? 'Jarvis wants to ' + request.text + '.' : '';
+  $('ambient-pending').textContent = request ? 'An action is waiting. Open controls to review its details.' : '';
 }
 function setToggles(st) {
-  for (const key of ['mode', 'theme', 'voice_choice', 'assistant', 'tuki_voice_choice']) {
+  for (const key of ['mode', 'theme', 'voice_choice', 'assistant', 'tuki_voice_choice', 'voice_input_mode', 'workspace_view']) {
     if (st[key]) $(key).value = st[key];
   }
   $('tuki_voice_choice').querySelector('[value=piper]').disabled = !st.tuki_piper_available;
+  for (const key of ['sapi_voice_contains', 'tuki_sapi_voice_contains']) {
+    if (st[key] !== undefined) {
+      const value = st[key];
+      if (value && ![...$(key).options].some(option => option.value === value)) {
+        $(key).add(new Option(value + ' (refresh to check availability)', value));
+      }
+      $(key).value = value;
+    }
+  }
   if (st.mode) document.body.dataset.mode = st.mode;
   if (st.theme) document.body.dataset.theme = st.theme;
+  if (st.workspace_view) {
+    document.body.dataset.view = st.workspace_view;
+    if (st.workspace_view === 'ambient') {
+      document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+    }
+  }
+  $('ambient-view').dataset.assistant = st.active_assistant || st.assistant || 'auto';
+  $('ambient-input').textContent = !st.voice_available ? 'Voice input unavailable' : !st.mic_on ? 'Microphone processing paused' :
+    st.voice_input_mode === 'manual' ? 'Hold-to-record only; open controls to record' : 'Wake-word listening enabled';
+  $('ambient-mic').disabled = !st.voice_available;
+  $('ambient-mic').textContent = st.mic_on ? 'Pause Mic' : 'Resume Mic';
+  $('ambient-mic').setAttribute('aria-pressed', !!st.mic_on);
+  $('ambient-lock').textContent = st.lockdown ? 'Lockdown ON' : 'Lockdown';
+  $('ambient-lock').setAttribute('aria-pressed', !!st.lockdown);
   $('voice_choice').querySelector('[value=piper]').disabled = !st.piper_available;
   $('t-speak').setAttribute('aria-pressed', !!st.speak_replies);
   $('t-mic').setAttribute('aria-pressed', !!st.mic_on);
   $('t-lock').setAttribute('aria-pressed', !!st.lockdown);
+  $('t-temp').setAttribute('aria-pressed', !!st.temporary_chat);
+  $('t-temp').classList.toggle('temp-on', !!st.temporary_chat);
+  $('t-temp').textContent = st.temporary_chat ? 'Temp ON' : 'Temp chat';
   $('t-internet').setAttribute('aria-pressed', !!st.internet);
   $('t-internet').classList.toggle('off', !st.internet);
   $('t-internet').textContent = st.internet ? 'Internet on' : 'Internet off';
-  const tukiTools = st.mode !== 'talk' && (st.assistant === 'tuki' || st.mode === 'coding');
+  const tukiTools = st.mode !== 'talk' && (st.assistant === 'tuki' || st.assistant === 'both' || st.mode === 'coding' || st.mode === 'research');
   $('tuki-calculate').hidden = !tukiTools;
   $('tuki-files').hidden = !tukiTools;
   const online = st.internet && !st.lockdown && st.mode !== 'talk';
+  $('read-feed').hidden = !online;
+  $('read-weather').hidden = !online;
   $('web-search').hidden = !online || !st.web_search;
   $('image-search-button').disabled = !online || !st.web_search;
   $('image-search-button').title = st.web_search ? 'Requires the Internet toggle and your approval' : 'Set up Brave Search first';
   $('image-generate-button').disabled = !st.image_generator || !!st.lockdown;
   $('image-generate-button').title = st.image_generator ? '' : 'Connect a local image generation API in Jarvis setup';
   $('upload-file').hidden = !online || !st.github_upload;
+  for (const id of ['github-issues', 'github-issue', 'github-new-issue', 'github-prs']) $(id).hidden = !online || !st.github_upload;
   $('t-speak').classList.toggle('off', !st.speak_replies);
   $('t-mic').classList.toggle('off', !st.mic_on); $('t-mic').disabled = !st.voice_available;
   $('t-mic').title = st.voice_available ? 'Pause or resume listening' : 'Voice input unavailable: ' + (st.voice_error || 'starting');
+  $('record-voice').disabled = !st.voice_available || !st.mic_on;
   $('t-lock').classList.toggle('lock-on', !!st.lockdown);
   $('t-lock').textContent = st.lockdown ? 'Lockdown ON' : 'Lockdown';
   if (st.model) $('model').textContent = st.model;
   if (st.pending !== undefined) setPending(st.pending);
 }
-api('/api/state').then(st => { setToggles(st); setState(st.status); });
+api('/api/state').then(st => { setToggles(st); setState(st.status); loadInstalledVoices(); });
 const es = new EventSource('/api/events?key=' + encodeURIComponent(KEY));
 es.onmessage = e => {
   const ev = JSON.parse(e.data);
   if (ev.kind === 'status') setState(ev.data);
+  else if (ev.kind === 'mic_level') $('mic-meter').style.width = Math.round(Math.max(0, Math.min(1, Number((ev.data && typeof ev.data === 'object') ? ev.data.level : ev.data) || 0)) * 100) + '%';
+  else if (ev.kind === 'dictation') showDictation(ev.data);
+  else if (ev.kind === 'workflow' && $('workflows').open) loadWorkflows();
   else if (ev.kind === 'heard') $('heard').textContent = '“' + ev.data + '”';
   else if (ev.kind === 'user') add('user', ev.data.text, ev.data.via === 'voice' ? 'spoken' : 'typed');
   else if (ev.kind === 'reply') {
     const reply = ev.data;
     if (typeof reply === 'string') add('jarvis', reply);
     else add('jarvis', reply.text, [reply.assistant, reply.model].filter(Boolean).join(' · '));
+    if (typeof reply !== 'string') $('ambient-view').dataset.assistant = reply.assistant === '__JARVIS_TUKI_NAME__' ? 'tuki' : 'jarvis';
     refresh();
     if ($('file-tasks').open && $('ft-root').options.length) ftBrowse(ft.path);
     if ($('apps').open) loadApps();
@@ -696,7 +929,8 @@ async function send(text) {
   } catch { add('system', 'Could not reach Jarvis. Check the HUD connection.'); }
   return false;
 }
-for (const key of ['mode', 'theme', 'voice_choice', 'assistant', 'tuki_voice_choice']) {
+for (const key of ['mode', 'theme', 'voice_choice', 'assistant', 'tuki_voice_choice',
+                   'sapi_voice_contains', 'tuki_sapi_voice_contains', 'voice_input_mode', 'workspace_view']) {
   $(key).onchange = async () => {
     try {
       const state = await api('/api/preferences', {key, value: $(key).value});
@@ -707,6 +941,21 @@ for (const key of ['mode', 'theme', 'voice_choice', 'assistant', 'tuki_voice_cho
     } catch { add('system', 'The setting could not be changed.'); }
   };
 }
+async function loadInstalledVoices() {
+  try {
+    const response = await api('/api/voices');
+    if (response.error) throw Error(response.error);
+    for (const key of ['sapi_voice_contains', 'tuki_sapi_voice_contains']) {
+      const current = $(key).value;
+      $(key).replaceChildren(new Option('Automatic', ''));
+      for (const name of response.voices || []) $(key).add(new Option(name, name));
+      if (current && !(response.voices || []).includes(current)) $(key).add(new Option(current + ' (unavailable)', current));
+      $(key).value = current;
+    }
+    if (!(response.voices || []).length) add('system', 'No system voices were found. Install a Windows voice and refresh this list.');
+  } catch { add('system', 'Could not list installed system voices.'); }
+}
+$('refresh-voices').onclick = loadInstalledVoices;
 for (const [id, assistant] of [['voice-preview', 'jarvis'], ['tuki-voice-preview', 'tuki']]) {
   $(id).onclick = () => api('/api/voice-preview', {assistant}).then(state => {
     if (state.error) add('system', state.error);
@@ -715,6 +964,184 @@ for (const [id, assistant] of [['voice-preview', 'jarvis'], ['tuki-voice-preview
 }
 $('stop-reply').onclick = () => api('/api/stop', {}).catch(() => add('system', 'Could not reach Jarvis.'));
 document.addEventListener('keydown', event => { if (event.key === 'Escape') $('stop-reply').click(); });
+// Recording always ends in a preview. It never submits recognised speech as a command.
+let recordingId = null, recordHeld = false, recordStarting = false, recordCancelled = false;
+function showDictation(data) {
+  $('dictation').hidden = data.state === 'cancelled';
+  $('record-voice').setAttribute('aria-pressed', data.state === 'recording');
+  $('dictation-use').disabled = data.state !== 'preview' || !data.text;
+  $('dictation-copy').disabled = data.state !== 'preview' || !data.text;
+  $('dictation-text').readOnly = data.state !== 'preview';
+  $('dictation-text').value = data.text || '';
+  $('dictation-status').textContent = data.error || ({recording:'Recording locally, up to 25 seconds. Release to review.',
+    transcribing:'Transcribing on this PC...', preview:'Review the transcript before using it.'}[data.state] || 'Recording cancelled.');
+  if (data.state === 'preview' || data.state === 'cancelled') { recordingId = null; recordHeld = false; }
+}
+async function startRecording() {
+  if (recordStarting || recordingId || $('record-voice').disabled || !$('dictation').hidden) return;
+  recordHeld = true; recordStarting = true; recordCancelled = false;
+  try {
+    const result = await api('/api/dictation', {action:'start'});
+    if (result.error) throw Error(result.error);
+    recordingId = result.id;
+    if (recordCancelled) await api('/api/dictation', {action:'cancel'});
+    else if (!recordHeld) await finishRecording();
+  } catch (error) { add('system', error.message || 'Could not start recording.'); recordHeld = false; }
+  finally { recordStarting = false; }
+}
+async function finishRecording() {
+  recordHeld = false;
+  if (!recordingId) return;
+  const id = recordingId;
+  try {
+    const result = await api('/api/dictation', {action:'finish', id});
+    if (result.error) throw Error(result.error);
+  } catch (error) { add('system', error.message || 'Could not end recording. Use Stop to cancel.'); }
+}
+async function discardRecording() {
+  recordCancelled = true; recordHeld = false;
+  showDictation({state:'cancelled'});
+  try { await api('/api/dictation', {action:'cancel'}); }
+  catch { add('system', 'Could not reach Jarvis. Recording ends automatically within 25 seconds.'); }
+}
+$('record-voice').addEventListener('pointerdown', event => {
+  if (event.button !== 0) return;
+  event.preventDefault(); $('record-voice').setPointerCapture(event.pointerId); startRecording();
+});
+$('record-voice').addEventListener('pointerup', finishRecording);
+$('record-voice').addEventListener('pointercancel', discardRecording);
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') { if (recordStarting || recordingId || !$('dictation').hidden) discardRecording(); return; }
+  if (event.code === 'Space' && (event.ctrlKey && event.shiftKey || document.activeElement === $('record-voice'))) {
+    event.preventDefault(); if (!event.repeat) startRecording();
+  }
+});
+document.addEventListener('keyup', event => { if (event.code === 'Space' && recordHeld) finishRecording(); });
+window.addEventListener('blur', () => { if (recordHeld || recordStarting) discardRecording(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && (recordHeld || recordStarting)) discardRecording(); });
+$('dictation-discard').onclick = discardRecording;
+$('dictation-use').onclick = () => {
+  const text = $('dictation-text').value.trim();
+  if ($('q').value.trim()) { $('dictation-status').textContent = 'Your message already contains text. Copy the transcript or clear the message first.'; return; }
+  $('q').value = text; $('q').focus(); discardRecording();
+};
+$('dictation-copy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('dictation-text').value); $('dictation-status').textContent = 'Transcript copied.'; }
+  catch { $('dictation-status').textContent = 'Select the transcript and copy it with Ctrl+C.'; }
+};
+function compactView(enabled) {
+  document.body.dataset.compact = String(enabled);
+  $('compact-view').setAttribute('aria-pressed', enabled);
+  $('compact-view').textContent = enabled ? 'Full view' : 'Compact view';
+  try { localStorage.setItem('jarvis-compact', String(enabled)); } catch {}
+}
+try { compactView(localStorage.getItem('jarvis-compact') === 'true'); } catch {}
+$('compact-view').onclick = () => compactView(document.body.dataset.compact !== 'true');
+$('ambient-controls').onclick = async () => {
+  try {
+    const result = await api('/api/preferences', {key:'workspace_view', value:'command'});
+    if (result.error) $('ambient-pending').textContent = result.error;
+    else { setToggles(result); $('workspace_view').focus(); }
+  } catch { $('ambient-pending').textContent = 'Could not reach Jarvis. Check the local service.'; }
+};
+$('ambient-stop').onclick = () => $('stop-reply').click();
+$('ambient-mic').onclick = () => $('t-mic').click();
+$('ambient-lock').onclick = () => $('t-lock').click();
+function ambientClock(enabled) {
+  $('ambient-clock').hidden = !enabled;
+  $('ambient-clock-toggle').textContent = enabled ? 'Hide clock' : 'Show clock';
+  $('ambient-clock-toggle').setAttribute('aria-pressed', enabled);
+  try { localStorage.setItem('jarvis-ambient-clock', String(enabled)); } catch {}
+}
+try { ambientClock(localStorage.getItem('jarvis-ambient-clock') !== 'false'); } catch {}
+$('ambient-clock-toggle').onclick = () => ambientClock($('ambient-clock').hidden);
+document.querySelectorAll('#command-nav button').forEach(button => button.onclick = () => {
+  const panel = $(button.dataset.panel); panel.open = true;
+  panel.querySelector('summary').focus(); panel.scrollIntoView({block:'nearest'});
+});
+const workflowSteps = [];
+function workflowStepText(step) {
+  const label = {documents:'Search selected documents', schedule:'Read saved schedule', tasks:'Read open tasks',
+    behind:'Review deadlines', calculate:'Calculate', reminders:'Read reminders', notes:'List saved notes',
+    memory:'Search local memory'}[step.kind] || step.kind;
+  return label + (step.value ? ': ' + step.value : '');
+}
+function renderWorkflowSteps() {
+  $('workflow-steps').replaceChildren();
+  workflowSteps.forEach((step, index) => {
+    const row = el('li', '', workflowStepText(step) + ' '), remove = el('button', '', 'Remove step ' + (index + 1));
+    remove.type = 'button'; remove.onclick = () => { workflowSteps.splice(index, 1); renderWorkflowSteps(); };
+    row.appendChild(remove); $('workflow-steps').appendChild(row);
+  });
+}
+$('workflow-add-step').onclick = () => {
+  if (workflowSteps.length >= 10) { $('workflow-status').textContent = 'A workflow can have at most 10 steps.'; return; }
+  workflowSteps.push({kind:$('workflow-kind').value, value:$('workflow-value').value.trim()});
+  $('workflow-value').value = ''; renderWorkflowSteps();
+};
+async function workflowRequest(data) {
+  const result = await api('/api/workflows', data);
+  if (result.error) throw Error(result.error);
+  return result;
+}
+async function workflowAction(data) {
+  try { await workflowRequest(data); await loadWorkflows(); }
+  catch (error) { $('workflow-status').textContent = error.message || 'Workflow action failed.'; }
+}
+async function loadWorkflows() {
+  try {
+    const result = await workflowRequest();
+    $('workflow-list').replaceChildren(); $('workflow-runs').replaceChildren();
+    $('workflow-status').textContent = `${result.templates.length} saved workflows, ${result.runs.length} saved runs.`;
+    for (const template of result.templates) {
+      const row = el('div'), name = el('h3', '', template.name), steps = el('ol');
+      template.steps.forEach(step => steps.appendChild(el('li', '', workflowStepText(step))));
+      const run = el('button', '', 'Review and run'), remove = el('button', '', 'Delete workflow');
+      run.type = remove.type = 'button';
+      run.onclick = () => {
+        if (window.confirm(`Run ${template.name}?\n\n${template.steps.map((s,i) => `${i+1}. ${workflowStepText(s)}`).join('\n')}\n\nLocal reads only. Results will be saved on this PC.`))
+          workflowAction({action:'run', id:template.id, revision:template.revision, confirmed:true});
+      };
+      remove.onclick = () => { if (window.confirm('Delete this workflow? Saved runs remain available.')) workflowAction({action:'delete', id:template.id, confirmed:true}); };
+      row.append(name, steps, run, remove); $('workflow-list').appendChild(row);
+    }
+    for (const run of result.runs) {
+      const filter = ($('workflow-filter').value || '').trim().toLowerCase();
+      if (filter && !(`${run.name} ${run.state} ${JSON.stringify(run.results)}`.toLowerCase().includes(filter))) continue;
+      const row = el('details'), summary = el('summary', '', `${run.name}: ${run.state} (${run.cursor}/${run.steps.length} steps)`);
+      row.append(summary, el('p', '', run.error));
+      run.results.forEach(result => row.appendChild(el('pre', '', `Step ${result.step}: ${result.kind}\n${result.text}`)));
+      if (['cancelled','interrupted','blocked','failed'].includes(run.state)) {
+        const resume = el('button', '', 'Review and resume'); resume.type = 'button';
+        resume.onclick = () => {
+          if (window.confirm(`Resume ${run.name} from step ${run.cursor+1}?\n\n${run.steps.slice(run.cursor).map(workflowStepText).join('\n')}\n\nCompleted steps will not repeat.`))
+            workflowAction({action:'resume', id:run.id, revision:run.revision, confirmed:true});
+        };
+        row.appendChild(resume);
+      }
+      const download = el('button', '', 'Export results'), remove = el('button', '', 'Delete results');
+      download.type = remove.type = 'button';
+      download.onclick = () => {
+        const url = URL.createObjectURL(new Blob([JSON.stringify(run, null, 2)], {type:'application/json'}));
+        const link = el('a'); link.href = url; link.download = 'Jarvis-Workflow-' + run.id + '.json'; link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      };
+      remove.disabled = run.state === 'running';
+      remove.onclick = () => { if (window.confirm('Delete these saved results? Exported files and older backups remain until you remove them.')) workflowAction({action:'delete_run', id:run.id, confirmed:true}); };
+      row.append(download, remove); $('workflow-runs').appendChild(row);
+    }
+  } catch (error) { $('workflow-status').textContent = error.message || 'Could not load workflows.'; }
+}
+$('workflow-create').onsubmit = async event => {
+  event.preventDefault();
+  try {
+    await workflowRequest({action:'save', name:$('workflow-name').value, steps:workflowSteps});
+    workflowSteps.length = 0; renderWorkflowSteps(); $('workflow-name').value = ''; await loadWorkflows();
+  } catch (error) { $('workflow-status').textContent = error.message || 'Could not save workflow.'; }
+};
+$('workflow-refresh').onclick = loadWorkflows;
+$('workflow-filter').oninput = loadWorkflows;
+$('workflows').addEventListener('toggle', () => { if ($('workflows').open) loadWorkflows(); });
 $('briefing').onclick = () => send('/briefing');
 $('document-search').onsubmit = event => {
   event.preventDefault();
@@ -843,6 +1270,9 @@ $('setup-load').onclick = async () => {
     $('setup-briefing-time').value = result.briefing_time;
     $('setup-briefing-enabled').checked = !!result.briefing_enabled;
     $('setup-briefing-speak').checked = !!result.briefing_speak;
+    if (result.speech_rate) $('setup-speech-rate').value = result.speech_rate;
+    if (result.tuki_speech_rate) $('setup-tuki-rate').value = result.tuki_speech_rate;
+    $('setup-mic-device').value = result.mic_device == null ? '' : String(result.mic_device);
     for (const [id, value] of [['setup-follow-up', result.follow_up_seconds],
                                ['setup-room-context', result.room_context_seconds]]) {
       const select = $(id);
@@ -867,6 +1297,9 @@ $('setup-form').onsubmit = async event => {
       briefing_time:$('setup-briefing-time').value,
       briefing_enabled:$('setup-briefing-enabled').checked,
       briefing_speak:$('setup-briefing-speak').checked,
+      speech_rate:Number($('setup-speech-rate').value) || 185,
+      tuki_speech_rate:Number($('setup-tuki-rate').value) || 200,
+      mic_device:$('setup-mic-device').value === '' ? null : Number($('setup-mic-device').value),
       follow_up_seconds:Number($('setup-follow-up').value),
       room_context_seconds:Number($('setup-room-context').value)});
     if (result.error) throw new Error(result.error);
@@ -885,6 +1318,25 @@ async function repository(data) {
   } catch (error) { $('repository-status').textContent = error.message || 'Could not select repository.'; }
 }
 $('repository-select').onsubmit = event => { event.preventDefault(); repository({action:'select', path:$('repository-path').value}); };
+async function providerSettings(data) {
+  try {
+    const result = await api('/api/provider', data);
+    if (result.error) throw Error(result.error);
+    $('chat-provider').value = result.provider;
+    $('local-chat-url').value = result.url || '';
+    $('local-chat-model').value = result.model || '';
+    $('local-chat-stream').checked = !!result.stream;
+    $('provider-status').textContent = 'Active chat provider: ' + result.provider +
+      (result.models ? '. Reported model IDs: ' + (result.models.join(', ') || 'none') : '. Changes apply to the next request.');
+  } catch (error) { $('provider-status').textContent = error.message || 'Could not change or inspect the local provider.'; }
+}
+$('provider-load').onclick = () => providerSettings();
+$('provider-models').onclick = () => providerSettings({action:'models'});
+$('provider-form').onsubmit = event => {
+  event.preventDefault();
+  providerSettings({action:'save', provider:$('chat-provider').value, url:$('local-chat-url').value,
+    model:$('local-chat-model').value, stream:$('local-chat-stream').checked});
+};
 $('repository-reset').onclick = () => repository({action:'reset'});
 repository();
 async function models(data) {
@@ -943,6 +1395,28 @@ async function refreshConnections(data) {
       }
       $('connections-list').appendChild(row);
     }
+    for (const oauth of result.oauth || []) {
+      const row = el('div', 'memory-row');
+      row.appendChild(el('span', '', `${oauth.name}: ${oauth.state} (${oauth.permission_mode})`));
+      row.appendChild(el('span', 'hint', oauth.setup_note));
+      if (oauth.revocable) {
+        const disc = el('button', '', 'Disconnect locally'); disc.type = 'button';
+        disc.onclick = () => {
+          if (window.confirm('Disconnect ' + oauth.name + ' locally?')) {
+            refreshConnections({action:'disconnect_oauth', connector:oauth.id, confirmed:true});
+          }
+        };
+        row.appendChild(disc);
+      }
+      $('connections-list').appendChild(row);
+    }
+    for (const cp of result.cloud_providers || []) {
+      const row = el('div', 'memory-row');
+      row.appendChild(el('span', '', `${cp.name}: ${cp.state}`));
+      row.appendChild(el('span', 'hint', `Host: ${cp.host} · Default model: ${cp.default_model} · Never used silently.`));
+      $('connections-list').appendChild(row);
+    }
+    renderFeedSubscriptions(result.feeds || []);
   } catch (error) { $('connections-status').textContent = error.message || 'Could not review connections.'; }
 }
 $('connections-refresh').onclick = () => refreshConnections();
@@ -981,14 +1455,22 @@ $('code-fix').onclick = () => fillCommand('/fix', 'file | what to change');
 $('code-test').onclick = () => fillCommand('/test', 'a file in the project');
 $('code-investigate').onclick = () => send('/investigate-tests');
 $('code-build').onclick = () => fillCommand('/build', 'a file in the project');
+$('code-git-status').onclick = () => send('/git-status');
+$('code-worktree').onclick = () => fillCommand('/worktree', 'feature/my-branch');
 $('tuki-calculate').onclick = () => fillCommand('/calc', 'Arithmetic expression');
 $('file-copy').onclick = () => fillCommand('/copy', 'source | destination inside Jarvis Code');
 $('file-move').onclick = () => fillCommand('/move', 'source | destination inside Jarvis Code');
 $('file-jobs').onclick = () => send('/jobs');
 $('read-source').onclick = () => fillCommand('/read', 'https://source-page | optional claim to check');
+$('read-feed').onclick = () => fillCommand('/feed', 'Exact public HTTPS RSS or Atom feed URL');
+$('read-weather').onclick = () => fillCommand('/weather', 'latitude,longitude for a supported US location; reviewed before sending');
 $('tuki-files').onclick = () => fillCommand('/files', 'Part of a filename');
 $('web-search').onclick = () => fillCommand('/search', 'Public search terms');
 $('upload-file').onclick = () => fillCommand('/upload', 'File relative to Jarvis Code');
+$('github-issues').onclick = () => send('/issues');
+$('github-issue').onclick = () => fillCommand('/issue', 'Issue number in the configured repository');
+$('github-new-issue').onclick = () => fillCommand('/new-issue', 'title | body; review the full preview before publishing');
+$('github-prs').onclick = () => send('/prs');
 function imageStatus(text) { $('image-status').textContent = text; }
 function showImageResults(cards) {
   $('images').open = true;
@@ -1063,6 +1545,10 @@ $('f').onsubmit = async event => {
   } finally { button.disabled = false; }
 };
 $('t-speak').onclick = () => api('/api/toggle', {what:'speak'}).then(setToggles);
+$('t-temp').onclick = () => api('/api/toggle', {what:'temporary_chat'}).then(st => {
+  setToggles(st);
+  add('system', st.temporary_chat ? 'Temporary chat ON: messages in this session are not saved to history.' : 'Temporary chat OFF: conversation history saving resumed.');
+});
 $('t-mic').onclick = () => api('/api/toggle', {what:'mic'}).then(setToggles);
 $('t-lock').onclick = () => api('/api/toggle', {what:'lockdown'}).then(setToggles);
 $('t-internet').onclick = () => api('/api/toggle', {what:'internet'}).then(setToggles);
@@ -1115,6 +1601,7 @@ function refresh() {
 }
 refresh(); setInterval(refresh, 15000);
 function tick() { const n = new Date(); $('clock').textContent = n.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  $('ambient-clock').textContent = $('clock').textContent;
   $('date').textContent = n.toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'}); }
 tick(); setInterval(tick, 1000);
 
@@ -1233,7 +1720,7 @@ $('wizard-open').onclick = openWizard;
 api('/api/state').then(st => {
   let closed = false;
   try { closed = sessionStorage.getItem('jarvis-wizard-closed') === '1'; } catch {}
-  if (st.first_run && !closed) openWizard();
+  if (st.first_run && !closed && st.workspace_view !== 'ambient') openWizard();
 });
 // ---- selected-folder file tasks
 const ft = {path: '', items: []};
@@ -1490,6 +1977,217 @@ async function loadExtensions() {
   renderExtensions(result.extensions);
 }
 $('apps').addEventListener('toggle', () => { if ($('apps').open) { loadApps(); loadExtensions(); } });
+// ---- hardware, audio devices, Sentinel security, MCP, conversations & local preview
+$('hardware-refresh').onclick = async () => {
+  try {
+    const hw = await api('/api/hardware');
+    if (hw.error) throw new Error(hw.error);
+    const gpuText = (hw.gpus || []).length ? hw.gpus.map(g => `${g.name} (${g.vram_total_gb} GB VRAM)`).join(', ') : 'No NVIDIA GPU detected';
+    $('hardware-summary').textContent = `${hw.os} · CPU: ${hw.cpu.logical_cores} threads · RAM: ${hw.memory.total_gb ?? '?'} GB (${hw.memory.available_gb ?? '?'} GB free) · GPU: ${gpuText} · Recommended: ${hw.recommendation.profile} (${hw.recommendation.tier}). ${hw.recommendation.note}`;
+  } catch (error) { $('hardware-summary').textContent = error.message || 'Could not inspect hardware.'; }
+};
+$('audio-devices-refresh').onclick = async () => {
+  try {
+    const dev = await api('/api/audio-devices');
+    if (dev.error) throw new Error(dev.error);
+    const sel = $('setup-mic-device');
+    const prev = sel.value;
+    sel.replaceChildren(new Option('OS default microphone', ''));
+    for (const item of dev.inputs || []) sel.add(new Option(item.name + (item.default ? ' (default)' : ''), String(item.index)));
+    if (dev.selected_mic != null) sel.value = String(dev.selected_mic);
+    else if (prev) sel.value = prev;
+    $('audio-devices-list').textContent = dev.available
+      ? `Microphones: ${(dev.inputs || []).map(d => d.name).join(', ') || 'none'} | Speakers: ${(dev.outputs || []).map(d => d.name).join(', ') || 'none'}`
+      : 'Audio device query unavailable (install sounddevice to inspect microphones and speakers).';
+  } catch (error) { $('audio-devices-list').textContent = error.message || 'Could not list audio devices.'; }
+};
+$('sentinel-refresh').onclick = async () => {
+  try {
+    const report = await api('/api/security');
+    if (report.error) throw new Error(report.error);
+    $('sentinel-list').replaceChildren();
+    $('sentinel-status').textContent = `${report.checks.length} defensive checks completed.`;
+    for (const chk of report.checks) {
+      const row = el('div', 'memory-row');
+      row.appendChild(el('span', '', `[${chk.status.toUpperCase()}] ${chk.label}`));
+      row.appendChild(el('span', 'hint', chk.detail));
+      $('sentinel-list').appendChild(row);
+    }
+  } catch (error) { $('sentinel-status').textContent = error.message || 'Could not run security audit.'; }
+};
+async function loadMcpServers() {
+  try {
+    const data = await api('/api/mcp');
+    if (data.error) throw new Error(data.error);
+    $('mcp-list').replaceChildren();
+    const servers = data.servers || [];
+    if (!servers.length) { $('mcp-list').textContent = 'No local MCP servers configured. All MCP tools remain disabled until explicitly configured and approved.'; return; }
+    for (const srv of servers) {
+      const row = el('div', 'memory-row');
+      row.appendChild(el('span', '', `${srv.name} (${srv.id}) · ${srv.enabled ? 'Enabled' : 'Disabled'} · Caps: ${srv.capabilities.join(', ')}`));
+      const actions = el('div', 'memory-actions');
+      const btn = el('button', '', srv.enabled ? 'Disable' : 'Approve & Enable'); btn.type = 'button';
+      btn.onclick = async () => {
+        if (!srv.enabled && !window.confirm(`Enable local MCP server ${srv.name} with capabilities: ${srv.capabilities.join(', ')}?`)) return;
+        const r = await api('/api/mcp', srv.enabled ? {action:'disable', id:srv.id} : {action:'enable', id:srv.id, capabilities:srv.capabilities});
+        if (r.error) $('mcp-status').textContent = r.error; else { $('mcp-status').textContent = srv.enabled ? 'Disabled.' : 'Enabled.'; loadMcpServers(); }
+      };
+      const disc = el('button', '', 'Discover tools'); disc.type = 'button'; disc.disabled = !srv.enabled;
+      disc.onclick = async () => {
+        const r = await api('/api/mcp', {action:'discover', id:srv.id});
+        $('mcp-status').textContent = r.error || (`Discovered ${(r.tools || []).length} tool(s): ` + ((r.tools || []).map(t => t.name).join(', ') || 'none'));
+      };
+      const rem = el('button', '', 'Remove'); rem.type = 'button';
+      rem.onclick = async () => {
+        if (!window.confirm(`Remove MCP server ${srv.name}?`)) return;
+        const r = await api('/api/mcp', {action:'remove', id:srv.id, confirmed:true});
+        if (r.error) $('mcp-status').textContent = r.error; else { $('mcp-status').textContent = 'Removed.'; loadMcpServers(); }
+      };
+      actions.append(btn, disc, rem); row.appendChild(actions); $('mcp-list').appendChild(row);
+    }
+  } catch (error) { $('mcp-list').textContent = error.message || 'Could not load MCP servers.'; }
+}
+$('mcp-refresh').onclick = loadMcpServers;
+$('mcp-add-form').onsubmit = async event => {
+  event.preventDefault();
+  try {
+    const args = $('mcp-args').value.trim() ? $('mcp-args').value.trim().split(/\s+/) : [];
+    const res = await api('/api/mcp', {action:'save', server:{id:$('mcp-id').value.trim(), name:$('mcp-name').value.trim(),
+      command:$('mcp-command').value.trim(), args, capabilities:['read_only']}});
+    if (res.error) throw new Error(res.error);
+    $('mcp-add-form').reset(); $('mcp-status').textContent = 'Registered disabled. Approve & Enable to use.';
+    loadMcpServers();
+  } catch (error) { $('mcp-status').textContent = error.message || 'Could not register MCP server.'; }
+};
+function renderFeedSubscriptions(feeds) {
+  $('feed-sub-list').replaceChildren();
+  if (!feeds.length) { $('feed-sub-list').textContent = 'No saved feed subscriptions.'; return; }
+  for (const feed of feeds) {
+    const row = el('div', 'memory-row');
+    row.appendChild(el('span', '', `${feed.name} (${feed.url})${feed.include_in_briefing ? ' · Briefing' : ''}`));
+    const actions = el('div', 'memory-actions');
+    const read = el('button', '', 'Read feed'); read.type = 'button';
+    read.onclick = () => send('/feed ' + feed.url);
+    const del = el('button', '', 'Remove feed'); del.type = 'button';
+    del.onclick = async () => {
+      const res = await api('/api/feeds', {action:'remove', url:feed.url});
+      if (res.error) $('feed-sub-status').textContent = res.error;
+      else { $('feed-sub-status').textContent = 'Feed removed.'; renderFeedSubscriptions(res.feeds || []); }
+    };
+    actions.append(read, del); row.appendChild(actions); $('feed-sub-list').appendChild(row);
+  }
+}
+$('feed-sub-form').onsubmit = async event => {
+  event.preventDefault();
+  try {
+    const res = await api('/api/feeds', {action:'add', name:$('feed-sub-name').value.trim(),
+      url:$('feed-sub-url').value.trim(), include_in_briefing:$('feed-sub-briefing').checked});
+    if (res.error) throw new Error(res.error);
+    $('feed-sub-form').reset(); $('feed-sub-status').textContent = 'Saved feed subscription.';
+    renderFeedSubscriptions(res.feeds || []);
+  } catch (error) { $('feed-sub-status').textContent = error.message || 'Could not save feed.'; }
+};
+$('memory-import-btn').onclick = () => $('memory-import-file').click();
+$('memory-import-file').onchange = () => {
+  const file = $('memory-import-file').files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      const items = Array.isArray(parsed) ? parsed : (parsed.facts || []);
+      const res = await api('/api/memory', {action:'import', facts:items});
+      if (res.error) throw new Error(res.error);
+      renderMemories(res.facts); $('memory-status').textContent = `Imported ${res.added} new fact(s).`;
+    } catch (error) { $('memory-status').textContent = error.message || 'Could not import JSON facts.'; }
+  };
+  reader.readAsText(file);
+};
+$('conv-search-btn').onclick = async () => {
+  const query = $('conv-search-input').value.trim();
+  if (!query) return;
+  try {
+    const res = await api('/api/conversations', {action:'search', query});
+    if (res.error) throw new Error(res.error);
+    const hits = res.matches || [];
+    $('conv-search-results').textContent = hits.length ? hits.join('\n') : 'No matching conversation history found.';
+  } catch (error) { $('conv-search-results').textContent = error.message || 'Search failed.'; }
+};
+async function loadProjects() {
+  try {
+    const data = await api('/api/projects');
+    if (data.error) throw new Error(data.error);
+    $('project-list').replaceChildren();
+    $('project-status').textContent = data.active ? `Active project scope: ${data.active}` : 'Active scope: Global (all facts)';
+    for (const proj of data.projects || []) {
+      const row = el('div', 'memory-row');
+      row.appendChild(el('span', '', (proj.name === data.active ? '* ' : '') + proj.name + (proj.description ? ' — ' + proj.description : '')));
+      const actions = el('div', 'memory-actions');
+      const act = el('button', '', 'Activate'); act.type = 'button';
+      act.onclick = () => api('/api/projects', {action:'activate', name:proj.name}).then(loadProjects);
+      const del = el('button', '', 'Delete project'); del.type = 'button';
+      del.onclick = () => {
+        if (window.confirm(`Delete project space ${proj.name}?`))
+          api('/api/projects', {action:'delete', name:proj.name, confirmed:true}).then(loadProjects);
+      };
+      actions.append(act, del); row.appendChild(actions); $('project-list').appendChild(row);
+    }
+  } catch (error) { $('project-status').textContent = error.message || 'Could not load projects.'; }
+}
+$('project-refresh').onclick = loadProjects;
+$('project-clear-active').onclick = () => api('/api/projects', {action:'activate', name:''}).then(loadProjects);
+$('project-form').onsubmit = async event => {
+  event.preventDefault();
+  try {
+    const res = await api('/api/projects', {action:'save', name:$('project-name').value.trim(), description:$('project-desc').value.trim()});
+    if (res.error) throw new Error(res.error);
+    $('project-form').reset(); loadProjects();
+  } catch (error) { $('project-status').textContent = error.message || 'Could not save project.'; }
+};
+$('memory-dedupe').onclick = async () => {
+  if (!window.confirm('Remove exact and near-duplicate remembered facts, keeping the newest copy of each?')) return;
+  try {
+    const res = await api('/api/memory', {action:'deduplicate', confirmed:true});
+    if (res.error) throw new Error(res.error);
+    renderMemories(res.facts);
+    $('memory-status').textContent = `Removed ${res.removed} duplicate fact(s).`;
+  } catch (error) { $('memory-status').textContent = error.message || 'Could not deduplicate facts.'; }
+};
+async function renderConversations(data) {
+  $('conv-list').replaceChildren();
+  for (const conv of data.conversations || []) {
+    const row = el('div', 'memory-row');
+    row.appendChild(el('span', '', (conv.id === data.active ? '* ' : '') + conv.title + (conv.project ? ` [${conv.project}]` : '')));
+    const sw = el('button', '', 'Switch'); sw.type = 'button';
+    sw.onclick = async () => {
+      const res = await api('/api/conversations', {action:'switch', id:conv.id});
+      if (!res.error) { $('log').replaceChildren(); (res.messages || []).forEach(m => add(m.role === 'user' ? 'user' : 'jarvis', m.content)); renderConversations(res); }
+    };
+    row.appendChild(sw);
+    $('conv-list').appendChild(row);
+  }
+}
+$('conv-refresh').onclick = () => api('/api/conversations').then(renderConversations).catch(() => {});
+$('conv-new').onclick = async () => {
+  const title = window.prompt('Name for the new conversation:');
+  if (!title || !title.trim()) return;
+  const res = await api('/api/conversations', {action:'create', title:title.trim()});
+  if (!res.error) { $('log').replaceChildren(); renderConversations(res); $('memory-status').textContent = 'Started new conversation: ' + title.trim(); }
+};
+$('doc-preview-file').onchange = () => {
+  const file = $('doc-preview-file').files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const res = await api('/api/documents/preview', {name:file.name, content_base64:reader.result.split(',')[1]});
+      if (res.error) throw new Error(res.error);
+      $('doc-preview-out').hidden = false;
+      $('doc-preview-out').textContent = `${res.name} (${res.chars} chars${res.truncated ? ', truncated' : ''}${res.injection_flagged ? ', WARNING: instruction-like text flagged' : ''})\n\n${res.preview}`;
+    } catch (error) { $('memory-status').textContent = error.message || 'Could not preview document.'; }
+  };
+  reader.readAsDataURL(file);
+};
 </script>
 </body>
 </html>

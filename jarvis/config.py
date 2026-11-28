@@ -11,8 +11,9 @@ from .assistants import CHOICES
 APP_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / "Jarvis"
 CONFIG_PATH = APP_DIR / "config.json"
 
-MODES = ("everyday", "coding", "briefing", "talk")
+MODES = ("everyday", "coding", "research", "cybersecurity", "briefing", "talk")
 THEMES = ("hud", "simple", "light", "contrast", "midnight", "paper")
+WORKSPACE_VIEWS = ("classic", "command", "ambient")
 VOICE_CHOICES = ("auto", "windows", "piper")
 VOICE_LIMITS = {"follow_up_seconds": 60, "room_context_seconds": 600}
 
@@ -27,6 +28,7 @@ DEFAULTS = {
     "memory_embeddings": True,
     "performance_profile": "standard",
     "theme": "hud",
+    "workspace_view": "classic",
     "voice_choice": "auto",
     # TUKI speaks with its own voice. "auto" picks a different installed voice from Jarvis.
     "tuki_voice_choice": "auto",
@@ -36,6 +38,7 @@ DEFAULTS = {
     # First-run wizard. Existing installs are marked complete when their config loads.
     "setup_complete": False,
     "voice_enabled": True,
+    "voice_input_mode": "wake",  # wake | manual (hold-to-record in the HUD)
     "storage_budget_gb": None,
     # Folders the user explicitly selected for general file tasks. Separate from code_dir.
     "file_folders": [],
@@ -55,6 +58,25 @@ DEFAULTS = {
     # Small local model used to turn memories into vectors for smarter recall.
     "embed_model": "nomic-embed-text",
     "ollama_url": "http://127.0.0.1:11434",
+    "chat_provider": "ollama",
+    "local_chat_url": "http://127.0.0.1:8081",
+    "local_chat_model": "",
+    "local_chat_stream": False,
+    # Optional per-request-consented cloud AI provider (off by default, never silent fallback).
+    "allow_cloud_provider": False,
+    "cloud_provider": "",
+    "cloud_model": "",
+    # Approved saved RSS/Atom feed subscriptions and local stdio MCP servers (disabled by default).
+    "saved_feeds": [],
+    "mcp_servers": [],
+    "connector_write_permissions": {},
+    "domain_permissions": {},
+    # Privacy & conversation state
+    "temporary_chat": False,
+    "active_project": "",
+    # Optional explicit audio device indices (None = OS default)
+    "mic_device": None,
+    "speaker_device": None,
     # Speech recognition (faster-whisper). tiny.en / base.en / small.en / medium.en
     "whisper_model": "small.en",
     "whisper_device": "auto",  # auto | cuda | cpu
@@ -177,7 +199,14 @@ def save(cfg: dict) -> None:
             temporary.unlink(missing_ok=True)
             raise
     try:
-        temporary.replace(CONFIG_PATH)
+        for attempt in range(5):
+            try:
+                temporary.replace(CONFIG_PATH)
+                break
+            except PermissionError:
+                if attempt == 4:
+                    raise
+                time.sleep(0.02)
     finally:
         temporary.unlink(missing_ok=True)
 

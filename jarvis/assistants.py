@@ -1,7 +1,7 @@
 """Choose the assistant for a single turn without another model call."""
 import re
 
-CHOICES = ("auto", "jarvis", "tuki")
+CHOICES = ("auto", "jarvis", "tuki", "both")
 TUKI_NAME = "TUKI"
 TUKI_FULL_NAME = "Technical Utility for Knowledge and Insight"
 
@@ -56,8 +56,8 @@ def route(text, preference="auto", mode="everyday"):
     request = _WAKE_PREFIX.sub("", text)
     if preference in ("jarvis", "tuki"):
         return preference, request
-    if mode == "coding" or request.startswith(("/fix", "/test", "/build", "/search ", "/calc ", "/files", "/diff", "/apply", "/undo",
-                                               "/check ", "/read ")):
+    if mode in ("coding", "research", "cybersecurity") or request.startswith(("/fix", "/test", "/build", "/search ", "/calc ", "/files", "/diff", "/apply", "/undo",
+                                               "/check ", "/read ", "/prs", "/git-status")):
         return "tuki", request
     if mode != "talk" and not _EDITING.match(request) and (_TECHNICAL.search(request) or FACT_CHECK.search(request)):
         return "tuki", request

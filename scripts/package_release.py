@@ -20,6 +20,13 @@ def build(output):
     paths += sorted(p for p in (ROOT / 'docs' / 'examples').rglob('*') if p.is_file())
     paths += [ROOT / 'scripts' / 'measure_document_search.py']
     paths += sorted((ROOT / 'docs' / 'screenshots').glob('*.png'))
+    paths += sorted((ROOT / 'docs' / 'screenshots').glob('*.md'))
+    paths += sorted((ROOT / 'docs' / 'measurements').glob('*.json'))
+    paths += sorted(p for p in (ROOT / 'docs' / 'design-concepts').glob('*')
+                    if p.is_file() and p.suffix in ('.md', '.webp'))
+    rust_dir = ROOT / 'rust' / 'jarvis-core'
+    if rust_dir.is_dir():
+        paths += [rust_dir / 'Cargo.toml'] + sorted((rust_dir / 'src').glob('*.rs'))
     files = {str(path.relative_to(ROOT)).replace('\\','/'): path.read_bytes() for path in paths}
     manifest = {'version':__version__, 'files':{name:hashlib.sha256(data).hexdigest() for name,data in files.items()}}
     files['release-manifest.json'] = json.dumps(manifest, indent=2).encode()

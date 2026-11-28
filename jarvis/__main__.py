@@ -18,7 +18,12 @@ import threading
 import time
 import webbrowser
 
-from . import appactions, assistants, config, connections, documents, extensions, filejobs, images, net, nomad, planner, recovery, secure, setupwizard, skills, watchchecks
+from . import (
+    agents, appactions, assistants, cloudprovider, config, connections, connectors,
+    documents, domains, extensions, filejobs, hardware, images, localprovider,
+    mcp_client, net, nomad, planner, recovery, secure, sentinel, setupwizard,
+    skills, watchchecks, workflows,
+)
 from .brain import Brain
 from .memory import Memory
 
@@ -31,6 +36,9 @@ class App:
         self.memory = Memory()
         watchchecks.init_db(self.memory)
         self.brain = Brain(cfg, self.memory)
+        workflows.init_db(self.memory)
+        self._workflow_cancelled = threading.Event()
+        self._workflow_lock = threading.Lock()
         self._settings_lock = threading.Lock()
         self._turn_lock = threading.Lock()
         self._stream_spoken = 0
@@ -78,20 +86,32 @@ class App:
         return {"status": self.status, "speak_replies": bool(self.cfg.get("speak_replies")),
                 "mic_on": bool(self.listener and not self.listener.paused.is_set()),
                 "voice_available": self.listener is not None, "voice_error": self.voice_error,
+                "voice_input_mode": self.cfg.get("voice_input_mode", "wake"),
                 "lockdown": bool(self.cfg.get("lockdown")),
                 "internet": bool(self.cfg.get("allow_internet_tools")),
                 "web_search": bool(self.cfg.get("allow_web_search") and secure.has_secret("brave_search_key")),
                 "image_generator": bool(net.local_image_endpoint(self.cfg.get("image_generation_url"))),
                 "github_upload": bool(self.cfg.get("github_upload_repo") and secure.has_secret("github_upload_token")),
                 "pending": {"text": pending["preview"], "id": pending.get("id")} if pending else None,
-                "model": (self.cfg.get("coder_model") or self.cfg["model"])
-                if self.cfg.get("mode") == "coding" else self.cfg["model"],
+                "model": self.cfg.get("local_chat_model") if self.cfg.get("chat_provider") == "openai_local" else
+                ((self.cfg.get("coder_model") or self.cfg["model"]) if self.cfg.get("mode") == "coding" else self.cfg["model"]),
+                "chat_provider": self.cfg.get("chat_provider", "ollama"),
                 "mode": self.cfg.get("mode", "everyday"), "theme": self.cfg.get("theme", "hud"),
+                "workspace_view": self.cfg.get("workspace_view", "classic"),
                 "assistant": self.cfg.get("assistant", "auto"),
+                "active_assistant": self.brain.assistant,
                 "voice_choice": self.cfg.get("voice_choice", "auto"),
                 "tuki_voice_choice": self.cfg.get("tuki_voice_choice", "auto"),
+                "sapi_voice_contains": self.cfg.get("sapi_voice_contains", ""),
+                "tuki_sapi_voice_contains": self.cfg.get("tuki_sapi_voice_contains", ""),
                 "tuki_piper_available": bool(self.cfg.get("tuki_piper_model")),
                 "piper_available": bool(self.cfg.get("piper_model")),
+                "speech_rate": int(self.cfg.get("speech_rate", 185)),
+                "tuki_speech_rate": int(self.cfg.get("tuki_speech_rate", 200)),
+                "temporary_chat": bool(self.cfg.get("temporary_chat", False)),
+                "active_project": self.cfg.get("active_project", ""),
+                "conversation_id": self.brain.conversation_id,
+                "cloud_provider_ready": cloudprovider.ready(self.cfg),
                 "honorific": self.cfg.get("honorific", "sir"),
                 "first_run": not self.cfg.get("setup_complete")}
 
@@ -116,14 +136,166 @@ class App:
                 if self.cfg.get('lockdown'):
                     raise ValueError('Turn off Lockdown to change connections.')
                 service = data.get('service')
-                if data.get('action') != 'revoke' or data.get('confirmed') is not True or service not in connections.REVOCABLE:
+                if data.get('action') == 'disconnect_oauth' and data.get('confirmed') is True:
+                    connectors.disconnect_oauth(str(data.get('connector') or ''))
+                elif data.get('action') == 'revoke' and data.get('confirmed') is True and service in connections.REVOCABLE:
+                    secure.set_secret(connections.REVOCABLE[service], '')
+                    if service == 'Canvas calendar feed':
+                        planner.CANVAS_CACHE.unlink(missing_ok=True)
+                    secure.audit('connection_revoked', {'service': service})
+                else:
                     raise ValueError('Choose a supported connection and confirm credential removal.')
-                secure.set_secret(connections.REVOCABLE[service], '')
-                if service == 'Canvas calendar feed':
-                    planner.CANVAS_CACHE.unlink(missing_ok=True)
-                secure.audit('connection_revoked', {'service': service})
-        return {'internet': bool(self.cfg.get('allow_internet_tools')),
-                'services': connections.status(self.cfg)}
+        return connectors.all_connector_summary(self.cfg)
+
+    def hardware_operation(self):
+        return hardware.summary()
+
+    def audio_devices_operation(self):
+        from . import voice
+        return {
+            **voice.audio_devices(),
+            "selected_mic": self.cfg.get("mic_device"),
+            "selected_speaker": self.cfg.get("speaker_device"),
+        }
+
+    def security_operation(self, include_nomad=False):
+        return sentinel.audit_posture(self.cfg, include_nomad=include_nomad)
+
+    def agents_operation(self):
+        return {
+            "profiles": agents.list_profiles(),
+            "active": self.cfg.get("assistant", "auto"),
+            "last_trace": (
+                {"task": self.brain.last_trace.task, "steps": self.brain.last_trace.steps,
+                 "cancelled": self.brain.last_trace.cancelled}
+                if self.brain.last_trace else None
+            ),
+        }
+
+    def mcp_operation(self, data=None):
+        with self.brain._lock, self._settings_lock:
+            if data is not None:
+                action = data.get("action")
+                if action == "save":
+                    mcp_client.save_server(self.cfg, data.get("server"))
+                elif action == "enable":
+                    mcp_client.set_enabled(self.cfg, str(data.get("id", "")), True, data.get("capabilities"))
+                elif action == "disable":
+                    mcp_client.set_enabled(self.cfg, str(data.get("id", "")), False)
+                elif action == "remove" and data.get("confirmed") is True:
+                    mcp_client.remove_server(self.cfg, str(data.get("id", "")))
+                elif action == "discover":
+                    return {"tools": mcp_client.discover_tools(self.cfg, str(data.get("id", "")))}
+                else:
+                    raise ValueError("Choose save, enable, disable, discover, or confirmed remove.")
+            return {"servers": mcp_client.list_servers(self.cfg), "capabilities": mcp_client.CAPABILITIES}
+
+    def feeds_operation(self, data=None):
+        with self.brain._lock, self._settings_lock:
+            if data is not None:
+                action = data.get("action")
+                if action == "add":
+                    connectors.add_feed(self.cfg, data.get("name"), data.get("url"), bool(data.get("include_in_briefing")))
+                elif action == "remove":
+                    connectors.remove_feed(self.cfg, str(data.get("url") or ""))
+                else:
+                    raise ValueError("Choose add or remove for feed subscriptions.")
+            return {"feeds": connectors.list_feeds(self.cfg)}
+
+    def conversations_operation(self, data=None):
+        with self.brain._lock:
+            if data is not None:
+                action = data.get("action")
+                if action == "create":
+                    created = self.memory.create_conversation(data.get("title"), data.get("project", ""))
+                    self.brain.conversation_id = created["id"]
+                    self.brain.history = []
+                    return {"active": created["id"], "conversations": self.memory.list_conversations()}
+                if action == "switch":
+                    cid = str(data.get("id") or "default")[:64]
+                    self.brain.conversation_id = cid
+                    self.brain.history = self.memory.recent_messages(self.cfg.get("history_turns", 12), conversation_id=cid)
+                    return {"active": cid, "messages": self.brain.history, "conversations": self.memory.list_conversations()}
+                if action == "rename":
+                    if not self.memory.rename_conversation(str(data.get("id") or ""), data.get("title")):
+                        raise ValueError("Conversation not found.")
+                elif action == "delete" and data.get("confirmed") is True:
+                    cid = str(data.get("id") or "")
+                    if cid == "default":
+                        raise ValueError("Use Clear conversation history to clear the default conversation.")
+                    if not self.memory.delete_conversation(cid):
+                        raise ValueError("Conversation not found.")
+                    if self.brain.conversation_id == cid:
+                        self.brain.conversation_id = "default"
+                        self.brain.history = self.memory.recent_messages(self.cfg.get("history_turns", 12), conversation_id="default")
+                elif action == "search":
+                    q = str(data.get("query") or "").strip()[:300]
+                    return {"matches": self.memory.search_diary(q, limit=15)}
+                else:
+                    raise ValueError("Choose create, switch, rename, search, or confirmed delete.")
+            return {"active": self.brain.conversation_id, "conversations": self.memory.list_conversations()}
+
+    def projects_operation(self, data=None):
+        with self.brain._lock, self._settings_lock:
+            if data is not None:
+                if self.cfg.get("lockdown"):
+                    raise ValueError("Turn off Lockdown to modify projects.")
+                action = data.get("action")
+                if action == "save":
+                    self.memory.save_project(
+                        data.get("name"), data.get("description", ""),
+                        data.get("code_dir", ""), data.get("document_folders", []),
+                    )
+                elif action == "delete" and data.get("confirmed") is True:
+                    if not self.memory.delete_project(str(data.get("name") or "")):
+                        raise ValueError("Project not found.")
+                elif action == "activate":
+                    name = str(data.get("name") or "").strip()[:60]
+                    updated = {**self.cfg, "active_project": name}
+                    config.save(updated)
+                    self.cfg.update(updated)
+                    self.emit("toggles", self.state())
+                else:
+                    raise ValueError("Choose save, activate, or confirmed delete.")
+            return {"active": self.cfg.get("active_project", ""), "projects": self.memory.list_projects()}
+
+    def document_preview_operation(self, data):
+        """Safely preview a dropped/uploaded local text, Markdown, or PDF file in memory without saving."""
+        import base64
+        import binascii
+        import io
+        if self.cfg.get("mode") == "talk" or self.cfg.get("lockdown"):
+            raise ValueError("Document preview is unavailable in Talk or Lockdown.")
+        name = str(data.get("name") or "").strip()
+        encoded = data.get("content_base64")
+        if not name or not isinstance(encoded, str) or len(encoded) > 4_000_000:
+            raise ValueError("Provide a text, Markdown, or PDF file up to 3 MB.")
+        suffix = os.path.splitext(name)[1].lower()
+        if suffix not in (".txt", ".md", ".pdf", ".json", ".csv", ".py", ".js"):
+            raise ValueError("Supported preview formats: .txt, .md, .pdf, .json, .csv, .py, .js.")
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error):
+            raise ValueError("Invalid base64 file content.") from None
+        if len(raw) > 3 * 1024 * 1024:
+            raise ValueError("File exceeds the 3 MB preview limit.")
+        if suffix == ".pdf":
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(raw))
+            if reader.is_encrypted:
+                raise ValueError("Encrypted PDF requires an unlocked copy.")
+            pages = [(p.extract_text() or "") for p in reader.pages[:20]]
+            text = "\n\n".join(pages)
+        else:
+            text = raw.decode("utf-8-sig", errors="replace")
+        injection = secure.looks_like_injection(text)
+        return {
+            "name": os.path.basename(name)[:120],
+            "chars": len(text),
+            "preview": text[:12_000],
+            "truncated": len(text) > 12_000,
+            "injection_flagged": injection,
+        }
 
     def models_operation(self, data=None):
         """Inspect locally installed Ollama models and assign one to an assistant role."""
@@ -147,6 +319,44 @@ class App:
                     'selected': {key:self.cfg.get(key) for key in ('everyday_model', 'model', 'coder_model', 'embed_model')},
                     'profile': self.cfg.get('performance_profile'), 'context_tokens': self.cfg.get('num_ctx'),
                     'note': 'Ollama reports disk size, not RAM or speed. Model role compatibility is not verified.'}
+
+    def provider_operation(self, data=None):
+        with self.brain._lock, self._settings_lock:
+            extra = {}
+            if data is not None:
+                if data.get("action") == "save":
+                    if self.cfg.get("lockdown"):
+                        raise ValueError("Turn off Lockdown to change the chat provider.")
+                    provider = data.get("provider")
+                    if provider not in ("ollama", "openai_local"):
+                        raise ValueError("Choose Ollama or a loopback chat-completions server.")
+                    candidate = {**self.cfg, "chat_provider":provider}
+                    if "url" in data:
+                        candidate["local_chat_url"] = data["url"]
+                    candidate["local_chat_url"] = localprovider.endpoint(candidate)
+                    if "model" in data:
+                        candidate["local_chat_model"] = data["model"]
+                    if "stream" in data:
+                        candidate["local_chat_stream"] = bool(data["stream"])
+                    if provider == "openai_local":
+                        candidate["local_chat_model"] = localprovider.model_name(candidate.get("local_chat_model"))
+                    config.save(candidate)
+                    self.cfg.update(candidate)
+                    self.brain._missing_models.clear()
+                    self.brain._no_tools.clear()
+                    self.brain._no_think.clear()
+                    self.brain._embed_ok = True
+                    self.emit("toggles", self.state())
+                elif data.get("action") == "models":
+                    if self.cfg.get("chat_provider") == "openai_local":
+                        extra["models"] = localprovider.models(self.cfg)
+                    else:
+                        extra["models"] = sorted((setupwizard.installed_ollama(self.cfg) or {}).keys())[:100]
+                else:
+                    raise ValueError("Choose Save provider or List active provider models.")
+            return {"provider":self.cfg.get("chat_provider", "ollama"),
+                    "url":self.cfg.get("local_chat_url"), "model":self.cfg.get("local_chat_model"),
+                    "stream":bool(self.cfg.get("local_chat_stream", False)), **extra}
 
     def toggle(self, what):
         with self._settings_lock:
@@ -172,13 +382,29 @@ class App:
                 self.brain.ctx.pending = None
                 self.brain.ctx.on_pending(None)
             secure.audit("lockdown_toggled", {"enabled": self.cfg["lockdown"]})
+        elif what == "temporary_chat":
+            self.cfg["temporary_chat"] = not self.cfg.get("temporary_chat", False)
+            config.save(self.cfg)
+            if self.cfg["temporary_chat"]:
+                self.brain.history = []
         st = self.state()
         self.emit("toggles", st)
         return st
 
     def set_preference(self, key, value):
         choices = {"mode": config.MODES, "theme": config.THEMES, "assistant": assistants.CHOICES,
-                   "voice_choice": config.VOICE_CHOICES, "tuki_voice_choice": config.VOICE_CHOICES}
+                   "voice_choice": config.VOICE_CHOICES, "tuki_voice_choice": config.VOICE_CHOICES,
+                   "voice_input_mode": ("wake", "manual"), "workspace_view": config.WORKSPACE_VIEWS}
+        if key in ("sapi_voice_contains", "tuki_sapi_voice_contains"):
+            from .voice import installed_voice_names
+            if not isinstance(value, str) or (value and value not in installed_voice_names()):
+                raise ValueError("Choose an installed system voice or Automatic.")
+            with self.brain._lock, self._settings_lock:
+                config.save({**self.cfg, key: value})
+                self.cfg[key] = value
+                state = self.state()
+            self.emit("toggles", state)
+            return state
         if key not in choices or value not in choices[key]:
             raise ValueError("Unknown setting.")
         if key == "voice_choice" and value == "piper" and not self.cfg.get("piper_model"):
@@ -188,6 +414,11 @@ class App:
         with self.brain._lock, self._settings_lock:
             config.save({**self.cfg, key: value})
             self.cfg[key] = value
+            if key == "voice_input_mode" and self.listener:
+                paused = self.listener.paused.is_set()
+                self.listener.pause()
+                if not paused:
+                    self.listener.resume()
             if key == "mode" and value == "talk" and self.brain.ctx.pending:
                 self.brain.confirm_pending(False)
             state = self.state()
@@ -211,12 +442,81 @@ class App:
 
     def stop(self):
         self.brain.cancelled.set()
+        self._workflow_cancelled.set()
+        if self.listener:
+            self.listener.cancel_manual()
         if self.speaker:
             self.speaker.stop()
         self.brain.ctx.pending = None
         self.emit("pending", None)
         self.emit("stream", "")
         return {"ok": True}
+
+    def dictation_operation(self, data):
+        if not self.listener:
+            raise ValueError("Voice input is unavailable. Check microphone setup first.")
+        action = data.get("action")
+        if action == "start":
+            return self.listener.begin_manual()
+        if action == "finish" and isinstance(data.get("id"), str):
+            return self.listener.finish_manual(data["id"])
+        if action == "cancel":
+            self.listener.cancel_manual()
+            return {"ok": True}
+        raise ValueError("Choose start, finish or cancel recording.")
+
+    def workflows_operation(self, data=None):
+        with self._workflow_lock:
+            if data is not None:
+                action = data.get("action")
+                key = data.get("id")
+                if action == "save":
+                    workflows.save_template(self.memory, data.get("name"), data.get("steps"))
+                elif action in ("delete", "delete_run") and data.get("confirmed") is True:
+                    workflows.delete(self.memory, "workflows" if action == "delete" else "workflow_runs", key)
+                elif action in ("run", "resume"):
+                    if self.cfg.get("lockdown"):
+                        raise ValueError("Turn off Lockdown before running a workflow.")
+                    if data.get("confirmed") is not True:
+                        raise ValueError("Review every step and confirm the workflow preview.")
+                    if not isinstance(key, str):
+                        raise ValueError("Choose a saved workflow or run.")
+                    if not self._turn_lock.acquire(blocking=False):
+                        raise ValueError("Jarvis is working. Use Stop and wait for the current task to end.")
+                    run_id = None
+                    try:
+                        if action == "run":
+                            run_id = workflows.create_run(self.memory, key, data.get("revision"))
+                        else:
+                            run = workflows.get_run(self.memory, key)
+                            if run["state"] not in ("cancelled", "interrupted", "failed", "blocked"):
+                                raise ValueError("Only an interrupted or blocked run can be resumed.")
+                            if data.get("revision") != run["revision"]:
+                                raise ValueError("Review the current run preview before resuming.")
+                            run_id = key
+                            workflows.update(self.memory, run_id, state="running", error="")
+                        self._workflow_cancelled.clear()
+                        self.emit("status", "working")
+                        threading.Thread(target=self._run_workflow, args=(run_id,), daemon=True).start()
+                    except BaseException:
+                        if run_id:
+                            workflows.update(self.memory, run_id, state="failed", error="Could not start the workflow worker.")
+                        self._turn_lock.release()
+                        raise
+                else:
+                    raise ValueError("Choose a workflow action and confirm deletion or execution.")
+            return {"templates": workflows.list_templates(self.memory), "runs": workflows.list_runs(self.memory)}
+
+    def _run_workflow(self, run_id):
+        try:
+            # Recovery and model operations already share this lock. A restore cannot
+            # replace the run database halfway through a workflow step.
+            with self.brain._lock:
+                workflows.execute(self.memory, self.cfg, run_id, self._workflow_cancelled,
+                                  lambda: self.emit("workflow", {"id": run_id}))
+        finally:
+            self._turn_lock.release()
+            self.emit("status", "listening" if self.listener else "idle")
 
     def _stream_reply(self, text):
         self.emit("stream", text)
@@ -258,11 +558,23 @@ class App:
                     if not isinstance(data["briefing_time"], str) or not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', data["briefing_time"]):
                         raise ValueError('Choose a daily briefing time in HH:MM format.')
                     updated["briefing_time"] = data["briefing_time"]
-                for key in ('briefing_enabled', 'briefing_speak'):
+                for key in ('briefing_enabled', 'briefing_speak', 'local_chat_stream'):
                     if key in data:
                         if type(data[key]) is not bool:
                             raise ValueError('Choose whether the daily briefing is on and spoken.')
                         updated[key] = data[key]
+                for rate_key in ('speech_rate', 'tuki_speech_rate'):
+                    if rate_key in data:
+                        val = data[rate_key]
+                        if type(val) is not int or not 100 <= val <= 320:
+                            raise ValueError('Speech rate must be an integer between 100 and 320 WPM.')
+                        updated[rate_key] = val
+                for dev_key in ('mic_device', 'speaker_device'):
+                    if dev_key in data:
+                        val = data[dev_key]
+                        if val is not None and (type(val) is not int or val < 0):
+                            raise ValueError('Choose a valid audio device index or OS default.')
+                        updated[dev_key] = val
                 for key, limit in config.VOICE_LIMITS.items():
                     if key in data:
                         value = data[key]
@@ -288,6 +600,11 @@ class App:
                     "briefing_speak": bool(self.cfg.get("briefing_speak", True)),
                     "follow_up_seconds": self.cfg.get("follow_up_seconds", 8),
                     "room_context_seconds": self.cfg.get("room_context_seconds", 120),
+                    "speech_rate": int(self.cfg.get("speech_rate", 185)),
+                    "tuki_speech_rate": int(self.cfg.get("tuki_speech_rate", 200)),
+                    "mic_device": self.cfg.get("mic_device"),
+                    "speaker_device": self.cfg.get("speaker_device"),
+                    "local_chat_stream": bool(self.cfg.get("local_chat_stream", False)),
                     "ocr_available": bool(documents.tesseract_path({**self.cfg, "ocr_enabled": True})),
                     "model": self.cfg["model"], "coder_model": self.cfg.get("coder_model")}
 
@@ -375,6 +692,15 @@ class App:
                         self.memory.db.execute("DELETE FROM messages")
                     self.brain.history = []
                     return {"facts": self.memory.fact_details()}
+                if data.get("action") == "find_duplicates":
+                    return {"duplicates": self.memory.find_duplicate_facts(), "facts": self.memory.fact_details()}
+                if data.get("action") == "deduplicate" and data.get("confirmed") is True:
+                    removed = self.memory.deduplicate_facts()
+                    return {"removed": removed, "facts": self.memory.fact_details()}
+                if data.get("action") == "import":
+                    added = self.memory.import_facts(data.get("facts"), project=self.cfg.get("active_project", ""))
+                    secure.audit("memory_imported", {"added": added})
+                    return {"added": added, "facts": self.memory.fact_details()}
                 fact_id = data.get("id")
                 if type(fact_id) is not int or fact_id < 1:
                     raise ValueError("Choose a remembered fact.")
@@ -828,6 +1154,15 @@ def doctor(cfg):
         print(f"  [{mark}] {label}" + (f"\n        -> {hint}" if hint and not good else ""))
 
     print("Jarvis doctor\n")
+    hw = hardware.summary()
+    mem = hw["memory"]
+    print(f"  [HW] OS: {hw['os']}")
+    print(f"  [HW] CPU: {hw['cpu']['processor']} ({hw['cpu']['physical_cores'] or '?'}C/{hw['cpu']['logical_cores']}T)")
+    if mem["total_gb"] is not None:
+        print(f"  [HW] RAM: {mem['total_gb']} GB total ({mem['available_gb']} GB available)")
+    for gpu in hw["gpus"]:
+        print(f"  [HW] GPU: {gpu['name']} ({gpu['vram_total_gb']} GB VRAM, {gpu['vram_free_gb']} GB free)")
+    print(f"  [HW] Recommended profile: {hw['recommendation']['profile']} ({hw['recommendation']['tier']})\n")
     brain = Brain(cfg, Memory())
     try:
         models = brain.installed_models()
@@ -919,7 +1254,7 @@ def text_chat(app):
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="jarvis", description="Offline personal assistant")
-    p.add_argument("command", nargs="?", default="run", choices=["run", "doctor", "voice-check", "briefing", "setup"])
+    p.add_argument("command", nargs="?", default="run", choices=["run", "doctor", "voice-check", "briefing", "setup", "security-audit"])
     p.add_argument("--text", action="store_true", help="chat in the terminal instead of by voice")
     p.add_argument("--no-voice", action="store_true", help="don't use the microphone")
     p.add_argument("--mode", choices=config.MODES, help="Start in this mode")
@@ -943,6 +1278,12 @@ def main(argv=None):
 
     if args.command == "doctor":
         return doctor(cfg)
+    if args.command == "security-audit":
+        report = sentinel.audit_posture(cfg, include_nomad=True)
+        print("Jarvis Sentinel Local Security Audit\n")
+        for chk in report["checks"]:
+            print(f"  [{chk['status'].upper():4s}] {chk['label']}: {chk['detail']}")
+        return 0
     if args.command == "voice-check":
         return voice_check(cfg)
     if args.command == "setup":

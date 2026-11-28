@@ -25,7 +25,7 @@ def status(cfg):
          'scope':'Public query after approval; no personal files', 'setup':'python -m jarvis setup'},
         {'name':'GitHub upload', 'state':('Ready' if internet else 'Paused') if github else 'Needs setup',
          'revocable': github,
-         'scope':'Approved upload to configured repository only; no issue or repository reading',
+         'scope':'Approved configured-repository README, issue and comment reads; explicit file upload and issue creation. Token scopes are provider-controlled.',
          'setup':'python -m jarvis setup'},
         {'name':'SMTP email', 'state':'Configured' if smtp else 'Needs setup',
          'revocable': smtp,

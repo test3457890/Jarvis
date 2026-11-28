@@ -39,3 +39,11 @@ Select an image to open it at full size.
 | File task control audit | Phone-width control audit |
 | --- | --- |
 | [![File task control audit](audit-file-tasks.png)](audit-file-tasks.png) | [![Phone-width control audit](audit-mobile.png)](audit-mobile.png) |
+
+## Phase 2 authentic application captures
+
+All 18 legacy screenshots above are preserved unchanged. Concept artwork remains separately labeled in [docs/design-concepts/README.md](../design-concepts/README.md).
+
+| Command Center view | Ambient Intelligence view | Sentinel security & MCP panel |
+| --- | --- | --- |
+| [![Command Center view](phase2-command-center.png)](phase2-command-center.png) | [![Ambient Intelligence view](phase2-ambient.png)](phase2-ambient.png) | [![Sentinel security & MCP panel](phase2-sentinel.png)](phase2-sentinel.png) |

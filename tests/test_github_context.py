@@ -58,3 +58,15 @@ def test_repo_read_blocks_injected_readme_and_offline(isolated_app, monkeypatch)
     assert 'suspicious instructions' in brain.ask('confirm repository')
     cfg['allow_internet_tools'] = False
     assert 'Internet tools are turned off' in brain.ask('/repo')
+
+
+def test_repository_change_invalidates_approved_read_target(isolated_app, monkeypatch):
+    cfg, db, _, _ = isolated_app
+    cfg.update(allow_internet_tools=True, github_upload_repo='owner/repo')
+    monkeypatch.setattr(secure, 'get_secret', lambda name, default='':
+                        'test-token' if name == 'github_upload_token' else default)
+    brain = Brain(cfg, db)
+    brain.ask('/repo')
+    cfg['github_upload_repo'] = 'owner/other'
+    monkeypatch.setattr(net, 'urlopen', lambda *a, **kw: (_ for _ in ()).throw(AssertionError('Destination changed')))
+    assert 'repository changed' in brain.ask('confirm repository')

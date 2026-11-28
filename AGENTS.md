@@ -43,6 +43,15 @@ browser HUD (ui.html) <-> webui.py (127.0.0.1, session key) <-> App (__main__.py
 | `images.py`, `nomad.py`, `comms.py` | Images, Project NOMAD, email/calls/texts |
 | `appactions.py` | Approved app actions: allowlisted programs, previews, Stop |
 | `extensions.py` | Extension manifests, approval, out-of-process tool calls, declared tests (`docs/Extensions.md`) |
+| `hardware.py` | Real CPU, RAM, disk, and NVIDIA GPU/VRAM detection with honest profile recommendations |
+| `localprovider.py` | Numeric-loopback OpenAI-compatible provider (completed replies, validated tools, optional SSE streaming & DPAPI Bearer auth) |
+| `cloudprovider.py` | Opt-in per-request-consented cloud AI provider (OpenAI, Anthropic, Gemini; DPAPI keys, zero silent fallback) |
+| `agents.py` | Specialist agent profiles and bounded Jarvis+TUKI cooperative independent review with recursion guard |
+| `mcp_client.py` | Local stdio JSON-RPC 2.0 MCP client with per-server capability approval, shell rejection, and injection fencing |
+| `connectors.py` | Unified connector registry, saved RSS/Atom subscriptions, and PKCE OAuth 2.0 scaffolding (Google Workspace, Microsoft 365) |
+| `sentinel.py` | Defensive local security posture audit (`python -m jarvis security-audit`, `/api/security`) |
+| `domains.py` | Foundational fail-closed Finance & Health permission boundaries |
+| `rust/jarvis-core/` | Zero-dependency native Rust policy validator and JSONL audit-log verifier (`cargo test`) |
 
 ## Entry points
 - Start menu or folder shortcut created by `install.ps1`: `.venv\Scripts\python.exe -m jarvis`

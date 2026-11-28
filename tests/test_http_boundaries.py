@@ -34,7 +34,10 @@ def test_blocked_url_does_not_disclose_private_path_or_query(isolated_app, monke
 def server(monkeypatch):
     monkeypatch.setattr(webui, 'REQUEST_BODY_TIMEOUT', 0.15)
     app = SimpleNamespace(cfg={}, bus=webui.EventBus(), state=lambda: {'fixture': True},
-                          toggle=lambda value: {'toggle': value})
+                          toggle=lambda value: {'toggle': value},
+                          dictation_operation=lambda data: {'action':data.get('action')},
+                          provider_operation=lambda data=None: {'provider':'ollama'},
+                          workflows_operation=lambda data=None: {'templates':[], 'runs':[]})
     with socket.socket() as probe:
         probe.bind(('127.0.0.1', 0))
         port = probe.getsockname()[1]
@@ -81,3 +84,27 @@ def test_valid_json_and_private_response_caching(server):
     status, data, cache = request(server, [2], b'{}')
     assert status == 200 and json.loads(data) == {'toggle': ''}
     assert cache == 'no-store'
+
+
+@pytest.mark.parametrize('method,path', [('POST','/api/dictation'), ('POST','/api/workflows'), ('GET','/api/workflows'),
+                                        ('GET','/api/provider'), ('POST','/api/provider')])
+@pytest.mark.parametrize('credential', ['missing', 'foreign-origin', 'valid'])
+def test_new_local_actions_require_session_key_and_same_origin(server, method, path, credential):
+    port, key = server
+    headers = {'Content-Type':'application/json'}
+    if credential != 'missing':
+        headers['X-Jarvis-Key'] = key
+    if credential == 'foreign-origin':
+        headers['Origin'] = 'https://attacker.invalid'
+    connection = http.client.HTTPConnection('127.0.0.1', port, timeout=2)
+    try:
+        connection.request(method, path, b'{"action":"start"}' if method == 'POST' else None, headers)
+        response = connection.getresponse()
+        payload = json.loads(response.read())
+        assert response.status == (200 if credential == 'valid' else 403)
+        if credential == 'valid':
+            expected = {'action':'start'} if path == '/api/dictation' else {'provider':'ollama'} if path == '/api/provider' else {'templates':[], 'runs':[]}
+            assert payload == expected
+        assert response.getheader('Cache-Control') == 'no-store'
+    finally:
+        connection.close()

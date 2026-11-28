@@ -2,12 +2,12 @@
 
 Jarvis is an offline-first AI assistant for Windows. It runs local Ollama models for everyday work and TUKI technical tasks, with voice controls, a weekly planner, document search, and a coding workspace with reviewable edits. Local tools work offline after setup. Web search and other online services require separate configuration.
 
-Download the Windows source ZIP and checksum from [Jarvis v1.3.0](https://github.com/test3457890/Jarvis/releases/tag/v1.3.0). See the [release notes](docs/ReleaseNotes.md) for what changed and the [capability matrix](docs/Capabilities.md) for requirements and testing status.
+Download the Windows source ZIP and checksum from [Releases](https://github.com/test3457890/Jarvis/releases) (current version: `1.4.0`; previous published release: [v1.3.0](https://github.com/test3457890/Jarvis/releases/tag/v1.3.0)). See the [release notes](docs/ReleaseNotes.md) for what changed and the [capability matrix](docs/Capabilities.md) for requirements and testing status.
 
 [Install Jarvis](#install-once) · [First launch](#first-launch-setup-wizard) · [File tasks](#file-tasks-in-selected-folders) · [Jarvis and TUKI](#jarvis-and-tuki) · [Project NOMAD](#project-nomad-integration) · [What is in this repository](#what-is-in-this-repository)
 
-See [CHANGELOG.md](CHANGELOG.md), the [capability matrix](docs/Capabilities.md) and the [HUD control report](docs/ControlReport.md).
-For future features and the comparison with other assistants, see the [master development plan](docs/Master%20Development%20Plan.md).
+See [CHANGELOG.md](CHANGELOG.md), the [capability matrix](docs/Capabilities.md), the [HUD control report](docs/ControlReport.md), the [architecture guide](docs/Architecture.md), the [defensive security model](docs/Security%20Model.md), and [third-party attribution](docs/Third%20Party%20Attribution.md).
+For future features, full status tracking, and session handoffs, see the [master development plan](docs/Master%20Development%20Plan.md), the [consolidated development tracker](docs/Development%20Tracker.md), the [44-item status audit](docs/Roadmap%20Status.md), and the [engineering handoff](docs/Engineering%20Handoff.md).
 
 For the November 2026 owner/Claude hardware pass, use the [Windows verification checklist](docs/Windows%20Verification.md).
 Automated HTTP/model fixtures and existing screenshot examples do not establish
@@ -15,7 +15,7 @@ real Ollama, NOMAD, audio, image-generation or Windows hardware behavior.
 
 ## Screenshots
 
-[View all 18 screenshots](docs/screenshots/README.md). Includes the planner, setup, mobile layouts, and control audit.
+[View all 18 legacy screenshots](docs/screenshots/README.md). See the separately labeled [original design concepts](docs/design-concepts/README.md). Includes the planner, setup, mobile layouts, and control audit.
 
 | Boot sequence | HUD | Confirmation banner |
 |---|---|---|
@@ -33,9 +33,9 @@ real Ollama, NOMAD, audio, image-generation or Windows hardware behavior.
 |---|---|---|
 | ![TUKI voice preview and a labelled answer](docs/screenshots/tuki-voice.png) | ![Three new themes](docs/screenshots/themes.png) | ![HUD at 390 px wide](docs/screenshots/mobile.png) |
 
-| Screen capture audit | App actions audit | Extension and OCR controls |
+| Screen capture audit | App actions audit | Extension, Sentinel, and HUD controls |
 |---|---|---|
-| ![Synthetic screen frame shown before a local vision question](docs/screenshots/audit-screen.png) | ![Approved app action controls in the HUD audit](docs/screenshots/audit-apps.png) | [See the 54-control report](docs/ControlReport.md) |
+| ![Synthetic screen frame shown before a local vision question](docs/screenshots/audit-screen.png) | ![Approved app action controls in the HUD audit](docs/screenshots/audit-apps.png) | [See the 67-control report](docs/ControlReport.md) |
 
 Screenshots use synthetic conversation, sample files and stubbed model replies, captured by
 `python -m scripts.capture_hud` and `python -m scripts.hud_control_audit`. The audit screen
@@ -124,7 +124,9 @@ Use the Mode menu in the HUD or say “Jarvis, switch to Coding mode.”
 | Mode | Behaviour |
 |---|---|
 | Everyday | General conversation and assistant tools. |
-| Coding | Local coding model for file edits, with a diff, apply and undo controls. |
+| Coding | Local coding model for file edits, diff/apply/undo, Git status, isolated worktrees, and approved tests/builds. |
+| Research | Source retrieval, local/web comparison, contradiction checking, and explicit separation of verified facts from assumptions. |
+| Cybersecurity | Defensive-only local security posture, Sentinel audit, and authorized NOMAD diagnostics. |
 | Briefing | A shortcut to read your current briefing and a concise style for planning. |
 | Talk | A chat-only view with no action tools or spoken background reminders. |
 
@@ -134,6 +136,11 @@ least 4.5:1 contrast (7:1 for body text in High contrast). Use the Voice toggle 
 responses, the Mic toggle to pause listening, and Try voice to hear a sample. Jarvis can use a
 Windows voice such as George if installed, or a local Piper voice such as `en_GB-alan-medium`.
 Set the local Piper model path in `python -m jarvis setup` and select Piper in the HUD.
+The HUD can list installed system voices and select a named voice for Jarvis and
+TUKI separately. Choose Automatic to restore the built-in preference order. A
+named British voice appears only if it is installed in Windows. Try voice plays
+a sample and reports the actual voice used; Piper selection uses the separate
+local model paths in Setup.
 
 `python -m jarvis --mode talk --theme simple` opens a minimal talk view. For coding, type
 `/fix budget.py | handle empty input | rules.txt` to select a target and an optional related file.
@@ -144,6 +151,91 @@ nearby conversation Jarvis may keep as temporary context (off, 30 seconds or 2 m
 Turning context off or pausing Mic clears that temporary context. A paused mic discards
 incoming speech; it does not close the operating system's input stream. Jarvis still
 requires a wake word when follow-ups are off.
+
+## Deliberate voice input and compact view
+
+Choose Hold to record only in Voice input to disable wake-word and room processing.
+Hold Hold to record, or hold Ctrl+Shift+Space while the HUD page is focused, then
+release to transcribe locally. Recording ends automatically after 25 seconds.
+Review and edit the transcript, then choose Use in message or Copy transcript.
+Using a transcript fills an empty message box; select Send yourself. Existing text is
+never replaced. Stop, Escape, losing page focus, or pausing Mic cancels an active capture.
+Raw samples stay in memory and are discarded after transcription or cancellation.
+The operating system input stream remains open while Mic is paused or manual input is idle.
+This is a page shortcut, not a system-wide hotkey or automatic dictation into other apps.
+
+Compact view hides the side dashboards and keeps conversation and approval controls
+available. It is saved in this browser independently of mode and theme. Keyboard focus
+outlines, a Skip to message link and reduced-motion support are included. This is a
+compact browser layout, not a tray application or always-on-top native window.
+
+## Local workflows and results
+
+Open Local workflows and results, name a workflow, add up to ten steps and save it.
+Supported steps search selected documents, read the saved schedule or open tasks,
+review deadlines, and calculate arithmetic. Schedule values are `today`, `tomorrow`
+or `week`. Task and deadline steps take no value. These steps do not contact online
+services, change your files, or run model-generated code. Each run requires a full
+step preview and confirmation. A tool configured to Ask or Off blocks the workflow;
+run that step directly to use its individual approval flow.
+
+Progress is saved after each completed step. Stop cancels at a checkpoint; an ongoing
+local document read or OCR may finish before cancellation is observed. After a restart,
+review and resume an interrupted run. Completed steps do not repeat. Inputs and up to
+16,000 characters of redacted output per step stay in the local database, including
+source file references returned by document search. Export results as JSON, or delete
+saved runs. Up to 20 workflows and 50 runs can be kept. Exported files and older
+backups remain until you remove them yourself. These are deterministic local workflows,
+not autonomous specialist agents or scheduled external checks.
+
+## Classic, Command Center and Ambient views
+
+The View selector is independent of Mode and Theme. Classic Jarvis keeps the original
+layout. Command Center adds quick navigation to planning, research, workflows,
+connections and setup, using the same conversation, settings and backend data.
+Ambient Intelligence shows an orbital core, actual processing state, optional clock,
+active assistant color and microphone state. Open controls to return to Command Center.
+Stop, Mic and Lockdown remain available. Pending action details, conversations and
+schedules are visually hidden, including when Compact view was previously enabled.
+This is glance privacy, not an operating-system lock: listening, speech and background
+reminders keep their existing settings. Reduced-motion preferences stop the animation.
+
+## GitHub issues
+
+With Internet on and the configured repository token, use `/issues` for the first
+page of open issues or `/issue 7` for one issue and up to ten comments. Reads require
+approval. Use `/new-issue title | body` to draft an issue. Jarvis previews the complete
+text and repository before sending; use Confirm or `confirm issue` to publish.
+A changed repository invalidates the pending operation. Tokens need the corresponding
+provider permissions, including Issues write only if you want issue creation. These
+commands do not grant scopes or perform Git pushes or pull-request operations.
+If the create response is lost, check GitHub before retrying; Jarvis makes no automatic
+retry that could create duplicate issues. Real private-repository scopes remain unverified.
+
+## Optional local chat provider
+
+Ollama is the default. Setup also supports an explicitly selected loopback-only
+chat-completions server, one exact local model ID, and a model-list check. Completed
+replies and validated tool calls use the same permissions and confirmation controls.
+The adapter uses keyword memory recall and has no cloud fallback. Its protocol tests
+use a real loopback fixture; an actual inference server/model still needs verification.
+See the [local provider guide](docs/Local%20Chat%20Provider.md) for setup and limits.
+
+## RSS, Atom and US weather
+
+With Internet on, use `/feed https://publisher.example/feed` to review up to twenty
+RSS/Atom entries after approving the exact URL. Output retains source links and
+feed-reported dates. Articles are not fetched, feed instructions cannot run tools,
+and XML entity/DTD declarations are refused. This is a manual read; subscriptions,
+background feed polling and automatic news briefings are not added.
+
+Use `/weather latitude,longitude` for a supported US location. Jarvis previews the
+coordinates and NWS service before making a points lookup and reading its forecast.
+No GPS is accessed. The returned grid must remain on the approved `api.weather.gov`
+forecast path. Temperatures, units, period times, source and update time come from
+the response; missing readings are never replaced by demonstration data. See the
+[NWS service documentation](https://www.weather.gov/documentation/services-web-api).
+Live service availability and forecasts remain separate from the fixture tests.
 
 ## Weekly planner
 
@@ -314,7 +406,8 @@ Use the **Jarvis** Start menu shortcut for voice plus the HUD. From the Jarvis f
 | `python -m jarvis` | Voice plus the HUD (what the shortcut runs) |
 | `python -m jarvis setup` | Your name, Canvas link, email and API keys (encrypted), voices |
 | `python -m jarvis --text` | Type in the terminal |
-| `python -m jarvis doctor` | Check everything |
+| `python -m jarvis doctor` | Check hardware, GPU/RAM profile recommendations, models, and voice packages |
+| `python -m jarvis security-audit` | Run the local defensive Sentinel security posture audit |
 | `python -m jarvis voice-check` | Record four seconds after you press Enter, show the local transcription, and play a test reply. Confirm the speaker worked by listening. |
 | `python -m jarvis briefing` | Hear today's briefing |
 

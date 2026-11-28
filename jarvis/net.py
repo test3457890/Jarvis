@@ -54,6 +54,10 @@ def allowed_endpoints(cfg: dict) -> set[tuple[str, str, int]]:
     ollama = _parse_endpoint(cfg.get("ollama_url", "http://127.0.0.1:11434"))
     if ollama:
         allowed.add(ollama)
+    if cfg.get("chat_provider") == "openai_local":
+        local_chat = local_image_endpoint(cfg.get("local_chat_url"))
+        if local_chat:
+            allowed.add(_parse_endpoint(local_chat))
 
     nomad = _parse_endpoint(cfg.get("nomad_url", "http://127.0.0.1:8080"))
     if nomad:
@@ -87,6 +91,11 @@ def allowed_endpoints(cfg: dict) -> set[tuple[str, str, int]]:
             allowed.add(("https", "imgs.search.brave.com", 443))
         if cfg.get("github_upload_repo") and secure.has_secret("github_upload_token"):
             allowed.add(("https", "api.github.com", 443))
+        if cfg.get("allow_cloud_provider"):
+            from . import cloudprovider
+            found = cloudprovider.configured_provider(cfg)
+            if found:
+                allowed.add(("https", found[1]["host"], 443))
 
     return allowed
 
@@ -149,7 +158,7 @@ def check_smtp(host: str, cfg: dict) -> str:
     return host
 
 
-def read_public_page(url, cfg):
+def read_public_page(url, cfg, *, content_types=('text/html', 'text/plain')):
     """Read an approved HTTPS page over a connection pinned to a public address."""
     import http.client
     import ipaddress
@@ -188,7 +197,7 @@ def read_public_page(url, cfg):
     path = urllib.parse.urlunsplit(('', '', parsed.path or '/', parsed.query, ''))
     secure.audit('public_page_read', {'host': host, 'purpose': 'approved_source'})
     try:
-        connection.request('GET', path, headers={'User-Agent':'JarvisLocalAssistant/1.1', 'Accept':'text/html,text/plain',
+        connection.request('GET', path, headers={'User-Agent':'JarvisLocalAssistant/1.1', 'Accept':','.join(content_types),
                                                  'Accept-Encoding':'identity'})
         response = connection.getresponse()
         if 300 <= response.status < 400:
@@ -196,8 +205,8 @@ def read_public_page(url, cfg):
         if response.status != 200:
             raise ValueError(f'The page returned HTTP {response.status}.')
         content_type = response.headers.get_content_type()
-        if content_type not in ('text/html', 'text/plain') or response.getheader('Content-Encoding', 'identity') != 'identity':
-            raise ValueError('The source must provide an uncompressed HTML or text page.')
+        if content_type not in content_types or response.getheader('Content-Encoding', 'identity') != 'identity':
+            raise ValueError('The source must provide an uncompressed supported content type.')
         data = response.read(1_000_001)
         if len(data) > 1_000_000:
             raise ValueError('The source exceeds the 1 MB page limit.')

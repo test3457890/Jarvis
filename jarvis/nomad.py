@@ -62,6 +62,8 @@ def search_library(ctx, query):
     base = _kiwix(ctx.cfg).rstrip("/")
     try:
         feed = _get(f"{base}/search?pattern={urllib.parse.quote(query)}&format=xml&pageLength=5", ctx.cfg)
+        if "\x00" in feed or re.search(r"<!\s*(?:DOCTYPE|ENTITY)\b", feed, re.I):
+            return "The library returned unsafe XML declarations and was rejected."
         items = ET.fromstring(feed).iter("item")
         results = [(i.findtext("title") or "", i.findtext("link") or "", _text(i.findtext("description") or ""))
                    for i in items]
