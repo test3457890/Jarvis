@@ -6,6 +6,7 @@ Starting commit: `4a48f4cc2d7a69f1bb50471a39b67cce98a24c5e`
 
 Remediation implementation commit: `49bc1b9e056e0a63f419358363b3af483664ce43`
 Draft pull request: [#45](https://github.com/test3457890/Jarvis/pull/45) into `main`; open for review, not merged or released.
+Last code commit: `d95083bc09883382853fcc15abd4878a6ebdf797`; all reported PR checks passed on this commit.
 
 ## Repository audit
 
@@ -29,7 +30,7 @@ Draft pull request: [#45](https://github.com/test3457890/Jarvis/pull/45) into `m
 - `cargo +1.100.0-x86_64-pc-windows-msvc test --manifest-path rust/jarvis-core/Cargo.toml`: 6 passed.
 - The draft PR exposed a CI configuration defect: the Rust job runs `cargo test --locked`, while `.gitignore` excluded `rust/jarvis-core/Cargo.lock`. The lockfile is now tracked, and the exact `--locked` command passed locally. CI recheck is pending.
 - The first CI Python jobs also lacked Playwright (both platforms) and `pyttsx3` (Windows), despite running tests for those capabilities. The matrix now installs the packages and Chromium. A Linux test also found that invalid window state was checked after the Windows platform guard; validation now rejects invalid states on either OS. Local targeted automation tests: 2 passed. New CI verification is pending.
-- The next CI run passed Linux Python, Rust, HUD, Windows install, and Android. Windows Python found that hosted SAPI can create a WAV header with no audio frames. Synthesis now raises an error for that case; the live SAPI assertion skips only on GitHub Actions when that specific failure occurs. CodeQL also found tainted Command Center asset path construction; the server now selects only the two built asset names from a fixed map. Two test URL checks now compare parsed hostnames. Local targeted suite: 21 passed. CI recheck is pending.
+- The next CI run found that hosted SAPI can create a WAV header with no audio frames. Synthesis now raises an error for that case; the live SAPI assertion skips only on GitHub Actions when that specific failure occurs. CodeQL also found tainted Command Center asset path construction; the server now selects only the two built asset names from a fixed map. Two test URL checks now compare parsed hostnames. Local targeted suite: 21 passed. Commit `d95083b` passed Windows and Linux Python, Rust, HUD, Windows install, Android APK, and all CodeQL checks.
 - `npm ci`: completed, 0 reported vulnerabilities. `npm run build`: succeeded and rebuilt the checked-in HUD bundle.
 - System `python -m pytest -q` after installing missing packages: 400 passed, 5 failed, 7 skipped. Two failures were missing `pyttsx3`, one missing Playwright, one was the HTTP reset fixed above, and the coding benchmark ran pytest outside a virtual environment while its sandbox deliberately strips user-profile paths.
 - `.venv\Scripts\python.exe -m pytest -q tests/test_command_center.py tests/test_http_boundaries.py tests/test_benchmark_harness.py`: 46 passed after the latest security additions. Tests cover exact-action, expiration, replay, denial, enrollment/removal, Docker timeout, and ignored caller approval booleans.
@@ -41,7 +42,7 @@ Draft pull request: [#45](https://github.com/test3457890/Jarvis/pull/45) into `m
 
 ## Next actions
 
-1. Run the full suite on CI and another Windows host to confirm the watchdog and HTTP rejection fixes are stable. Keep the neural voice tests in the combined suite.
+1. Run the full suite on another Windows host to confirm the watchdog and HTTP rejection fixes are stable. Keep the neural voice tests in the combined suite.
 2. Audit every HTTP mutation for booleans such as `approved`, `owner_authorized`, and `approve`. Route actual consequential effects through a common expiring, argument-bound approval service and test stale-target/Lockdown behavior. The present loopback session key protects against foreign web origins, but it does not isolate other local processes running as the same Windows user.
 3. Implement verified Windows accessibility click/type using stable UIA element identity and fresh tree inspection. Never report a placeholder as a completed computer action.
 4. Extend the modern browser audit from authenticated reads and selected interactions to each relevant button and backend effect. Check installer, updater, rollback and packaging with the rebuilt asset bundle.
