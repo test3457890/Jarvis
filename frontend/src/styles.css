@@ -113,3 +113,14 @@ input, select, textarea {
 }
 .cc-palette { width: min(560px, 92vw); background: var(--panel); border: 1px solid var(--cyan); border-radius: 12px; padding: 14px; }
 .cc-floating { width: 420px; height: 520px; margin: 20px auto; border: 1px solid var(--cyan); border-radius: 16px; overflow: hidden; }
+
+/* Intelligence Canvas cards stay readable across desktop and narrow screens. */
+.cc-canvas-toolbar { justify-content: space-between; flex-wrap: wrap; align-items: center; }
+.cc-canvas-toolbar h2 { margin: 0 0 6px; }
+.cc-canvas-toolbar p { margin: 0; }
+.cc-canvas-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 12px; }
+.cc-canvas-grid .cc-card { min-width: 0; overflow-wrap: anywhere; }
+.cc-canvas-grid a { color: var(--cyan); }
+.cc-canvas-controls { justify-content: flex-end; }
+.cc-canvas-overflow { overflow-x: auto; }
+.cc-canvas progress { max-width: 100%; }
