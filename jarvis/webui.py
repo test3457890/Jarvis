@@ -190,6 +190,14 @@ def serve(app, port: int):
                 self._json(app.tool_history_operation())
             elif self.path == "/api/undo":
                 self._json(app.undo_operation())
+            elif self.path == "/api/bgtasks":
+                self._json(app.bgtasks_operation())
+            elif self.path == "/api/monitors":
+                self._json(app.monitors_operation())
+            elif self.path == "/api/macros":
+                self._json(app.macros_operation())
+            elif self.path == "/api/daily-summary":
+                self._json(app.daily_summary_operation())
             else:
                 self._json({"error": "not found"}, 404)
 
@@ -320,7 +328,8 @@ def serve(app, port: int):
                 except (ValueError, TypeError, OSError) as error:
                     return self._json({"error": str(error)}, 400)
                 self._json(result)
-            elif self.path in ("/api/mcp", "/api/conversations", "/api/projects", "/api/feeds", "/api/documents/preview", "/api/providers", "/api/tools/dry-run"):
+            elif self.path in ("/api/mcp", "/api/conversations", "/api/projects", "/api/feeds", "/api/documents/preview",
+                               "/api/providers", "/api/tools/dry-run", "/api/bgtasks", "/api/monitors", "/api/macros", "/api/daily-summary"):
                 try:
                     ops = {
                         "/api/mcp": app.mcp_operation,
@@ -330,6 +339,10 @@ def serve(app, port: int):
                         "/api/documents/preview": app.document_preview_operation,
                         "/api/providers": app.providers_operation,
                         "/api/tools/dry-run": app.dry_run_operation,
+                        "/api/bgtasks": app.bgtasks_operation,
+                        "/api/monitors": app.monitors_operation,
+                        "/api/macros": app.macros_operation,
+                        "/api/daily-summary": app.daily_summary_operation,
                     }
                     result = ops[self.path](data)
                 except (ValueError, TypeError, OSError) as error:

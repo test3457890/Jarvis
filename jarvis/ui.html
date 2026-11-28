@@ -319,9 +319,9 @@
   body[data-compact=true] header { flex-wrap:wrap; gap:8px; }
   body[data-compact=true] .chat { min-height:60vh; flex-shrink:0; }
   body[data-compact=true] #log { min-height:180px; max-height:40vh; }
-  #vitals-panel, #providers-panel, #audit-ops-panel { border-top:1px solid var(--line); padding:8px 16px; max-height:52%; overflow:auto; }
-  body[data-mode=talk] #vitals-panel, body[data-mode=talk] #providers-panel, body[data-mode=talk] #audit-ops-panel { display:none; }
-  #vitals-panel summary, #providers-panel summary, #audit-ops-panel summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
+  #vitals-panel, #providers-panel, #audit-ops-panel, #runs-panel { border-top:1px solid var(--line); padding:8px 16px; max-height:52%; overflow:auto; }
+  body[data-mode=talk] #vitals-panel, body[data-mode=talk] #providers-panel, body[data-mode=talk] #audit-ops-panel, body[data-mode=talk] #runs-panel { display:none; }
+  #vitals-panel summary, #providers-panel summary, #audit-ops-panel summary, #runs-panel summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
   .vitals-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:8px; margin:8px 0; }
   .vital-card { border:1px solid var(--line); border-radius:6px; padding:8px; background:var(--panel); min-width:0; }
   .vital-card .v-label { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; }
@@ -407,7 +407,7 @@
   <section class="panel chat">
     <nav id="command-nav" aria-label="Command Center tools">
       <button type="button" data-panel="vitals-panel">Vitals</button><button type="button" data-panel="providers-panel">Providers</button>
-      <button type="button" data-panel="audit-ops-panel">Audit &amp; Undo</button><button type="button" data-panel="planner">Plan</button>
+      <button type="button" data-panel="audit-ops-panel">Audit &amp; Undo</button><button type="button" data-panel="runs-panel">Runs &amp; Monitors</button><button type="button" data-panel="planner">Plan</button>
       <button type="button" data-panel="knowledge">Research</button><button type="button" data-panel="workflows">Workflows</button>
       <button type="button" data-panel="connections-panel">Connections</button><button type="button" data-panel="sentinel-panel">Sentinel</button>
       <button type="button" data-panel="setup-panel">Setup</button>
@@ -645,6 +645,31 @@
       </div>
       <div class="ng-table-wrap"><table class="ng-table" id="tool-history-table"><thead><tr><th scope="col">Tool</th><th scope="col">Tier</th><th scope="col">Status</th><th scope="col">Time (ms)</th></tr></thead><tbody></tbody></table></div>
       <div id="undo-journal-list" class="hint"></div>
+    </details>
+    <details id="runs-panel" name="assistant-tools">
+      <summary>Background runs, monitors &amp; macros</summary>
+      <p class="hint">Checkpointed background tasks (T0/T1 only, crash-recoverable), local telemetry condition monitors, and policy-enforced macros.</p>
+      <div class="ft-row">
+        <button id="bgtasks-refresh" type="button">Refresh runs</button>
+        <button id="monitors-eval" type="button">Evaluate monitors</button>
+        <button id="daily-summary-btn" type="button">Daily summary</button>
+        <span id="runs-status" role="status" class="hint"></span>
+      </div>
+      <div id="bgtasks-list" class="hint"></div>
+      <form id="monitor-form" class="ft-row">
+        <input id="monitor-name" type="text" placeholder="Monitor name (e.g. High CPU)" maxlength="80" aria-label="Monitor name" required>
+        <select id="monitor-metric" aria-label="Monitor metric">
+          <option value="cpu_percent">CPU %</option><option value="mem_percent">Memory %</option>
+          <option value="disk_percent">Disk %</option><option value="gpu_percent">GPU %</option>
+          <option value="gpu_temp_c">GPU Temp °C</option><option value="battery_percent">Battery %</option>
+        </select>
+        <select id="monitor-op" aria-label="Monitor operator"><option value=">=">&gt;=</option><option value=">">&gt;</option><option value="<=">&lt;=</option><option value="<">&lt;</option></select>
+        <input id="monitor-threshold" type="number" value="85" step="1" aria-label="Threshold" style="max-width:5rem" required>
+        <button>Add monitor</button>
+      </form>
+      <div id="monitors-list" class="hint"></div>
+      <div id="macros-list" class="hint"></div>
+      <pre id="daily-summary-out" hidden></pre>
     </details>
     <details id="sentinel-panel" name="assistant-tools">
       <summary>Sentinel security &amp; MCP</summary>
@@ -2396,6 +2421,75 @@ $('dryrun-form').onsubmit = async event => {
     $('dryrun-output').hidden = false;
     $('dryrun-output').textContent = 'Dry-run error: ' + (error.message || 'Invalid JSON arguments.');
   }
+};
+
+// ---- Phase 2 Next-Gen: Background Runs, Monitors, Macros & Daily Summary
+async function loadRunsAndMonitors() {
+  try {
+    const [bt, mon, mac] = await Promise.all([api('/api/bgtasks'), api('/api/monitors'), api('/api/macros')]);
+    const btBox = $('bgtasks-list'); btBox.replaceChildren();
+    const tasks = bt.tasks || [];
+    if (!tasks.length) btBox.textContent = 'No background tasks yet.';
+    for (const t of tasks) {
+      const row = el('div', 'memory-row');
+      row.appendChild(el('span', '', `[${t.state}] ${t.title} (${t.kind}, step ${t.current_step}/${t.steps.length})`));
+      if (t.state === 'queued' || t.state === 'recovered') {
+        const runBtn = el('button', '', t.state === 'recovered' ? 'Resume' : 'Run'); runBtn.type = 'button';
+        runBtn.onclick = () => api('/api/bgtasks', {action:'run', id:t.id}).then(loadRunsAndMonitors);
+        row.appendChild(runBtn);
+      }
+      if (t.state === 'queued' || t.state === 'running' || t.state === 'recovered') {
+        const cBtn = el('button', '', 'Cancel'); cBtn.type = 'button';
+        cBtn.onclick = () => api('/api/bgtasks', {action:'cancel', id:t.id}).then(loadRunsAndMonitors);
+        row.appendChild(cBtn);
+      }
+      btBox.appendChild(row);
+    }
+    const mBox = $('monitors-list'); mBox.replaceChildren();
+    for (const m of mon.monitors || []) {
+      const row = el('div', 'memory-row');
+      row.appendChild(el('span', '', `${m.name}: ${m.metric_label} ${m.operator} ${m.threshold} (${m.enabled ? 'Active' : 'Paused'}, last: ${m.last_value ?? 'N/A'})`));
+      const tog = el('button', '', m.enabled ? 'Pause' : 'Resume'); tog.type = 'button';
+      tog.onclick = () => api('/api/monitors', {action:m.enabled ? 'pause' : 'resume', id:m.id}).then(loadRunsAndMonitors);
+      const del = el('button', '', 'Delete'); del.type = 'button';
+      del.onclick = () => api('/api/monitors', {action:'delete', id:m.id}).then(loadRunsAndMonitors);
+      row.append(tog, del); mBox.appendChild(row);
+    }
+    const macBox = $('macros-list'); macBox.replaceChildren();
+    for (const m of mac.macros || []) {
+      const row = el('div', 'memory-row');
+      row.appendChild(el('span', '', `Macro: ${m.name} (${m.steps.length} steps, runs: ${m.run_count})`));
+      const rep = el('button', '', 'Replay'); rep.type = 'button';
+      rep.onclick = async () => {
+        const r = await api('/api/macros', {action:'replay', id:m.id});
+        $('runs-status').textContent = r.error || `Replayed ${m.name}: ${r.steps_run} step(s)${r.halted_for_confirmation ? ' (waiting for confirmation)' : ''}.`;
+        loadRunsAndMonitors();
+      };
+      row.appendChild(rep); macBox.appendChild(row);
+    }
+    $('runs-status').textContent = `${tasks.length} run(s) · ${(mon.monitors || []).length} monitor(s) · ${(mac.macros || []).length} macro(s).`;
+  } catch (error) { $('runs-status').textContent = error.message || 'Could not load runs.'; }
+}
+$('runs-panel').ontoggle = () => { if ($('runs-panel').open) loadRunsAndMonitors(); };
+$('bgtasks-refresh').onclick = loadRunsAndMonitors;
+$('monitors-eval').onclick = async () => {
+  const res = await api('/api/monitors', {action:'evaluate'});
+  $('runs-status').textContent = res.error || `Evaluated monitors: ${(res.alerts || []).length} alert(s).`;
+  loadRunsAndMonitors();
+};
+$('monitor-form').onsubmit = async event => {
+  event.preventDefault();
+  const res = await api('/api/monitors', {
+    action:'create', name:$('monitor-name').value.trim(), metric:$('monitor-metric').value,
+    operator:$('monitor-op').value, threshold:Number($('monitor-threshold').value),
+  });
+  if (res.error) $('runs-status').textContent = res.error;
+  else { $('monitor-form').reset(); loadRunsAndMonitors(); }
+};
+$('daily-summary-btn').onclick = async () => {
+  const res = await api('/api/daily-summary');
+  $('daily-summary-out').hidden = false;
+  $('daily-summary-out').textContent = JSON.stringify(res, null, 2);
 };
 </script>
 </body>

@@ -19,10 +19,10 @@ import time
 import webbrowser
 
 from . import (
-    agents, appactions, assistants, cloudprovider, config, connections, connectors,
+    agents, appactions, assistants, bgtasks, cloudprovider, config, connections, connectors,
     documents, domains, extensions, fastpath, filejobs, hardware, images, localprovider,
-    mcp_client, net, nomad, planner, providers, recovery, secure, sentinel, setupwizard,
-    skills, telemetry, undo, watchchecks, workflows,
+    macros, mcp_client, memextract, monitors, net, nomad, planner, providers, recovery, secure,
+    sentinel, setupwizard, skills, telemetry, undo, watchchecks, workflows,
 )
 from .brain import Brain
 from .memory import Memory
@@ -37,6 +37,9 @@ class App:
         watchchecks.init_db(self.memory)
         self.brain = Brain(cfg, self.memory)
         workflows.init_db(self.memory)
+        bgtasks.recover_interrupted(self.memory)
+        monitors.init_db(self.memory)
+        macros.init_db(self.memory)
         self._workflow_cancelled = threading.Event()
         self._workflow_lock = threading.Lock()
         self._settings_lock = threading.Lock()
@@ -862,6 +865,76 @@ class App:
     def undo_operation(self):
         return {"entries": undo.JOURNAL.list_entries(limit=40)}
 
+    def bgtasks_operation(self, data=None):
+        if data is None:
+            return {"tasks": bgtasks.list_tasks(self.memory)}
+        action = str(data.get("action") or "").strip().lower()
+        if action == "create":
+            task = bgtasks.create_task(self.memory, data.get("title", ""), data.get("steps") or [], kind=data.get("kind", "sequential"))
+            return {"task": task, "tasks": bgtasks.list_tasks(self.memory)}
+        if action == "run":
+            task = bgtasks.execute_task(self.memory, self.brain.ctx, str(data.get("id") or ""))
+            return {"task": task, "tasks": bgtasks.list_tasks(self.memory)}
+        if action == "cancel":
+            task = bgtasks.cancel_task(self.memory, str(data.get("id") or ""))
+            return {"task": task, "tasks": bgtasks.list_tasks(self.memory)}
+        if action == "delete":
+            bgtasks.delete_task(self.memory, str(data.get("id") or ""))
+            return {"tasks": bgtasks.list_tasks(self.memory)}
+        raise ValueError("Choose create, run, cancel, or delete.")
+
+    def monitors_operation(self, data=None):
+        if data is None:
+            return {"monitors": monitors.list_monitors(self.memory), "metrics": monitors.METRICS}
+        action = str(data.get("action") or "").strip().lower()
+        if action == "create":
+            mon = monitors.create_monitor(
+                self.memory, name=data.get("name", ""), metric=data.get("metric", ""),
+                operator=data.get("operator", ">"), threshold=data.get("threshold", 90),
+            )
+            return {"monitor": mon, "monitors": monitors.list_monitors(self.memory)}
+        if action in ("pause", "resume"):
+            rows = monitors.set_enabled(self.memory, str(data.get("id") or ""), action == "resume")
+            return {"monitors": rows}
+        if action == "delete":
+            return {"monitors": monitors.delete_monitor(self.memory, str(data.get("id") or ""))}
+        if action == "evaluate":
+            alerts = monitors.evaluate_all(self.memory)
+            return {"alerts": alerts, "monitors": monitors.list_monitors(self.memory)}
+        raise ValueError("Choose create, pause, resume, delete, or evaluate.")
+
+    def macros_operation(self, data=None):
+        if data is None:
+            return {"macros": macros.list_macros(self.memory), "recording": macros.recording_status()}
+        action = str(data.get("action") or "").strip().lower()
+        if action == "save":
+            m = macros.save_macro(self.memory, name=data.get("name", ""), steps=data.get("steps") or [],
+                                  description=data.get("description", ""), macro_id=data.get("id"))
+            return {"macro": m, "macros": macros.list_macros(self.memory)}
+        if action == "delete":
+            macros.delete_macro(self.memory, str(data.get("id") or ""))
+            return {"macros": macros.list_macros(self.memory)}
+        if action == "preview":
+            return macros.preview_macro(self.memory, self.brain.ctx, str(data.get("id") or ""))
+        if action == "replay":
+            return macros.replay_macro(self.memory, self.brain.ctx, str(data.get("id") or ""))
+        if action == "record_start":
+            return {"recording": macros.start_recording(data.get("name", ""), data.get("description", ""))}
+        if action == "record_step":
+            return {"recording": macros.record_step(data.get("tool", ""), data.get("args") or {})}
+        if action == "record_stop":
+            return macros.stop_recording(self.memory, save=bool(data.get("save", True)))
+        raise ValueError("Choose save, delete, preview, replay, record_start, record_step, or record_stop.")
+
+    def daily_summary_operation(self, data=None):
+        if data and data.get("action") == "extract":
+            existing = [f[1] for f in self.memory.all_facts()]
+            return {"candidates": memextract.extract_candidates(data.get("text", ""), existing_facts=existing)}
+        if data and data.get("action") == "approve":
+            saved = memextract.approve_candidate(self.memory, data.get("text", ""), project=self.cfg.get("active_project", ""))
+            return {"saved": saved}
+        return memextract.daily_summary(self.memory, self.cfg)
+
     def preview_voice(self, assistant="jarvis"):
         if not self.speaker:
             return {"error": "Speech is unavailable."}
@@ -912,6 +985,8 @@ class App:
                     self.notify(f"Reminder: {text}")
                 self.memory.purge_expired()
                 watchchecks.run_due(self.memory, self.cfg, lambda message: self.notify(message, speak=False))
+                for alert in monitors.evaluate_all(self.memory):
+                    self.notify(alert["message"], speak=False)
                 self._event_heads_up()
                 self._deadline_nudges()
                 self._daily_briefing()
