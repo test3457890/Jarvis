@@ -22,7 +22,7 @@ from . import (
     agents, appactions, assistants, bgtasks, browser_auto, clipboard, cloudprovider, companion, config, connections, connectors,
     desktop, documents, domains, extensions, fastpath, filejobs, geospatial, hardware, images, localprovider,
     macros, mcp_client, memextract, monitors, net, nomad, planner, pro_workspace, providers, recovery, secure,
-    sentinel, setupwizard, skills, telemetry, undo, watchchecks, workflows,
+    sentinel, setupwizard, skills, telemetry, undo, voice_profile, watchchecks, workflows,
 )
 from .brain import Brain
 from .memory import Memory
@@ -46,6 +46,7 @@ class App:
         self._turn_lock = threading.Lock()
         self._stream_spoken = 0
         self._allow_stream_speech = False
+        self.echo_guard = voice_profile.EchoGuard()
         self.brain.on_stream = self._stream_reply
         self.brain.on_metrics = lambda values: self.emit("metrics", values)
         self._image_job = threading.Lock()
@@ -526,9 +527,13 @@ class App:
         if self._allow_stream_speech and self.speaker and not self.brain.cancelled.is_set():
             # Speech starts early only in Talk mode, which has no action tools.
             tail = text[self._stream_spoken:]
-            for sentence in re.finditer(r".+?[.!?](?:\s+|$)", tail, re.S):
-                self.speaker.say(sentence[0], self.brain.assistant)
-                self._stream_spoken += len(sentence[0])
+            sentences, remaining = voice_profile.stream_sentences(tail)
+            if sentences:
+                consumed = len(tail) - len(remaining)
+                for sentence in sentences:
+                    self.echo_guard.note_speaking(sentence)
+                    self.speaker.say(sentence, self.brain.assistant)
+                self._stream_spoken += consumed
 
     def settings_operation(self, data=None):
         with self.brain._lock, self._settings_lock:
@@ -929,7 +934,13 @@ class App:
     def daily_summary_operation(self, data=None):
         if data and data.get("action") == "extract":
             existing = [f[1] for f in self.memory.all_facts()]
-            return {"candidates": memextract.extract_candidates(data.get("text", ""), existing_facts=existing)}
+            raw_text = str(data.get("text") or "").strip()
+            if not raw_text:
+                raw_text = "\n".join(
+                    m.get("content", "") for m in self.memory.recent_messages(limit=20)
+                    if m.get("role") == "user"
+                )
+            return {"candidates": memextract.extract_candidates(raw_text, existing_facts=existing)}
         if data and data.get("action") == "approve":
             saved = memextract.approve_candidate(self.memory, data.get("text", ""), project=self.cfg.get("active_project", ""))
             return {"saved": saved}
@@ -1139,11 +1150,19 @@ class App:
 
     # ------------------------------------------------------------ conversation
     def _on_voice(self, command, room_context):
+        if command and self.echo_guard.is_barge_in_command(command):
+            self.echo_guard.clear()
+            self.stop()
+            self.emit("system", "Speech interrupted by voice command.")
+            return
+        if command and self.echo_guard.is_self_echo(command):
+            return
         if not command:  # only the name was said
             self.reply(f"Yes, {self.cfg.get('honorific') or 'sir'}?", speak=True)
             if self.speaker:
                 self.speaker.wait()
-            self.listener.keep_listening_for_follow_up()
+            if self.listener:
+                self.listener.keep_listening_for_follow_up()
             return
         self.handle(command, room_context, "voice")
 
@@ -1233,7 +1252,9 @@ class App:
             elif self.cfg.get("mode") == "coding":
                 spoken = spoken.split("\n\n", 1)[0].split("```", 1)[0].strip()[:350]
             voice = "tuki" if assistant == assistants.TUKI_NAME else "jarvis"
-            self.speaker.say(spoken or "The details are on screen.", voice)
+            spoken_text = spoken or "The details are on screen."
+            self.echo_guard.note_speaking(spoken_text)
+            self.speaker.say(spoken_text, voice)
 
 
 def _system_stats():

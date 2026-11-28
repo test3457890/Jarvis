@@ -56,3 +56,37 @@ def test_echo_guard_barge_in_and_streaming_sentence_chunker():
     ready, tail = voice_profile.stream_sentences("First sentence done. Second one! Partial tail")
     assert ready == ["First sentence done.", "Second one!"]
     assert tail == "Partial tail"
+
+
+def test_app_pipeline_wires_echo_guard_barge_in_and_stream_sentences(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+    from jarvis import __main__ as jarvis_main
+
+    monkeypatch.setattr(config, "APP_DIR", tmp_path)
+    monkeypatch.setattr(memory, "DB_PATH", tmp_path / "mem.db")
+    cfg = dict(config.DEFAULTS, notes_dir=str(tmp_path / "notes"))
+    (tmp_path / "notes").mkdir(exist_ok=True)
+    app = jarvis_main.App(cfg, use_voice=False)
+    app.speaker = MagicMock()
+
+    # 1. App.reply() records spoken text into EchoGuard so self-echo is suppressed in _on_voice()
+    app.reply("All systems are operational and ready for your command.", speak=True, assistant="Jarvis")
+    assert app.speaker.say.call_count == 1
+    handle_spy = MagicMock()
+    app.handle = handle_spy
+    app._on_voice("systems are operational and ready", "")
+    assert handle_spy.call_count == 0  # suppressed as self-echo
+
+    # 2. Explicit barge-in command calls app.stop() instead of being suppressed
+    stop_spy = MagicMock()
+    app.stop = stop_spy
+    app._on_voice("Jarvis stop", "")
+    assert stop_spy.call_count == 1
+
+    # 3. App._stream_reply() feeds voice_profile.stream_sentences() into Speaker.say()
+    app.speaker.say.reset_mock()
+    app._allow_stream_speech = True
+    app._stream_spoken = 0
+    app._stream_reply("First streaming sentence. Second streaming sentence! Trailing fragment")
+    spoken_args = [call.args[0] for call in app.speaker.say.call_args_list]
+    assert spoken_args == ["First streaming sentence.", "Second streaming sentence!"]
