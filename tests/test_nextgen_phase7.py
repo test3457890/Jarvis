@@ -57,3 +57,26 @@ def test_uat_tracker_cases_and_fail_closed_finance_domain(tmp_path, monkeypatch)
     cfg["lockdown"] = True
     with pytest.raises(PermissionError, match="Lockdown"):
         pro_workspace.finance_budget_summary(cfg, txns)
+
+
+def test_pure_stdlib_xlsx_reader_and_variance():
+    import io
+    import zipfile
+
+    def _make_xlsx(rows):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            xml_rows = []
+            for r_idx, row in enumerate(rows, 1):
+                cells = "".join(f'<c t="inlineStr"><is><t>{v}</t></is></c>' for v in row)
+                xml_rows.append(f'<row r="{r_idx}">{cells}</row>')
+            sheet = f'<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>{"".join(xml_rows)}</sheetData></worksheet>'
+            zf.writestr("xl/worksheets/sheet1.xml", sheet)
+        return buf.getvalue()
+
+    b1 = _make_xlsx([["item", "amount"], ["Servers", "200"], ["Licenses", "100"]])
+    b2 = _make_xlsx([["item", "amount"], ["Servers", "250"], ["Licenses", "100"]])
+    rep = pro_workspace.compare_xlsx_tables(b1, b2, key_col="item", value_col="amount")
+    assert rep["total_baseline"] == 300.0
+    assert rep["total_actual"] == 350.0
+    assert rep["total_delta"] == 50.0

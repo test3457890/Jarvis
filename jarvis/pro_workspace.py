@@ -13,10 +13,13 @@ import io
 import json
 import secrets
 import time
+import xml.etree.ElementTree as ET
+import zipfile
 
 from . import domains, secure
 
 MAX_TEXT_BYTES = 500_000
+MAX_XLSX_BYTES = 5_000_000
 
 
 def init_db(mem) -> None:
@@ -236,3 +239,78 @@ def finance_budget_summary(cfg: dict, transactions: list[dict]) -> dict:
         "net_cashflow": round(income - expenses, 2),
         "by_category": by_category,
     }
+
+
+# ------------------------------------------------------------------ Pure-Stdlib Hardened XLSX Reader
+def _safe_xml_root(raw: bytes) -> ET.Element:
+    if b"\x00" in raw or b"<!DOCTYPE" in raw.upper() or b"<!ENTITY" in raw.upper():
+        raise ValueError("Unsafe XML content (NUL byte, DTD, or entity) rejected in XLSX.")
+    return ET.fromstring(raw)
+
+
+def read_xlsx_rows(xlsx_bytes: bytes) -> list[dict]:
+    """Read the first worksheet of an .xlsx file using pure stdlib zipfile + hardened XML parsing."""
+    if not isinstance(xlsx_bytes, (bytes, bytearray)) or len(xlsx_bytes) > MAX_XLSX_BYTES:
+        raise ValueError("XLSX file exceeds the 5 MB safety limit.")
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(xlsx_bytes))
+    except zipfile.BadZipFile:
+        raise ValueError("Invalid XLSX archive.") from None
+
+    with zf:
+        # Guard against ZIP bombs by checking total uncompressed size
+        if sum(info.file_size for info in zf.infolist()) > MAX_XLSX_BYTES * 4:
+            raise ValueError("Uncompressed XLSX contents exceed safety limit.")
+        shared: list[str] = []
+        if "xl/sharedStrings.xml" in zf.namelist():
+            sroot = _safe_xml_root(zf.read("xl/sharedStrings.xml"))
+            for si in sroot.findall(".//{*}si"):
+                shared.append("".join(t.text or "" for t in si.findall(".//{*}t")))
+        sheet_name = "xl/worksheets/sheet1.xml"
+        if sheet_name not in zf.namelist():
+            sheets = [n for n in zf.namelist() if n.startswith("xl/worksheets/sheet") and n.endswith(".xml")]
+            if not sheets:
+                raise ValueError("No worksheet found inside XLSX.")
+            sheet_name = sorted(sheets)[0]
+        root = _safe_xml_root(zf.read(sheet_name))
+
+        grid: list[list[str]] = []
+        for row_el in root.findall(".//{*}sheetData/{*}row")[:5000]:
+            vals: list[str] = []
+            for cell in row_el.findall("{*}c"):
+                ctype = cell.attrib.get("t", "")
+                if ctype == "inlineStr":
+                    vals.append("".join(t.text or "" for t in cell.findall(".//{*}t")))
+                else:
+                    v_el = cell.find("{*}v")
+                    raw_v = (v_el.text or "") if v_el is not None else ""
+                    if ctype == "s" and raw_v.isdigit() and int(raw_v) < len(shared):
+                        vals.append(shared[int(raw_v)])
+                    else:
+                        vals.append(raw_v)
+            if any(v.strip() for v in vals):
+                grid.append(vals)
+
+    if len(grid) < 2:
+        return []
+    headers = [h.strip() for h in grid[0]]
+    rows = []
+    for r in grid[1:]:
+        padded = r + [""] * max(0, len(headers) - len(r))
+        rows.append({headers[i]: padded[i] for i in range(len(headers)) if headers[i]})
+    return rows
+
+
+def compare_xlsx_tables(xlsx_baseline: bytes, xlsx_actual: bytes, *, key_col: str, value_col: str) -> dict:
+    """Compare two .xlsx files by converting their first sheets to CSV and running variance analysis."""
+    def _to_csv(rows: list[dict]) -> str:
+        if not rows:
+            return f"{key_col},{value_col}\n"
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+        return buf.getvalue()
+
+    return compare_csv_tables(_to_csv(read_xlsx_rows(xlsx_baseline)), _to_csv(read_xlsx_rows(xlsx_actual)),
+                              key_col=key_col, value_col=value_col)

@@ -701,8 +701,12 @@
         <button>Generate SAR grid (offline)</button>
       </form>
       <div class="spark-wrap" aria-label="Offline SAR sweep track preview">
-        <div class="hint" id="sar-summary">Enter coordinates to plot an offline parallel-track SAR sweep grid.</div>
-        <svg id="sar-svg" viewBox="0 0 260 90" role="img" aria-label="SAR search grid plot"></svg>
+        <div class="hint" id="sar-summary">Enter coordinates to plot an offline parallel-track SAR sweep grid and 3D orthographic globe marker.</div>
+        <div class="ft-row">
+          <label>Globe longitude <input id="globe-lon" type="range" min="-180" max="180" value="-105" aria-label="Rotate 3D globe longitude"></label>
+          <canvas id="globe-canvas" width="160" height="160" aria-label="Interactive 3D orthographic globe"></canvas>
+          <svg id="sar-svg" viewBox="0 0 260 90" style="max-width:260px" role="img" aria-label="SAR search grid plot"></svg>
+        </div>
       </div>
       <div id="companion-status" class="hint" role="status"></div>
     </details>
@@ -2571,7 +2575,56 @@ $('sar-form').onsubmit = async event => {
     poly.setAttribute('points', pts.join(' '));
     svg.appendChild(poly);
   }
+  drawGlobe(Number($('sar-lat').value), Number($('sar-lon').value));
 };
+function drawGlobe(markerLat, markerLon) {
+  const cv = $('globe-canvas');
+  if (!cv || !cv.getContext) return;
+  const ctx = cv.getContext('2d');
+  const cx = 80, cy = 80, r = 68;
+  const centerLon = (Number($('globe-lon')?.value) || -105) * Math.PI / 180;
+  const centerLat = 20 * Math.PI / 180;
+  ctx.clearRect(0, 0, 160, 160);
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#071420'; ctx.fill();
+  ctx.strokeStyle = '#4fd8ff'; ctx.lineWidth = 1.5; ctx.stroke();
+  const project = (latDeg, lonDeg) => {
+    const phi = latDeg * Math.PI / 180, lam = lonDeg * Math.PI / 180;
+    const cosc = Math.sin(centerLat) * Math.sin(phi) + Math.cos(centerLat) * Math.cos(phi) * Math.cos(lam - centerLon);
+    if (cosc < 0) return null;
+    const x = cx + r * Math.cos(phi) * Math.sin(lam - centerLon);
+    const y = cy - r * (Math.cos(centerLat) * Math.sin(phi) - Math.sin(centerLat) * Math.cos(phi) * Math.cos(lam - centerLon));
+    return [x, y];
+  };
+  ctx.strokeStyle = 'rgba(79,216,255,0.22)'; ctx.lineWidth = 1;
+  for (let lat = -60; lat <= 60; lat += 30) {
+    ctx.beginPath(); let pen = false;
+    for (let lon = -180; lon <= 180; lon += 10) {
+      const p = project(lat, lon);
+      if (p) { pen ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); pen = true; } else pen = false;
+    }
+    ctx.stroke();
+  }
+  for (let lon = -180; lon < 180; lon += 30) {
+    ctx.beginPath(); let pen = false;
+    for (let lat = -85; lat <= 85; lat += 10) {
+      const p = project(lat, lon);
+      if (p) { pen ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); pen = true; } else pen = false;
+    }
+    ctx.stroke();
+  }
+  if (typeof markerLat === 'number' && typeof markerLon === 'number') {
+    const mp = project(markerLat, markerLon);
+    if (mp) {
+      ctx.beginPath(); ctx.arc(mp[0], mp[1], 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffb347'; ctx.fill();
+    }
+  }
+}
+if ($('globe-lon')) {
+  $('globe-lon').oninput = () => drawGlobe(Number($('sar-lat').value), Number($('sar-lon').value));
+  drawGlobe(39.7392, -104.9903);
+}
 
 // ---- Dedicated Workspaces Switcher (Console, Vitals, Audit, Repair, Runs, Professional, Settings)
 const WS_PANELS = {

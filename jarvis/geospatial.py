@@ -40,6 +40,12 @@ PUBLIC_GEOSPATIAL_FEEDS = {
         "content_type": "application/json",
         "category": "satellite",
     },
+    "noaa_maritime_buoys": {
+        "label": "NOAA NDBC Public Maritime Buoy Observations",
+        "url": "https://www.ndbc.noaa.gov/data/latest_obs/latest_obs.txt",
+        "content_type": "text/plain",
+        "category": "maritime",
+    },
 }
 
 
@@ -107,6 +113,10 @@ def sar_search_grid(center_lat: float, center_lon: float, *, radius_km: float = 
         "area_km2": area_km2,
         "estimated_sweep_km": total_track_km,
         "waypoints": waypoints,
+        "operational_limitations": (
+            "Planning and simulation aid only. Assumes flat local tangent projection over short radii; "
+            "does not account for terrain elevation, airspace restrictions, weather minimums, or certified SAR command."
+        ),
     }
 
 
