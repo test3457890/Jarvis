@@ -165,6 +165,28 @@ def run_audit() -> tuple[int, int]:
                     page.get_by_role("button", name="Show Rail").click(),
                 ))
 
+                def verify_canvas():
+                    page.evaluate("""() => localStorage.setItem('jarvis-intelligence-canvas-v1', JSON.stringify([
+                        {id:'fixture_1', kind:'summary', title:'Synthetic bench note', text:'Synthetic fixture only', assistant:'tuki', provenance:'simulation'},
+                        {id:'fixture_2', kind:'progress', title:'Synthetic progress', value:35, provenance:'simulation'}
+                    ]))""")
+                    page.reload(wait_until="networkidle")
+                    page.get_by_role("button", name="Intelligence Canvas").click()
+                    canvas = page.get_by_role("region", name="Intelligence Canvas")
+                    expect(canvas.get_by_text("Synthetic bench note")).to_be_visible()
+                    expect(canvas.get_by_text("Synthetic fixture only")).to_be_visible()
+                    canvas.get_by_role("button", name="Move Synthetic progress earlier").click()
+                    assert canvas.locator("article strong").first.inner_text() == "Synthetic progress"
+                    with page.expect_download() as download:
+                        canvas.get_by_role("button", name="Export JSON").click()
+                    assert download.value.suggested_filename == "jarvis-intelligence-canvas.json"
+                    canvas.screenshot(path=str(shots_dir / "command-center-intelligence-canvas.png"))
+                    page.reload(wait_until="networkidle")
+                    page.get_by_role("button", name="Intelligence Canvas").click()
+                    assert page.get_by_role("region", name="Intelligence Canvas").locator("article strong").first.inner_text() == "Synthetic progress"
+                    page.get_by_role("button", name="Workspaces").click()
+                check("Intelligence Canvas restores, reorders and exports synthetic cards", verify_canvas)
+
                 check("Legacy HUD switch returns cleanly to /", lambda: (
                     page.get_by_role("link", name="Legacy HUD").click(),
                     page.wait_for_url(f"{base}/"),
