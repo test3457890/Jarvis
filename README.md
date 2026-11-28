@@ -6,8 +6,8 @@ Download the Windows source ZIP and checksum from [Jarvis v1.3.0](https://github
 
 [Install Jarvis](#install-once) · [First launch](#first-launch-setup-wizard) · [File tasks](#file-tasks-in-selected-folders) · [Jarvis and TUKI](#jarvis-and-tuki) · [Project NOMAD](#project-nomad-integration) · [What is in this repository](#what-is-in-this-repository)
 
-See [CHANGELOG.md](CHANGELOG.md), the [capability matrix](docs/Capabilities.md) and the [HUD control report](docs/ControlReport.md).
-For future features and the comparison with other assistants, see the [master development plan](docs/Master%20Development%20Plan.md) and the [44-item status audit](docs/Roadmap%20Status.md).
+See [CHANGELOG.md](CHANGELOG.md), the [capability matrix](docs/Capabilities.md), the [HUD control report](docs/ControlReport.md), the [architecture guide](docs/Architecture.md), the [defensive security model](docs/Security%20Model.md), and [third-party attribution](docs/Third%20Party%20Attribution.md).
+For future features, full status tracking, and session handoffs, see the [master development plan](docs/Master%20Development%20Plan.md), the [consolidated development tracker](docs/Development%20Tracker.md), the [44-item status audit](docs/Roadmap%20Status.md), and the [engineering handoff](docs/Engineering%20Handoff.md).
 
 For the November 2026 owner/Claude hardware pass, use the [Windows verification checklist](docs/Windows%20Verification.md).
 Automated HTTP/model fixtures and existing screenshot examples do not establish
@@ -124,7 +124,9 @@ Use the Mode menu in the HUD or say “Jarvis, switch to Coding mode.”
 | Mode | Behaviour |
 |---|---|
 | Everyday | General conversation and assistant tools. |
-| Coding | Local coding model for file edits, with a diff, apply and undo controls. |
+| Coding | Local coding model for file edits, diff/apply/undo, Git status, isolated worktrees, and approved tests/builds. |
+| Research | Source retrieval, local/web comparison, contradiction checking, and explicit separation of verified facts from assumptions. |
+| Cybersecurity | Defensive-only local security posture, Sentinel audit, and authorized NOMAD diagnostics. |
 | Briefing | A shortcut to read your current briefing and a concise style for planning. |
 | Talk | A chat-only view with no action tools or spoken background reminders. |
 
@@ -404,7 +406,8 @@ Use the **Jarvis** Start menu shortcut for voice plus the HUD. From the Jarvis f
 | `python -m jarvis` | Voice plus the HUD (what the shortcut runs) |
 | `python -m jarvis setup` | Your name, Canvas link, email and API keys (encrypted), voices |
 | `python -m jarvis --text` | Type in the terminal |
-| `python -m jarvis doctor` | Check everything |
+| `python -m jarvis doctor` | Check hardware, GPU/RAM profile recommendations, models, and voice packages |
+| `python -m jarvis security-audit` | Run the local defensive Sentinel security posture audit |
 | `python -m jarvis voice-check` | Record four seconds after you press Enter, show the local transcription, and play a test reply. Confirm the speaker worked by listening. |
 | `python -m jarvis briefing` | Hear today's briefing |
 

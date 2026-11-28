@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Hardware detection & recommendations (`M01`)**: Inspect real CPU, RAM, disk, and NVIDIA GPU/VRAM (`jarvis/hardware.py`, `/api/hardware`, `python -m jarvis doctor`, and HUD Setup panel) with honest profile recommendations.
+- **Local provider SSE streaming & Bearer auth (`M02`)**: Optional loopback SSE text streaming and DPAPI-stored Bearer token support in `jarvis/localprovider.py`.
+- **Optional per-request cloud AI provider (`M03`)**: Opt-in single-prompt cloud adapter (`jarvis/cloudprovider.py` for OpenAI, Anthropic, Gemini) with DPAPI API keys, fail-closed allowlist, zero silent fallback, and mandatory `confirm cloud` approval.
+- **TUKI & Multi-Agent collaboration (`A03`, `A05`)**: Specialist profiles (`jarvis/agents.py`), Jarvis + TUKI cooperative independent review (`assistant="both"` and `/review`), recursion depth guard (`MAX_DELEGATION_DEPTH = 2`), and dedicated Research and Cybersecurity workspace modes.
+- **Voice assistant enhancements (`V04`, `V06`, `V08`)**: Audio input/output device inventory (`/api/audio-devices`), British voice detection, Jarvis/TUKI WPM speech speed controls, and real-time `mic_level` activity meter.
+- **Persistent memory & project knowledge spaces (`R03`, `R04`)**: Named conversations (`/api/conversations`), temporary/ephemeral chat toggle (`Temp chat`), project knowledge spaces (`/api/projects`), duplicate fact detection/deduplication, and redacted JSON fact import.
+- **Connectors, GitHub PRs, RSS subscriptions & MCP (`C01`-`C05`, `C07`)**: Approved GitHub pull request reads (`/prs`), saved HTTPS RSS/Atom subscriptions (`/api/feeds`), PKCE OAuth 2.0 scaffolding with read-only vs write scope separation for Google Workspace and Microsoft 365 (`jarvis/connectors.py`), and a pure-stdlib local stdio JSON-RPC 2.0 MCP client with per-server capability approval and injection fencing (`jarvis/mcp_client.py`).
+- **Coding Git status, isolated worktrees & local document preview (`D01`, `D02`, `R05`)**: Read-only `/git-status`, isolated sibling Git worktree create/remove (`coder.py`), and bounded in-memory local document/PDF preview (`/api/documents/preview`).
+- **Sentinel security audit, Finance/Health boundaries & Rust foundation (`S02`, `S04`, `S05`)**: Defensive local Sentinel posture audit (`jarvis/sentinel.py`, `python -m jarvis security-audit`, HUD Sentinel panel), fail-closed Finance/Health domain guards (`jarvis/domains.py`), and zero-dependency native Rust policy/audit crate (`rust/jarvis-core`).
+- **Windows 10/11 compatibility fixes**: Fixed `install.ps1` Python 3.12 probe under Windows PowerShell 5.1 `$ErrorActionPreference = "Stop"`, and updated Windows installer/updater tests to fall back from `pwsh` to `powershell.exe`.
+
 - Reject NUL-containing misdecoded XML before feed parsing so alternate byte encodings cannot bypass the DTD/entity scan.
 
 - Include the screenshot-gallery README and linked benchmark JSON in source packages, with a packaged-documentation link check.
