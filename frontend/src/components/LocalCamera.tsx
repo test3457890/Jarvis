@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { api } from '../api';
 
 // Browser media permissions are granted only after the user presses Start.
 export const LocalCamera: React.FC<{ locked: boolean }> = ({ locked }) => {
@@ -36,6 +37,20 @@ export const LocalCamera: React.FC<{ locked: boolean }> = ({ locked }) => {
     stream.current?.getTracks().forEach(track => track.stop());
     stream.current = null;
   }, []);
+  useEffect(() => {
+    if (!active && !requesting) return;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const state = await api<{ lockdown?: boolean }>('/api/state');
+        if (!cancelled && state.lockdown) stop();
+      } catch {
+        if (!cancelled) stop(); // No authenticated backend state: fail closed.
+      }
+    };
+    const timer = window.setInterval(check, 1000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [active, requesting, stop]);
 
   const start = async () => {
     if (locked || !navigator.mediaDevices?.getUserMedia) {
@@ -47,12 +62,30 @@ export const LocalCamera: React.FC<{ locked: boolean }> = ({ locked }) => {
     setRequesting(true);
     setStatus('Waiting for browser camera permission…');
     try {
+      const state = await api<{ lockdown?: boolean }>('/api/state');
+      if (state.lockdown || lockedRef.current) {
+        stop();
+        setStatus('Lockdown blocks camera activation.');
+        return;
+      }
+      if (currentRequest !== requestId.current) return;
       const [width, height] = resolution.split('x').map(Number);
       const media = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
         ...(deviceId ? { deviceId: { exact: deviceId } } : {}), width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: fps, max: fps },
       } });
       if (lockedRef.current || currentRequest !== requestId.current) {
         media.getTracks().forEach(track => track.stop());
+        return;
+      }
+      let currentState: { lockdown?: boolean };
+      try { currentState = await api<{ lockdown?: boolean }>('/api/state'); }
+      catch {
+        media.getTracks().forEach(track => track.stop());
+        throw new Error('Backend authorization unavailable');
+      }
+      if (currentState.lockdown || lockedRef.current || currentRequest !== requestId.current) {
+        media.getTracks().forEach(track => track.stop());
+        if (currentState.lockdown) stop();
         return;
       }
       stream.current = media;
