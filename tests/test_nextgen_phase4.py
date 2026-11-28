@@ -4,7 +4,24 @@
 """
 import pytest
 
-from jarvis import hotkeys, native_shell
+from jarvis import hotkeys, native_shell, tray
+
+
+def test_system_tray_status_and_actions():
+    hits = []
+    icon = tray.SystemTrayIcon(
+        on_open=lambda: hits.append("open"),
+        on_stop=lambda: hits.append("stop"),
+        on_quit=lambda: hits.append("quit"),
+    )
+    st = icon.status()
+    assert "open_hud" in st["actions"]
+    icon.trigger_action("open_hud")
+    icon.trigger_action("emergency_stop")
+    icon.trigger_action("quit")
+    assert hits == ["open", "stop", "quit"]
+    with pytest.raises(ValueError):
+        icon.trigger_action("invalid")
 
 
 def test_hotkey_manager_kill_switch_and_summon():

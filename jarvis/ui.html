@@ -334,6 +334,9 @@
   .ng-table th, .ng-table td { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
   .tier-badge { display:inline-block; padding:1px 6px; border-radius:4px; font-size:11px; font-weight:700; border:1px solid var(--line2); }
   .tier-T0 { color:var(--ok); } .tier-T1 { color:var(--cyan2); } .tier-T2 { color:var(--warn); } .tier-T3 { color:#ff6b6b; border-color:#ff6b6b; }
+  #workspace-tabs { display:flex; flex-wrap:wrap; gap:6px; padding:6px 14px; border-bottom:1px solid var(--line); background:var(--panel); }
+  body[data-mode=talk] #workspace-tabs { display:none; }
+  #workspace-tabs button[aria-pressed=true] { border-color:var(--cyan2); color:var(--cyan2); font-weight:700; }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
 </style>
 </head>
@@ -405,6 +408,15 @@
   </aside>
 
   <section class="panel chat">
+    <nav id="workspace-tabs" aria-label="Dedicated workspaces">
+      <button type="button" data-ws="console" aria-pressed="true">Console</button>
+      <button type="button" data-ws="vitals" aria-pressed="false">Vitals</button>
+      <button type="button" data-ws="audit" aria-pressed="false">Audit</button>
+      <button type="button" data-ws="repair" aria-pressed="false">Repair</button>
+      <button type="button" data-ws="runs" aria-pressed="false">Runs</button>
+      <button type="button" data-ws="pro" aria-pressed="false">Professional</button>
+      <button type="button" data-ws="settings" aria-pressed="false">Settings</button>
+    </nav>
     <nav id="command-nav" aria-label="Command Center tools">
       <button type="button" data-panel="vitals-panel">Vitals</button><button type="button" data-panel="providers-panel">Providers</button>
       <button type="button" data-panel="audit-ops-panel">Audit &amp; Undo</button><button type="button" data-panel="runs-panel">Runs &amp; Monitors</button>
@@ -2560,6 +2572,30 @@ $('sar-form').onsubmit = async event => {
     svg.appendChild(poly);
   }
 };
+
+// ---- Dedicated Workspaces Switcher (Console, Vitals, Audit, Repair, Runs, Professional, Settings)
+const WS_PANELS = {
+  console: null,
+  vitals: 'vitals-panel',
+  audit: 'audit-ops-panel',
+  repair: 'sentinel-panel',
+  runs: 'runs-panel',
+  pro: 'pro-geo-panel',
+  settings: 'setup-panel',
+};
+document.querySelectorAll('#workspace-tabs button').forEach(btn => {
+  btn.onclick = () => {
+    const ws = btn.dataset.ws;
+    document.querySelectorAll('#workspace-tabs button').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+    const targetId = WS_PANELS[ws];
+    document.querySelectorAll('details[name="assistant-tools"]').forEach(d => { d.open = (targetId && d.id === targetId); });
+    if (ws === 'repair') {
+      if ($('sentinel-refresh')) $('sentinel-refresh').click();
+    } else if (ws === 'console') {
+      $('q').focus();
+    }
+  };
+});
 </script>
 </body>
 </html>
