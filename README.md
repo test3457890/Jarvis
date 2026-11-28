@@ -2,7 +2,7 @@
 
 Jarvis is an offline-first AI assistant for Windows. It runs local Ollama models for everyday work and TUKI technical tasks, with voice controls, a weekly planner, document search, and a coding workspace with reviewable edits. Local tools work offline after setup. Web search and other online services require separate configuration.
 
-Download the Windows source ZIP and checksum from [Jarvis v1.3.0](https://github.com/test3457890/Jarvis/releases/tag/v1.3.0). See the [release notes](docs/ReleaseNotes.md) for what changed and the [capability matrix](docs/Capabilities.md) for requirements and testing status.
+Download the Windows source ZIP and checksum from [Releases](https://github.com/test3457890/Jarvis/releases) (current version: `1.4.0`; previous published release: [v1.3.0](https://github.com/test3457890/Jarvis/releases/tag/v1.3.0)). See the [release notes](docs/ReleaseNotes.md) for what changed and the [capability matrix](docs/Capabilities.md) for requirements and testing status.
 
 [Install Jarvis](#install-once) · [First launch](#first-launch-setup-wizard) · [File tasks](#file-tasks-in-selected-folders) · [Jarvis and TUKI](#jarvis-and-tuki) · [Project NOMAD](#project-nomad-integration) · [What is in this repository](#what-is-in-this-repository)
 
@@ -33,9 +33,9 @@ real Ollama, NOMAD, audio, image-generation or Windows hardware behavior.
 |---|---|---|
 | ![TUKI voice preview and a labelled answer](docs/screenshots/tuki-voice.png) | ![Three new themes](docs/screenshots/themes.png) | ![HUD at 390 px wide](docs/screenshots/mobile.png) |
 
-| Screen capture audit | App actions audit | Extension and OCR controls |
+| Screen capture audit | App actions audit | Extension, Sentinel, and HUD controls |
 |---|---|---|
-| ![Synthetic screen frame shown before a local vision question](docs/screenshots/audit-screen.png) | ![Approved app action controls in the HUD audit](docs/screenshots/audit-apps.png) | [See the 54-control report](docs/ControlReport.md) |
+| ![Synthetic screen frame shown before a local vision question](docs/screenshots/audit-screen.png) | ![Approved app action controls in the HUD audit](docs/screenshots/audit-apps.png) | [See the 67-control report](docs/ControlReport.md) |
 
 Screenshots use synthetic conversation, sample files and stubbed model replies, captured by
 `python -m scripts.capture_hud` and `python -m scripts.hud_control_audit`. The audit screen

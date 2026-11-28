@@ -9,11 +9,10 @@ Branch: `feature/jarvis-full-integration`
 
 ## 2. Ending Git Commit
 - Branch: `feature/jarvis-full-integration`
-- Feature & Rust commits:
-  - `c3d030f` — Add hardware advisor, multi-agent review, MCP client, connectors, worktrees, and Sentinel audit
-  - `ea6609a` — Upgrade HUD controls, fix Windows PowerShell 5.1 installer and 390px layout, expand Chrome audit
-  - `0d94867` — Add zero-dependency Rust jarvis-core policy and audit verifier crate
-  - `fadd14d` — Update roadmap audit, tracker, architecture, security docs, Phase 2 captures, and handoff (followed by final commit recording SHAs)
+- Version: `1.4.0` (bumped from `1.3.0` so `Jarvis1.4.0.zip` never overwrites the published `v1.3.0` archive)
+- Reconciled PRs: #22 (`3c41158`), #36 (`d15728d`), #37 (`63bf650`), #38 (`8b5847f`), #39 (`fe60a5c`), #40 (`0d5d8fd`), #41 (`655d115`) — zero contributions lost.
+- Previous milestone commit verified on GitHub: `8140460d50f6f27ed7666da44ef34ac11bd4bf01`
+- Follow-up pre-merge polish commits on `feature/jarvis-full-integration` complete all remaining local UI controls (Projects, Feed subscriptions, MCP registration/discovery, Memory JSON import, Conversation history search, Microphone device selector, Local SSE streaming toggle, Workflow run filter, Confirmed `/worktree`), harden NOMAD XML parsing and Windows HTTP 4xx socket delivery, bump version to `1.4.0`, and expand live Chrome browser verification to 67/67 checks.
 
 ## 3. Branches and Pull Requests Reviewed
 - `main` (`2bbc584`)
@@ -45,17 +44,20 @@ Branch: `feature/jarvis-full-integration`
 ## 6. Bugs Discovered and Fixed
 1. **Windows `install.ps1` failure under Windows PowerShell 5.1 when Python 3.12 is absent**: `& py -3.12` raised a terminating `NativeCommandError` under `$ErrorActionPreference = "Stop"`. Fixed by temporarily relaxing preference around the probe so `install.ps1` falls back cleanly to `python -m venv .venv`.
 2. **Windows `setupwizard.py` & `config.py` atomic file replacement `WinError 5` race**: Concurrent HUD polling (`load_state()`) vs download progress (`save_state()`) caused `PermissionError` on Windows `os.replace()`. Fixed with `_LOCK` synchronization and bounded `PermissionError` retry loops.
-3. **Windows `webui.py` HTTP 403 `WinError 10053` TCP RST**: Returning 403 on `do_POST` without draining small unauthenticated bodies caused TCP resets on Windows loopback sockets. Fixed by safely draining up to 4 KiB before sending 403.
-4. **Windows installer/updater test runner incompatibility**: `tests/test_release.py` and `tests/test_upgrade_paths.py` hardcoded `pwsh` (PowerShell 7), failing on standard Windows 10/11 machines with Windows PowerShell 5.1. Fixed with `pwsh` -> `powershell` fallback.
-5. **Phone-width layout overflow (7 px)**: Fixed input/select sizing and button wrapping in `jarvis/ui.html`.
-6. **Voice event payload shape**: Changed `mic_level` SSE event to emit a dict (`{"level": ...}`) matching existing listener event consumers.
+3. **Windows `webui.py` HTTP 4xx `WinError 10053` TCP RST & disconnect tracebacks**: Returning 400/403 on `POST` while unread request bytes remained in the receive buffer caused intermittent TCP resets on Windows loopback sockets. Fixed with `Connection: close`, flush + `socket.SHUT_WR` half-close on `>= 400` responses, bounded small-body drain on unauthenticated `POST`, and catching normal client disconnect errors in `_send()`.
+4. **NOMAD Kiwix XML parsing hardening**: Added NUL-byte and `<!DOCTYPE` / `<!ENTITY` rejection before `ET.fromstring()` in `jarvis/nomad.py` matching the feed-parser hardening from PR #40/#41.
+5. **Windows installer/updater test runner incompatibility**: `tests/test_release.py` and `tests/test_upgrade_paths.py` hardcoded `pwsh` (PowerShell 7), failing on standard Windows 10/11 machines with Windows PowerShell 5.1. Fixed with `pwsh` -> `powershell` fallback.
+6. **Phone-width layout overflow (7 px)**: Fixed input/select sizing, file-input bounds, and button wrapping in `jarvis/ui.html` across all panels.
+7. **Voice event payload shape**: Changed `mic_level` SSE event to emit a dict (`{"level": ...}`) matching existing listener event consumers.
 
 ## 7. Security Findings and Fixes
 - Verified all new `/api/*` endpoints enforce `Host`, `Origin`, and `X-Jarvis-Key` checks via automated 403 tests.
 - Verified cloud providers are excluded from `net.py` allowlist unless explicitly enabled and configured, and never exposed as automatic model tools.
 - Verified MCP client rejects shell/script hosts (`cmd.exe`, `powershell.exe`, `bash`, `sh`), requires exact capability approval, enforces timeouts/output bounds, and fences returned text against prompt injection.
+- Hardened `jarvis/nomad.py` Kiwix XML parsing to refuse NUL bytes, DTDs, and XML entities.
 - Verified Finance & Health domain guards fail closed and prohibit writes.
 - Verified `python -m jarvis security-audit` passes all 9 local defensive checks on Windows 10.
+- Repo-wide scan across all 149+ tracked files confirmed zero exposed credentials, API keys, private keys, personal emails, or machine-specific user paths.
 
 ## 8. Files Added or Modified
 - Added: `jarvis/hardware.py`, `jarvis/cloudprovider.py`, `jarvis/agents.py`, `jarvis/mcp_client.py`, `jarvis/connectors.py`, `jarvis/sentinel.py`, `jarvis/domains.py`, `rust/jarvis-core/Cargo.toml`, `rust/jarvis-core/src/lib.rs`, `rust/jarvis-core/src/main.rs`, `tests/test_full_integration.py`, `docs/Development Tracker.md`, `docs/Architecture.md`, `docs/Security Model.md`, `docs/Third Party Attribution.md`, `docs/Engineering Handoff.md`
@@ -63,13 +65,13 @@ Branch: `feature/jarvis-full-integration`
 
 ## 9. Test Commands and Actual Results
 (Verified on Windows 10 Home 10.0.19045, Python 3.15.2, Rust 1.100.0-x86_64-pc-windows-msvc, Google Chrome)
-- `.\.venv\Scripts\python.exe -m pytest -q`: **340 passed, 0 failed, 7 platform-specific skipped** (3 Windows symlink privilege skips, 1 Tesseract-not-installed skip, 3 POSIX `sleep` skips). Includes all Windows `install.ps1`, `upgrade.ps1`, v1.1.1/v1.2.1 upgrade/rollback, and native DPAPI tests.
-- `$env:JARVIS_CHROME="C:\Program Files\Google\Chrome\Application\chrome.exe"; .\.venv\Scripts\python.exe -m scripts.hud_control_audit`: **65 of 65 checks passed** (including 390 px phone layout with 0 px overflow, Command Center, Ambient, Sentinel/MCP, Hardware, Temp chat, Windows App actions, Extensions, Setup Wizard, and Restart persistence).
+- `.\.venv\Scripts\python.exe -m pytest -q`: **342 passed, 0 failed, 7 platform-specific skipped** (3 Windows symlink privilege skips, 1 Tesseract-not-installed skip, 3 POSIX `sleep` skips). Includes all Windows `install.ps1`, `upgrade.ps1`, v1.1.1/v1.2.1 upgrade-to-1.4.0 & rollback, native DPAPI, NOMAD XML hardening, project-scoped recall, and confirmed `/worktree` tests.
+- `$env:JARVIS_CHROME="C:\Program Files\Google\Chrome\Application\chrome.exe"; .\.venv\Scripts\python.exe -m scripts.hud_control_audit`: **67 of 67 checks passed** (including 390 px phone layout with 0 px overflow, Command Center, Ambient, Sentinel/MCP registration & shell rejection, Projects & history search, Saved RSS feeds, Hardware/Audio devices, Research/Cybersecurity/Both modes, Temp chat, Windows App actions, Extensions, Setup Wizard, and Restart persistence).
 - `cargo +1.100.0-x86_64-pc-windows-msvc test --manifest-path rust/jarvis-core/Cargo.toml`: **4 passed, 0 failed**.
 - `.\.venv\Scripts\python.exe -m compileall -q jarvis scripts tests`: exit 0.
 - `node --check` on extracted `jarvis/ui.html` JavaScript: exit 0.
 - PowerShell AST syntax checks (`install.ps1`, `upgrade.ps1`, `scripts/check_defender.ps1`): all OK.
-- `.\.venv\Scripts\python.exe -m scripts.package_release`: reproducible `dist/Jarvis1.3.0.zip` + `SHA256SUMS.txt` built and verified (all packaged documentation links resolve inside the ZIP).
+- `.\.venv\Scripts\python.exe -m scripts.package_release`: reproducible `dist/Jarvis1.4.0.zip` + `SHA256SUMS.txt` built and verified (all packaged documentation links resolve inside the ZIP; does not overwrite `v1.3.0`).
 
 ## 10. Hardware Verification Results
 - **Host**: Windows 10 Home (10.0.19045), Intel Core i7-10875H (8C/16T), 31.86 GB RAM, NVIDIA Quadro RTX 5000 Max-Q (16.0 GB VRAM, Driver 621.24).
