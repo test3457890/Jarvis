@@ -122,3 +122,52 @@ def prompt_additions(cfg: dict) -> list[str]:
     if standing and not secure.looks_like_injection(standing):
         out.append(f"User standing instructions: {standing}")
     return out
+
+
+_BARGE_IN_RE = re.compile(r"^(?:jarvis[, ]+)?(?:stop|quiet|cancel|hold on|never ?mind|shut up|pause)\b", re.I)
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])")
+
+
+class EchoGuard:
+    """Acoustic echo suppression helper for safe spoken barge-in.
+
+    Compares incoming STT text against recently spoken TTS output so Jarvis does not
+    trigger on its own voice, while still allowing explicit user barge-in commands.
+    """
+
+    def __init__(self, overlap_threshold: float = 0.6):
+        self._spoken_tokens: set[str] = set()
+        self._speaking_until: float = 0.0
+        self.overlap_threshold = overlap_threshold
+
+    def note_speaking(self, text: str, duration_s: float = 6.0) -> None:
+        toks = set(re.findall(r"[a-z0-9]+", str(text or "").lower()))
+        self._spoken_tokens |= toks
+        self._speaking_until = max(self._speaking_until, time.monotonic() + max(0.5, duration_s))
+
+    def clear(self) -> None:
+        self._spoken_tokens.clear()
+        self._speaking_until = 0.0
+
+    def is_barge_in_command(self, heard: str) -> bool:
+        return bool(_BARGE_IN_RE.match(str(heard or "").strip()))
+
+    def is_self_echo(self, heard: str) -> bool:
+        if time.monotonic() > self._speaking_until or not self._spoken_tokens:
+            return False
+        if self.is_barge_in_command(heard):
+            return False
+        heard_toks = set(re.findall(r"[a-z0-9]+", str(heard or "").lower()))
+        if not heard_toks:
+            return True
+        overlap = len(heard_toks & self._spoken_tokens) / len(heard_toks)
+        return overlap >= self.overlap_threshold
+
+
+def stream_sentences(buffer: str) -> tuple[list[str], str]:
+    """Split a streaming text buffer into complete speakable sentences plus remaining tail."""
+    parts = _SENTENCE_SPLIT_RE.split(str(buffer or ""))
+    if len(parts) <= 1:
+        return [], str(buffer or "")
+    complete = [p.strip() for p in parts[:-1] if p.strip()]
+    return complete, parts[-1]

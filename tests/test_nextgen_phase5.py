@@ -40,3 +40,19 @@ def test_wake_words_standing_instructions_and_brain_prompt(tmp_path, monkeypatch
     assert "executive" in sys_prompt.lower()
     assert "Preferred response language: fr" in sys_prompt
     assert "metric units" in sys_prompt
+
+
+def test_echo_guard_barge_in_and_streaming_sentence_chunker():
+    eg = voice_profile.EchoGuard()
+    eg.note_speaking("Good morning sir, your first meeting starts at nine o'clock.", duration_s=10.0)
+    # Self-echo from speakers is suppressed
+    assert eg.is_self_echo("your first meeting starts at nine") is True
+    # Explicit user barge-in command is NEVER suppressed as echo
+    assert eg.is_barge_in_command("Jarvis stop") is True
+    assert eg.is_self_echo("Jarvis stop") is False
+    # Unrelated user speech passes through
+    assert eg.is_self_echo("Check the weather in Denver") is False
+
+    ready, tail = voice_profile.stream_sentences("First sentence done. Second one! Partial tail")
+    assert ready == ["First sentence done.", "Second one!"]
+    assert tail == "Partial tail"
