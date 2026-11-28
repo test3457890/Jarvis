@@ -203,6 +203,16 @@ def run_audit() -> tuple[int, int]:
                     camera.get_by_role("button", name="Stop camera").click()
                     expect(camera.get_by_role("status")).to_contain_text("Camera off")
                     assert page.evaluate("window.__TEST_CAMERA_TRACK__.readyState") == "ended"
+                    page.evaluate("""() => {
+                        navigator.mediaDevices.getUserMedia = () => new Promise(resolve => { window.__TEST_RESOLVE__ = resolve; });
+                        window.__TEST_LATE_TRACK__ = document.createElement('canvas').captureStream(5).getVideoTracks()[0];
+                    }""")
+                    camera.get_by_role("button", name="Start camera").click()
+                    expect(camera.get_by_role("status")).to_contain_text("Waiting for browser camera permission")
+                    camera.get_by_role("button", name="Stop camera").click()
+                    page.evaluate("window.__TEST_RESOLVE__(new MediaStream([window.__TEST_LATE_TRACK__]))")
+                    expect(camera.get_by_role("status")).to_contain_text("Camera off")
+                    page.wait_for_function("window.__TEST_LATE_TRACK__.readyState === 'ended'")
                     page.locator("button[data-cc-ws='console']").click()
                 check("Local camera starts only on click and stops synthetic track", verify_local_camera)
 
