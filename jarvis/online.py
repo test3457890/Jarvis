@@ -246,6 +246,31 @@ def github_issue_read(ctx, repo, number):
     return "\n\n".join(lines)[:20000]
 
 
+@skill("List up to 20 open pull requests from the configured repository after approval.",
+       params={"repo": ("string", "Configured repository", True)}, risky=True, internet=True,
+       untrusted=True, manual=True, available=_upload_ready,
+       preview=lambda ctx, repo: f"read up to 20 open pull requests from GitHub repository {repo}")
+def github_prs_read(ctx, repo):
+    base = _issue_repo(ctx, repo)
+    rows = _request(Request(base + "/pulls?state=open&per_page=20", headers=_github_headers()), ctx.cfg, "github_prs_read")
+    if not isinstance(rows, list):
+        raise ValueError("GitHub returned invalid pull request data.")
+    lines = []
+    for item in rows[:20]:
+        if not isinstance(item, dict):
+            continue
+        number = item.get("number")
+        if type(number) is not int or number < 1:
+            continue
+        head = (item.get("head") or {}).get("ref", "")
+        base_ref = (item.get("base") or {}).get("ref", "")
+        lines.append(
+            f"PR #{number}: {_plain(str(item.get('title') or ''), 300)} ({_plain(str(head), 60)} -> {_plain(str(base_ref), 60)})\n"
+            f"https://github.com/{repo}/pull/{number}"
+        )
+    return "Open GitHub pull requests (first page):\n" + ("\n\n".join(lines) or "No open pull requests in this page.")
+
+
 def _issue_draft(title, body):
     from .memory import redact
     if (not isinstance(title, str) or not 1 <= len(title.strip()) <= 120

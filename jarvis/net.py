@@ -91,6 +91,11 @@ def allowed_endpoints(cfg: dict) -> set[tuple[str, str, int]]:
             allowed.add(("https", "imgs.search.brave.com", 443))
         if cfg.get("github_upload_repo") and secure.has_secret("github_upload_token"):
             allowed.add(("https", "api.github.com", 443))
+        if cfg.get("allow_cloud_provider"):
+            from . import cloudprovider
+            found = cloudprovider.configured_provider(cfg)
+            if found:
+                allowed.add(("https", found[1]["host"], 443))
 
     return allowed
 

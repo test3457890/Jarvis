@@ -13,6 +13,9 @@ KINDS = {
     "tasks": ("list_tasks", None, "Read open tasks"),
     "behind": ("whats_falling_behind", None, "Review deadlines"),
     "calculate": ("calculate", "expression", "Calculate expression"),
+    "reminders": ("list_reminders", None, "Read upcoming reminders"),
+    "notes": ("list_notes", None, "List saved notes"),
+    "memory": ("recall", "query", "Search local memory"),
 }
 
 
@@ -40,7 +43,7 @@ def validate_steps(value):
         if not isinstance(kind, str) or kind not in KINDS or not isinstance(argument, str):
             raise ValueError("Choose a supported local workflow step.")
         argument = argument.strip()
-        if len(argument) > 500 or (kind in ("documents", "calculate") and not argument):
+        if len(argument) > 500 or (kind in ("documents", "calculate", "memory") and not argument):
             raise ValueError("Enter a step value of at most 500 characters.")
         if kind == "schedule" and argument not in ("today", "tomorrow", "week"):
             raise ValueError("Schedule steps accept today, tomorrow or week.")

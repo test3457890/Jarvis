@@ -18,7 +18,12 @@ import threading
 import time
 import webbrowser
 
-from . import appactions, assistants, config, connections, documents, extensions, filejobs, images, localprovider, net, nomad, planner, recovery, secure, setupwizard, skills, watchchecks, workflows
+from . import (
+    agents, appactions, assistants, cloudprovider, config, connections, connectors,
+    documents, domains, extensions, filejobs, hardware, images, localprovider,
+    mcp_client, net, nomad, planner, recovery, secure, sentinel, setupwizard,
+    skills, watchchecks, workflows,
+)
 from .brain import Brain
 from .memory import Memory
 
@@ -101,6 +106,12 @@ class App:
                 "tuki_sapi_voice_contains": self.cfg.get("tuki_sapi_voice_contains", ""),
                 "tuki_piper_available": bool(self.cfg.get("tuki_piper_model")),
                 "piper_available": bool(self.cfg.get("piper_model")),
+                "speech_rate": int(self.cfg.get("speech_rate", 185)),
+                "tuki_speech_rate": int(self.cfg.get("tuki_speech_rate", 200)),
+                "temporary_chat": bool(self.cfg.get("temporary_chat", False)),
+                "active_project": self.cfg.get("active_project", ""),
+                "conversation_id": self.brain.conversation_id,
+                "cloud_provider_ready": cloudprovider.ready(self.cfg),
                 "honorific": self.cfg.get("honorific", "sir"),
                 "first_run": not self.cfg.get("setup_complete")}
 
@@ -125,14 +136,165 @@ class App:
                 if self.cfg.get('lockdown'):
                     raise ValueError('Turn off Lockdown to change connections.')
                 service = data.get('service')
-                if data.get('action') != 'revoke' or data.get('confirmed') is not True or service not in connections.REVOCABLE:
+                if data.get('action') == 'disconnect_oauth' and data.get('confirmed') is True:
+                    connectors.disconnect_oauth(str(data.get('connector') or ''))
+                elif data.get('action') == 'revoke' and data.get('confirmed') is True and service in connections.REVOCABLE:
+                    secure.set_secret(connections.REVOCABLE[service], '')
+                    if service == 'Canvas calendar feed':
+                        planner.CANVAS_CACHE.unlink(missing_ok=True)
+                    secure.audit('connection_revoked', {'service': service})
+                else:
                     raise ValueError('Choose a supported connection and confirm credential removal.')
-                secure.set_secret(connections.REVOCABLE[service], '')
-                if service == 'Canvas calendar feed':
-                    planner.CANVAS_CACHE.unlink(missing_ok=True)
-                secure.audit('connection_revoked', {'service': service})
-        return {'internet': bool(self.cfg.get('allow_internet_tools')),
-                'services': connections.status(self.cfg)}
+        return connectors.all_connector_summary(self.cfg)
+
+    def hardware_operation(self):
+        return hardware.summary()
+
+    def audio_devices_operation(self):
+        from . import voice
+        return {
+            **voice.audio_devices(),
+            "selected_mic": self.cfg.get("mic_device"),
+            "selected_speaker": self.cfg.get("speaker_device"),
+        }
+
+    def security_operation(self, include_nomad=False):
+        return sentinel.audit_posture(self.cfg, include_nomad=include_nomad)
+
+    def agents_operation(self):
+        return {
+            "profiles": agents.list_profiles(),
+            "active": self.cfg.get("assistant", "auto"),
+            "last_trace": (
+                {"task": self.brain.last_trace.task, "steps": self.brain.last_trace.steps,
+                 "cancelled": self.brain.last_trace.cancelled}
+                if self.brain.last_trace else None
+            ),
+        }
+
+    def mcp_operation(self, data=None):
+        with self.brain._lock, self._settings_lock:
+            if data is not None:
+                action = data.get("action")
+                if action == "save":
+                    mcp_client.save_server(self.cfg, data.get("server"))
+                elif action == "enable":
+                    mcp_client.set_enabled(self.cfg, str(data.get("id", "")), True, data.get("capabilities"))
+                elif action == "disable":
+                    mcp_client.set_enabled(self.cfg, str(data.get("id", "")), False)
+                elif action == "remove" and data.get("confirmed") is True:
+                    mcp_client.remove_server(self.cfg, str(data.get("id", "")))
+                elif action == "discover":
+                    return {"tools": mcp_client.discover_tools(self.cfg, str(data.get("id", "")))}
+                else:
+                    raise ValueError("Choose save, enable, disable, discover, or confirmed remove.")
+            return {"servers": mcp_client.list_servers(self.cfg), "capabilities": mcp_client.CAPABILITIES}
+
+    def feeds_operation(self, data=None):
+        with self.brain._lock, self._settings_lock:
+            if data is not None:
+                action = data.get("action")
+                if action == "add":
+                    connectors.add_feed(self.cfg, data.get("name"), data.get("url"), bool(data.get("include_in_briefing")))
+                elif action == "remove":
+                    connectors.remove_feed(self.cfg, str(data.get("url") or ""))
+                else:
+                    raise ValueError("Choose add or remove for feed subscriptions.")
+            return {"feeds": connectors.list_feeds(self.cfg)}
+
+    def conversations_operation(self, data=None):
+        with self.brain._lock:
+            if data is not None:
+                action = data.get("action")
+                if action == "create":
+                    created = self.memory.create_conversation(data.get("title"), data.get("project", ""))
+                    self.brain.conversation_id = created["id"]
+                    self.brain.history = []
+                    return {"active": created["id"], "conversations": self.memory.list_conversations()}
+                if action == "switch":
+                    cid = str(data.get("id") or "default")[:64]
+                    self.brain.conversation_id = cid
+                    self.brain.history = self.memory.recent_messages(self.cfg.get("history_turns", 12), conversation_id=cid)
+                    return {"active": cid, "messages": self.brain.history, "conversations": self.memory.list_conversations()}
+                if action == "rename":
+                    if not self.memory.rename_conversation(str(data.get("id") or ""), data.get("title")):
+                        raise ValueError("Conversation not found.")
+                elif action == "delete" and data.get("confirmed") is True:
+                    cid = str(data.get("id") or "")
+                    if cid == "default":
+                        raise ValueError("Use Clear conversation history to clear the default conversation.")
+                    if not self.memory.delete_conversation(cid):
+                        raise ValueError("Conversation not found.")
+                    if self.brain.conversation_id == cid:
+                        self.brain.conversation_id = "default"
+                        self.brain.history = self.memory.recent_messages(self.cfg.get("history_turns", 12), conversation_id="default")
+                elif action == "search":
+                    q = str(data.get("query") or "").strip()[:300]
+                    return {"matches": self.memory.search_diary(q, limit=15)}
+                else:
+                    raise ValueError("Choose create, switch, rename, search, or confirmed delete.")
+            return {"active": self.brain.conversation_id, "conversations": self.memory.list_conversations()}
+
+    def projects_operation(self, data=None):
+        with self.brain._lock, self._settings_lock:
+            if data is not None:
+                if self.cfg.get("lockdown"):
+                    raise ValueError("Turn off Lockdown to modify projects.")
+                action = data.get("action")
+                if action == "save":
+                    self.memory.save_project(
+                        data.get("name"), data.get("description", ""),
+                        data.get("code_dir", ""), data.get("document_folders", []),
+                    )
+                elif action == "delete" and data.get("confirmed") is True:
+                    if not self.memory.delete_project(str(data.get("name") or "")):
+                        raise ValueError("Project not found.")
+                elif action == "activate":
+                    name = str(data.get("name") or "").strip()[:60]
+                    updated = {**self.cfg, "active_project": name}
+                    config.save(updated)
+                    self.cfg.update(updated)
+                else:
+                    raise ValueError("Choose save, activate, or confirmed delete.")
+            return {"active": self.cfg.get("active_project", ""), "projects": self.memory.list_projects()}
+
+    def document_preview_operation(self, data):
+        """Safely preview a dropped/uploaded local text, Markdown, or PDF file in memory without saving."""
+        import base64
+        import binascii
+        import io
+        if self.cfg.get("mode") == "talk" or self.cfg.get("lockdown"):
+            raise ValueError("Document preview is unavailable in Talk or Lockdown.")
+        name = str(data.get("name") or "").strip()
+        encoded = data.get("content_base64")
+        if not name or not isinstance(encoded, str) or len(encoded) > 4_000_000:
+            raise ValueError("Provide a text, Markdown, or PDF file up to 3 MB.")
+        suffix = os.path.splitext(name)[1].lower()
+        if suffix not in (".txt", ".md", ".pdf", ".json", ".csv", ".py", ".js"):
+            raise ValueError("Supported preview formats: .txt, .md, .pdf, .json, .csv, .py, .js.")
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error):
+            raise ValueError("Invalid base64 file content.") from None
+        if len(raw) > 3 * 1024 * 1024:
+            raise ValueError("File exceeds the 3 MB preview limit.")
+        if suffix == ".pdf":
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(raw))
+            if reader.is_encrypted:
+                raise ValueError("Encrypted PDF requires an unlocked copy.")
+            pages = [(p.extract_text() or "") for p in reader.pages[:20]]
+            text = "\n\n".join(pages)
+        else:
+            text = raw.decode("utf-8-sig", errors="replace")
+        injection = secure.looks_like_injection(text)
+        return {
+            "name": os.path.basename(name)[:120],
+            "chars": len(text),
+            "preview": text[:12_000],
+            "truncated": len(text) > 12_000,
+            "injection_flagged": injection,
+        }
 
     def models_operation(self, data=None):
         """Inspect locally installed Ollama models and assign one to an assistant role."""
@@ -216,6 +378,11 @@ class App:
                 self.brain.ctx.pending = None
                 self.brain.ctx.on_pending(None)
             secure.audit("lockdown_toggled", {"enabled": self.cfg["lockdown"]})
+        elif what == "temporary_chat":
+            self.cfg["temporary_chat"] = not self.cfg.get("temporary_chat", False)
+            config.save(self.cfg)
+            if self.cfg["temporary_chat"]:
+                self.brain.history = []
         st = self.state()
         self.emit("toggles", st)
         return st
@@ -387,11 +554,23 @@ class App:
                     if not isinstance(data["briefing_time"], str) or not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', data["briefing_time"]):
                         raise ValueError('Choose a daily briefing time in HH:MM format.')
                     updated["briefing_time"] = data["briefing_time"]
-                for key in ('briefing_enabled', 'briefing_speak'):
+                for key in ('briefing_enabled', 'briefing_speak', 'local_chat_stream'):
                     if key in data:
                         if type(data[key]) is not bool:
                             raise ValueError('Choose whether the daily briefing is on and spoken.')
                         updated[key] = data[key]
+                for rate_key in ('speech_rate', 'tuki_speech_rate'):
+                    if rate_key in data:
+                        val = data[rate_key]
+                        if type(val) is not int or not 100 <= val <= 320:
+                            raise ValueError('Speech rate must be an integer between 100 and 320 WPM.')
+                        updated[rate_key] = val
+                for dev_key in ('mic_device', 'speaker_device'):
+                    if dev_key in data:
+                        val = data[dev_key]
+                        if val is not None and (type(val) is not int or val < 0):
+                            raise ValueError('Choose a valid audio device index or OS default.')
+                        updated[dev_key] = val
                 for key, limit in config.VOICE_LIMITS.items():
                     if key in data:
                         value = data[key]
@@ -417,6 +596,11 @@ class App:
                     "briefing_speak": bool(self.cfg.get("briefing_speak", True)),
                     "follow_up_seconds": self.cfg.get("follow_up_seconds", 8),
                     "room_context_seconds": self.cfg.get("room_context_seconds", 120),
+                    "speech_rate": int(self.cfg.get("speech_rate", 185)),
+                    "tuki_speech_rate": int(self.cfg.get("tuki_speech_rate", 200)),
+                    "mic_device": self.cfg.get("mic_device"),
+                    "speaker_device": self.cfg.get("speaker_device"),
+                    "local_chat_stream": bool(self.cfg.get("local_chat_stream", False)),
                     "ocr_available": bool(documents.tesseract_path({**self.cfg, "ocr_enabled": True})),
                     "model": self.cfg["model"], "coder_model": self.cfg.get("coder_model")}
 
@@ -504,6 +688,15 @@ class App:
                         self.memory.db.execute("DELETE FROM messages")
                     self.brain.history = []
                     return {"facts": self.memory.fact_details()}
+                if data.get("action") == "find_duplicates":
+                    return {"duplicates": self.memory.find_duplicate_facts(), "facts": self.memory.fact_details()}
+                if data.get("action") == "deduplicate" and data.get("confirmed") is True:
+                    removed = self.memory.deduplicate_facts()
+                    return {"removed": removed, "facts": self.memory.fact_details()}
+                if data.get("action") == "import":
+                    added = self.memory.import_facts(data.get("facts"), project=self.cfg.get("active_project", ""))
+                    secure.audit("memory_imported", {"added": added})
+                    return {"added": added, "facts": self.memory.fact_details()}
                 fact_id = data.get("id")
                 if type(fact_id) is not int or fact_id < 1:
                     raise ValueError("Choose a remembered fact.")
@@ -957,6 +1150,15 @@ def doctor(cfg):
         print(f"  [{mark}] {label}" + (f"\n        -> {hint}" if hint and not good else ""))
 
     print("Jarvis doctor\n")
+    hw = hardware.summary()
+    mem = hw["memory"]
+    print(f"  [HW] OS: {hw['os']}")
+    print(f"  [HW] CPU: {hw['cpu']['processor']} ({hw['cpu']['physical_cores'] or '?'}C/{hw['cpu']['logical_cores']}T)")
+    if mem["total_gb"] is not None:
+        print(f"  [HW] RAM: {mem['total_gb']} GB total ({mem['available_gb']} GB available)")
+    for gpu in hw["gpus"]:
+        print(f"  [HW] GPU: {gpu['name']} ({gpu['vram_total_gb']} GB VRAM, {gpu['vram_free_gb']} GB free)")
+    print(f"  [HW] Recommended profile: {hw['recommendation']['profile']} ({hw['recommendation']['tier']})\n")
     brain = Brain(cfg, Memory())
     try:
         models = brain.installed_models()
@@ -1048,7 +1250,7 @@ def text_chat(app):
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="jarvis", description="Offline personal assistant")
-    p.add_argument("command", nargs="?", default="run", choices=["run", "doctor", "voice-check", "briefing", "setup"])
+    p.add_argument("command", nargs="?", default="run", choices=["run", "doctor", "voice-check", "briefing", "setup", "security-audit"])
     p.add_argument("--text", action="store_true", help="chat in the terminal instead of by voice")
     p.add_argument("--no-voice", action="store_true", help="don't use the microphone")
     p.add_argument("--mode", choices=config.MODES, help="Start in this mode")
@@ -1072,6 +1274,12 @@ def main(argv=None):
 
     if args.command == "doctor":
         return doctor(cfg)
+    if args.command == "security-audit":
+        report = sentinel.audit_posture(cfg, include_nomad=True)
+        print("Jarvis Sentinel Local Security Audit\n")
+        for chk in report["checks"]:
+            print(f"  [{chk['status'].upper():4s}] {chk['label']}: {chk['detail']}")
+        return 0
     if args.command == "voice-check":
         return voice_check(cfg)
     if args.command == "setup":

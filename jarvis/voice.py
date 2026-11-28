@@ -66,6 +66,29 @@ def installed_voice_names():
         return []
 
 
+def is_british_voice(name: str) -> bool:
+    low = (name or "").lower()
+    return any(tok in low for tok in ("united kingdom", "great britain", "en-gb", "en_gb", "george", "hazel", "susan", "ryan"))
+
+
+def audio_devices() -> dict:
+    """List local audio input (microphone) and output (speaker) devices via sounddevice."""
+    try:
+        import sounddevice as sd
+        devices = sd.query_devices()
+        default_in, default_out = sd.default.device
+        inputs, outputs = [], []
+        for idx, dev in enumerate(devices):
+            name = str(dev.get("name", f"Device {idx}"))[:120]
+            if dev.get("max_input_channels", 0) > 0:
+                inputs.append({"index": idx, "name": name, "default": idx == default_in})
+            if dev.get("max_output_channels", 0) > 0:
+                outputs.append({"index": idx, "name": name, "default": idx == default_out})
+        return {"available": True, "inputs": inputs[:40], "outputs": outputs[:40]}
+    except Exception:
+        return {"available": False, "inputs": [], "outputs": []}
+
+
 def assistant_voice(voices, cfg, assistant):
     jarvis, matched = pick_voice(voices, voice_profile(cfg, "jarvis")["preferences"])
     if assistant != "tuki":
@@ -259,6 +282,7 @@ class Listener:
         self._stt_lock = threading.Lock()
         self._manual_lock = threading.RLock()
         self._manual = None
+        self._last_level_ts = 0.0
         words = tuple(dict.fromkeys([*cfg["wake_words"], "tuki"]))
         self._wake = re.compile(r"\b(" + "|".join(map(re.escape, words)) + r")\b[,.!?]*\s*", re.I)
 
@@ -361,6 +385,14 @@ class Listener:
         with self._manual_lock:
             if self.paused.is_set() or (self.speaker and self.speaker.speaking.is_set()):
                 return
+            now = time.monotonic()
+            if now - self._last_level_ts >= 0.15:
+                self._last_level_ts = now
+                try:
+                    rms = float(np.sqrt(np.mean(data[:, 0] ** 2)))
+                    self.on_event("mic_level", {"level": round(min(1.0, rms * 12.0), 3)})
+                except Exception:
+                    pass
             if self._manual is not None:
                 capture = self._manual
                 if capture["recording"] and capture["samples"] < RATE * 25:
@@ -389,8 +421,11 @@ class Listener:
     def run(self):
         import sounddevice as sd
         threading.Thread(target=self._segmenter, daemon=True, name="vad").start()
-        with sd.InputStream(samplerate=RATE, channels=1, dtype="float32", blocksize=BLOCK,
-                            callback=self._receive):
+        mic_device = self.cfg.get("mic_device")
+        kwargs = {"samplerate": RATE, "channels": 1, "dtype": "float32", "blocksize": BLOCK, "callback": self._receive}
+        if isinstance(mic_device, int) and mic_device >= 0:
+            kwargs["device"] = mic_device
+        with sd.InputStream(**kwargs):
             self.on_event("status", "listening")
             while True:
                 time.sleep(1)

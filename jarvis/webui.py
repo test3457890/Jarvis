@@ -121,8 +121,25 @@ def serve(app, port: int):
             if self.path == "/api/state":
                 self._json(app.state())
             elif self.path == "/api/voices":
-                from .voice import installed_voice_names
-                self._json({"voices": installed_voice_names()})
+                from .voice import installed_voice_names, is_british_voice
+                names = installed_voice_names()
+                self._json({"voices": names, "british": [v for v in names if is_british_voice(v)]})
+            elif self.path == "/api/hardware":
+                self._json(app.hardware_operation())
+            elif self.path == "/api/audio-devices":
+                self._json(app.audio_devices_operation())
+            elif self.path == "/api/security":
+                self._json(app.security_operation())
+            elif self.path == "/api/agents":
+                self._json(app.agents_operation())
+            elif self.path == "/api/mcp":
+                self._json(app.mcp_operation())
+            elif self.path == "/api/conversations":
+                self._json(app.conversations_operation())
+            elif self.path == "/api/projects":
+                self._json(app.projects_operation())
+            elif self.path == "/api/feeds":
+                self._json(app.feeds_operation())
             elif self.path == "/api/memory":
                 self._json(app.memory_operation())
             elif self.path == "/api/watches":
@@ -156,13 +173,20 @@ def serve(app, port: int):
 
         def do_POST(self):
             if not self._host_ok() or not self._authed():
+                # Drain tiny unauthenticated bodies so Windows sockets do not emit TCP RST before the 403 is read.
+                try:
+                    raw_len = int(self.headers.get("Content-Length", "0"))
+                    if 0 < raw_len <= 4096:
+                        self.rfile.read(raw_len)
+                except (ValueError, OSError):
+                    pass
                 return self._json({"error": "forbidden"}, 403)
             try:
                 lengths = self.headers.get_all("Content-Length", [])
                 if len(lengths) != 1 or self.headers.get("Transfer-Encoding"):
                     return self._json({"error": "one content length required; transfer encoding is unsupported"}, 400)
                 length = int(lengths[0])
-                limit = images.MAX_UPLOAD_JSON if self.path == "/api/images/lookup" else 100_000
+                limit = images.MAX_UPLOAD_JSON if self.path in ("/api/images/lookup", "/api/documents/preview") else 100_000
                 if not 0 <= length <= limit:
                     return self._json({"error": "invalid content length"}, 400)
                 self.connection.settimeout(REQUEST_BODY_TIMEOUT)
@@ -271,6 +295,19 @@ def serve(app, port: int):
             elif self.path == "/api/repository":
                 try:
                     result = app.repository_operation(data)
+                except (ValueError, TypeError, OSError) as error:
+                    return self._json({"error": str(error)}, 400)
+                self._json(result)
+            elif self.path in ("/api/mcp", "/api/conversations", "/api/projects", "/api/feeds", "/api/documents/preview"):
+                try:
+                    ops = {
+                        "/api/mcp": app.mcp_operation,
+                        "/api/conversations": app.conversations_operation,
+                        "/api/projects": app.projects_operation,
+                        "/api/feeds": app.feeds_operation,
+                        "/api/documents/preview": app.document_preview_operation,
+                    }
+                    result = ops[self.path](data)
                 except (ValueError, TypeError, OSError) as error:
                     return self._json({"error": str(error)}, 400)
                 self._json(result)

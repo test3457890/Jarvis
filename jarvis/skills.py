@@ -555,4 +555,4 @@ SKILLS["read_clipboard"]["untrusted"] = True
 SKILLS["read_note"]["untrusted"] = True
 
 # Load the other skill modules (they register themselves with @skill).
-from . import planner, comms, coder, nomad, online, images, documents, filejobs  # noqa: E402,F401
+from . import planner, comms, coder, nomad, online, images, documents, filejobs, cloudprovider  # noqa: E402,F401
