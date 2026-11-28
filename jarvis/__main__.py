@@ -21,7 +21,7 @@ import webbrowser
 from . import (
     agents, appactions, assistants, bgtasks, browser_auto, clipboard, cloudprovider, config, connections, connectors,
     desktop, documents, domains, extensions, fastpath, filejobs, hardware, images, localprovider,
-    macros, mcp_client, memextract, monitors, net, nomad, planner, providers, recovery, secure,
+    macros, mcp_client, memextract, monitors, net, nomad, planner, pro_workspace, providers, recovery, secure,
     sentinel, setupwizard, skills, telemetry, undo, watchchecks, workflows,
 )
 from .brain import Brain
@@ -934,6 +934,33 @@ class App:
             saved = memextract.approve_candidate(self.memory, data.get("text", ""), project=self.cfg.get("active_project", ""))
             return {"saved": saved}
         return memextract.daily_summary(self.memory, self.cfg)
+
+    def pro_operation(self, data=None):
+        if data is None:
+            return {"uat": pro_workspace.uat_list(self.memory), "cases": pro_workspace.case_list(self.memory)}
+        action = str(data.get("action") or "").strip().lower()
+        if action == "csv_variance":
+            return pro_workspace.compare_csv_tables(
+                data.get("baseline", ""), data.get("actual", ""),
+                key_col=str(data.get("key_col") or "item"), value_col=str(data.get("value_col") or "amount"),
+            )
+        if action == "doc_diff":
+            return pro_workspace.compare_revisions(
+                data.get("text_a", ""), data.get("text_b", ""),
+                label_a=str(data.get("label_a") or "Revision A"), label_b=str(data.get("label_b") or "Revision B"),
+            )
+        if action == "uat_add":
+            item = pro_workspace.uat_add(
+                self.memory, req_id=data.get("req_id", ""), title=data.get("title", ""),
+                status=data.get("status", "pending"), evidence=data.get("evidence", ""),
+            )
+            return {"item": item, "uat": pro_workspace.uat_list(self.memory)}
+        if action == "case_create":
+            c = pro_workspace.case_create(self.memory, title=data.get("title", ""), category=data.get("category", "general"), note=data.get("note", ""))
+            return {"case": c, "cases": pro_workspace.case_list(self.memory)}
+        if action == "finance_summary":
+            return pro_workspace.finance_budget_summary(self.cfg, data.get("transactions") or [])
+        raise ValueError("Choose csv_variance, doc_diff, uat_add, case_create, or finance_summary.")
 
     def preview_voice(self, assistant="jarvis"):
         if not self.speaker:

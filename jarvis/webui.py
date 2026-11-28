@@ -198,6 +198,8 @@ def serve(app, port: int):
                 self._json(app.macros_operation())
             elif self.path == "/api/daily-summary":
                 self._json(app.daily_summary_operation())
+            elif self.path == "/api/pro":
+                self._json(app.pro_operation())
             else:
                 self._json({"error": "not found"}, 404)
 
@@ -329,7 +331,7 @@ def serve(app, port: int):
                     return self._json({"error": str(error)}, 400)
                 self._json(result)
             elif self.path in ("/api/mcp", "/api/conversations", "/api/projects", "/api/feeds", "/api/documents/preview",
-                               "/api/providers", "/api/tools/dry-run", "/api/bgtasks", "/api/monitors", "/api/macros", "/api/daily-summary"):
+                               "/api/providers", "/api/tools/dry-run", "/api/bgtasks", "/api/monitors", "/api/macros", "/api/daily-summary", "/api/pro"):
                 try:
                     ops = {
                         "/api/mcp": app.mcp_operation,
@@ -343,9 +345,10 @@ def serve(app, port: int):
                         "/api/monitors": app.monitors_operation,
                         "/api/macros": app.macros_operation,
                         "/api/daily-summary": app.daily_summary_operation,
+                        "/api/pro": app.pro_operation,
                     }
                     result = ops[self.path](data)
-                except (ValueError, TypeError, OSError) as error:
+                except (ValueError, TypeError, OSError, PermissionError) as error:
                     return self._json({"error": str(error)}, 400)
                 self._json(result)
             elif self.path == "/api/voice-preview":
