@@ -14,7 +14,7 @@ The protocol is currently a frontend consumer. No camera pipeline, marker detect
 
 ## Verification
 
-Six local Node 24 validation checks passed for rejected dangerous URL schemes, URL credentials, invalid progress, malformed tables, discarded unsupported fields and corrupted persistence. A frontend production build and full Python/Rust/browser regression gates need CI or a Windows development host with dependencies. No hardware-dependent webcam, microphone, GPU, spatial measurement or gesture claim is made.
+Three committed Node tests passed on CI (unsafe URLs/HTML, invalid progress/tables, corrupted saved data). The strict TypeScript/Vite production build passed and rebuilt the checked-in HUD assets. CI on the implementation branch: legacy HUD 73/73 and modern browser 32/32, including a synthetic canvas reload/reorder/export check; Linux Python 405 passed, 11 skipped; Rust policy tests and Windows installer passed. The Windows Python job was still running when this handoff text was written; check the final CI run before claiming it passed. No hardware-dependent webcam, microphone, GPU, spatial measurement or gesture claim is made. The screenshot at `docs/screenshots/command-center-intelligence-canvas.png` was captured in an authenticated Playwright browser with visibly labeled synthetic fixture content.
 
 ## Next implementation milestones
 
@@ -24,4 +24,22 @@ Six local Node 24 validation checks passed for rejected dangerous URL schemes, U
 4. Add workshop cards and safe local file previews, persist workspaces in the existing database with retention settings, and audit the frontend end to end.
 5. Measure GPU/CPU budget on the named Windows workstation and preserve the Kokoro neural voice path.
 
-Architectural references reviewed: Huw Prosser's public Fury and ArUco repositories, jarvis-mlx, web-whisper, clap-detection and God’s Eye View. No third-party source or media was copied; dependency licensing must be verified before future reuse.
+Public repository metadata was inspected for Huw Prosser's Fury and ArUco projects, jarvis-mlx, web-whisper, clap-detection and God’s Eye View. Detailed code and license audits remain pending. No third-party source or media was copied.
+
+## Try this branch on Windows
+
+1. Download the source ZIP for `feature/jarvis-spatial-intelligence` from GitHub or check out that branch in a separate working directory. Do not overwrite a Command Center development checkout.
+2. Follow `README.md` and run `install.ps1` in PowerShell for the existing Jarvis setup; preserve your existing user data and model settings.
+3. Start Jarvis normally, open `http://127.0.0.1:8765/command-center`, and choose **Intelligence Canvas** in the top bar. Send a normal assistant message to add a response card. Use the card controls to move/remove it, **Export JSON** to download a copy, or **Clear canvas** to remove local cards.
+4. The saved cards reopen only in the same browser profile. Export a copy before clearing browser storage or changing profiles. Do not place confidential material on this canvas yet.
+
+## Feature completion matrix
+
+| Capability | Current state |
+|---|---|
+| Typed, bounded text/source/table/progress cards | Implemented and tested in browser/build CI |
+| Browser-local card persistence, reordering and JSON export | Implemented and tested with synthetic fixture |
+| Authenticated backend visual result producer and evidence binding | Not implemented |
+| Cameras, gesture control, marker tracking and physical measurements | Not implemented; requires hardware testing |
+| Workshop, 3D assets, device adapters and cinematic sound effects | Not implemented |
+| Windows host resource measurements and new hardware screenshots | Not measured in this branch |
