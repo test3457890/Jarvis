@@ -87,7 +87,9 @@ def test_app_pro_xlsx_variance_and_invalid_b64_rejected(tmp_path, monkeypatch):
 
 
 def test_app_daily_summary_extracts_from_recent_messages_and_approves(tmp_path, monkeypatch):
+    from jarvis import memory as _memory
     monkeypatch.setattr(config, "APP_DIR", tmp_path)
+    monkeypatch.setattr(_memory, "DB_PATH", tmp_path / "mem.db")
     app = App(dict(config.DEFAULTS, speak_replies=False), use_voice=False)
     try:
         app.memory.log("user", "I prefer concise engineering summaries.")

@@ -48,3 +48,23 @@ def test_native_shell_loopback_guard_and_capabilities():
         native_shell.launch_native_window("https://evil.example.com")
     with pytest.raises(ValueError, match="loopback"):
         native_shell.launch_native_window("http://localhost:8765")
+
+
+def test_live_win32_hotkeys_and_tray_lifecycle():
+    import os
+    import time
+    if os.name != "nt":
+        pytest.skip("Win32 tray/hotkey lifecycle is Windows-only")
+    mgr = hotkeys.GlobalHotkeyManager()
+    assert mgr.start() is True
+    time.sleep(0.15)
+    assert mgr.status()["running"] is True
+    mgr.stop()
+    assert mgr.status()["running"] is False
+
+    icon = tray.SystemTrayIcon(tooltip="Jarvis Test Tray")
+    assert icon.start() is True
+    time.sleep(0.15)
+    assert icon.status()["running"] is True
+    icon.stop()
+    assert icon.status()["running"] is False

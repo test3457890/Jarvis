@@ -47,8 +47,11 @@ def until(condition, timeout=5.0, message="condition not met"):
     """Wait for app state changed by an asynchronous HUD request."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if condition():
-            return
+        try:
+            if condition():
+                return
+        except (PermissionError, FileNotFoundError, json.JSONDecodeError):
+            pass
         time.sleep(0.05)
     raise AssertionError(message)
 
@@ -1028,6 +1031,22 @@ def audit(app, cfg, code, files, url):
             expect(page.locator("#companion-status")).to_contain_text("Disabled by default")
             page.screenshot(path=OUT / "nextgen-phase8-pro-geo.png")
             page.locator("#pro-geo-panel summary").click()
+
+        @check("Dedicated Workspaces", "switch across Console, Vitals, Audit, Repair, Runs, Professional & Settings", "each tab activates its panel and captures screenshots")
+        def _():
+            for ws, panel_id, shot in (
+                ("audit", "#audit-ops-panel", "nextgen-workspace-audit.png"),
+                ("repair", "#sentinel-panel", None),
+                ("runs", "#runs-panel", "nextgen-workspace-runs.png"),
+                ("pro", "#pro-geo-panel", None),
+                ("console", None, None),
+            ):
+                page.locator(f"#workspace-tabs button[data-ws='{ws}']").click()
+                expect(page.locator(f"#workspace-tabs button[data-ws='{ws}']")).to_have_attribute("aria-pressed", "true")
+                if panel_id:
+                    expect(page.locator(panel_id)).to_have_attribute("open", "")
+                if shot:
+                    page.screenshot(path=OUT / shot)
 
         # ---------------------------------------------------------------- layout and connection
         @check("Phone layout", "390 px wide", "no sideways scrolling")
