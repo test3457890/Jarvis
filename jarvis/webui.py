@@ -14,6 +14,7 @@ from pathlib import Path
 from . import assistants, config, images
 
 UI_FILE = Path(__file__).with_name("ui.html")
+CC_DIR = Path(__file__).with_name("static") / "cc"
 REQUEST_BODY_TIMEOUT = 10
 
 
@@ -109,6 +110,40 @@ def serve(app, port: int):
                 self.end_headers()
                 self.wfile.write(body)
                 return
+            if self.path == "/command-center" or self.path == "/command-center/":
+                cc_index = CC_DIR / "index.html"
+                if not cc_index.is_file():
+                    return self._json({"error": "Modern Command Center bundle not built yet."}, 503)
+                page = (
+                    cc_index.read_text(encoding="utf-8")
+                    .replace("__JARVIS_KEY__", token)
+                    .replace("__JARVIS_THEME__", app.cfg.get("theme") if app.cfg.get("theme") in config.THEMES else "hud")
+                )
+                csp = ("default-src 'self'; script-src 'self' 'unsafe-inline'; "
+                       "style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:")
+                body = page.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Content-Security-Policy", csp)
+                self.send_header("X-Frame-Options", "DENY")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if self.path.startswith("/cc-assets/"):
+                rel = self.path[len("/cc-assets/"):].split("?", 1)[0]
+                target = (CC_DIR / "assets" / rel).resolve()
+                assets_root = (CC_DIR / "assets").resolve()
+                if target.parent != assets_root or not target.is_file():
+                    return self._json({"error": "not found"}, 404)
+                ctype = (
+                    "application/javascript; charset=utf-8" if target.suffix == ".js"
+                    else "text/css; charset=utf-8" if target.suffix == ".css"
+                    else "image/svg+xml" if target.suffix == ".svg"
+                    else "application/octet-stream"
+                )
+                return self._send(200, target.read_bytes(), ctype)
             if self.path.startswith("/api/events"):
                 if not secrets.compare_digest(self.path.partition("key=")[2], token):
                     return self._json({"error": "forbidden"}, 403)
@@ -206,6 +241,22 @@ def serve(app, port: int):
                 self._json(app.geospatial_operation())
             elif self.path == "/api/voice-studio":
                 self._json(app.voice_studio_operation())
+            elif self.path == "/api/uia":
+                self._json(app.uia_operation())
+            elif self.path == "/api/smarthome":
+                self._json(app.smarthome_operation())
+            elif self.path == "/api/sentinel-ops":
+                self._json(app.sentinel_ops_operation())
+            elif self.path == "/api/containers":
+                self._json(app.containers_operation())
+            elif self.path == "/api/coop-agents":
+                self._json(app.coop_agents_operation())
+            elif self.path == "/api/office":
+                self._json(app.office_operation())
+            elif self.path == "/api/catalogue":
+                self._json(app.catalogue_operation())
+            elif self.path == "/api/tools/catalogue":
+                self._json(app.tools_catalogue_operation())
             else:
                 self._json({"error": "not found"}, 404)
 
@@ -338,7 +389,9 @@ def serve(app, port: int):
                 self._json(result)
             elif self.path in ("/api/mcp", "/api/conversations", "/api/projects", "/api/feeds", "/api/documents/preview",
                                "/api/providers", "/api/tools/dry-run", "/api/bgtasks", "/api/monitors", "/api/macros", "/api/daily-summary",
-                               "/api/pro", "/api/companion", "/api/geospatial", "/api/voice-studio"):
+                               "/api/pro", "/api/companion", "/api/geospatial", "/api/voice-studio",
+                               "/api/uia", "/api/smarthome", "/api/sentinel-ops", "/api/containers",
+                               "/api/coop-agents", "/api/office", "/api/catalogue"):
                 try:
                     ops = {
                         "/api/mcp": app.mcp_operation,
@@ -356,6 +409,13 @@ def serve(app, port: int):
                         "/api/companion": app.companion_operation,
                         "/api/geospatial": app.geospatial_operation,
                         "/api/voice-studio": app.voice_studio_operation,
+                        "/api/uia": app.uia_operation,
+                        "/api/smarthome": app.smarthome_operation,
+                        "/api/sentinel-ops": app.sentinel_ops_operation,
+                        "/api/containers": app.containers_operation,
+                        "/api/coop-agents": app.coop_agents_operation,
+                        "/api/office": app.office_operation,
+                        "/api/catalogue": app.catalogue_operation,
                     }
                     result = ops[self.path](data)
                 except (ValueError, TypeError, OSError, PermissionError) as error:

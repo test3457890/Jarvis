@@ -10,6 +10,8 @@ Capabilities:
 """
 import json
 import math
+import re
+import time
 
 from . import net, secure
 
@@ -21,31 +23,72 @@ PUBLIC_GEOSPATIAL_FEEDS = {
         "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson",
         "content_type": "application/json",
         "category": "earthquake",
+        "data_class": "live",
+        "attribution": "U.S. Geological Survey (Public Domain)",
+        "freshness": "Updated ~every 1-5 minutes",
+        "coverage": "Global M2.5+ seismic network",
     },
     "nasa_eonet_wildfires": {
         "label": "NASA EONET Open Wildfires",
         "url": "https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=open&limit=25",
         "content_type": "application/json",
         "category": "wildfire",
+        "data_class": "delayed",
+        "attribution": "NASA Earth Observatory Natural Event Tracker (Public Domain)",
+        "freshness": "Curated hourly/daily thermal anomalies",
+        "coverage": "Global satellite-detected wildfire events",
     },
     "opensky_public_flights": {
         "label": "OpenSky Network Public ADS-B States",
         "url": "https://opensky-network.org/api/states/all",
         "content_type": "application/json",
         "category": "aviation",
+        "data_class": "delayed",
+        "attribution": "The OpenSky Network (CC-BY / Research)",
+        "freshness": "10-second public snapshot (rate-limited anonymous)",
+        "coverage": "Community ADS-B receivers (strongest in North America & Europe)",
     },
     "celestrak_stations": {
-        "label": "CelesTrak Active Space Stations (TLE)",
+        "label": "CelesTrak Active Space Stations (GP/TLE)",
         "url": "https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=json",
         "content_type": "application/json",
         "category": "satellite",
+        "data_class": "estimated",
+        "attribution": "CelesTrak / 18th Space Defense Squadron Public GP Catalog",
+        "freshness": "Orbital elements updated ~2x daily; positions propagated mathematically",
+        "coverage": "Global LEO space stations (ISS, Tiangong, etc.)",
     },
     "noaa_maritime_buoys": {
         "label": "NOAA NDBC Public Maritime Buoy Observations",
         "url": "https://www.ndbc.noaa.gov/data/latest_obs/latest_obs.txt",
         "content_type": "text/plain",
         "category": "maritime",
+        "data_class": "delayed",
+        "attribution": "NOAA National Data Buoy Center (Public Domain)",
+        "freshness": "Updated every 10-60 minutes",
+        "coverage": "US coastal, Pacific, Atlantic & Gulf stations",
     },
+    "nws_weather_alerts": {
+        "label": "NOAA NWS Active Severe Weather & Flood Alerts",
+        "url": "https://api.weather.gov/alerts/active?limit=25",
+        "content_type": "application/geo+json",
+        "category": "weather",
+        "data_class": "live",
+        "attribution": "NOAA National Weather Service (Public Domain)",
+        "freshness": "Real-time CAP alerts",
+        "coverage": "United States & territories",
+    },
+}
+
+KNOWN_PLACES = {
+    "new york": (40.7128, -74.0060),
+    "london": (51.5074, -0.1278),
+    "tokyo": (35.6762, 139.6503),
+    "san francisco": (37.7749, -122.4194),
+    "sydney": (-33.8688, 151.2093),
+    "paris": (48.8566, 2.3522),
+    "denver": (39.7392, -104.9903),
+    "singapore": (1.3521, 103.8198),
 }
 
 
@@ -181,18 +224,133 @@ def fetch_public_feed(cfg: dict, feed_id: str) -> dict:
     if feed_id not in PUBLIC_GEOSPATIAL_FEEDS:
         raise ValueError(f"Unknown public feed '{feed_id}'.")
     spec = PUBLIC_GEOSPATIAL_FEEDS[feed_id]
-    text, _ctype = net.read_public_page(spec["url"], cfg, content_types=(spec["content_type"], "application/geo+json"))
+    text, _ctype = net.read_public_page(spec["url"], cfg, content_types=(spec["content_type"], "application/geo+json", "application/json"))
     count, markers = extract_feed_markers(feed_id, text)
     secure.audit("geospatial_feed_read", {"feed": feed_id, "markers": len(markers)})
-    return {"feed": feed_id, "label": spec["label"], "category": spec["category"], "item_count": count, "markers": markers}
+    return {
+        "feed": feed_id,
+        "label": spec["label"],
+        "category": spec["category"],
+        "data_class": spec.get("data_class", "delayed"),
+        "attribution": spec.get("attribution", ""),
+        "freshness": spec.get("freshness", ""),
+        "coverage": spec.get("coverage", ""),
+        "fetched_at": round(time.time(), 2),
+        "item_count": count,
+        "markers": markers,
+    }
 
 
-def workspace_status(cfg: dict) -> dict:
+def estimate_orbital_track(
+    name: str = "ISS (Estimated)",
+    *,
+    inclination_deg: float = 51.64,
+    period_min: float = 92.9,
+    start_lon: float = -80.0,
+    steps: int = 36,
+) -> dict:
+    """Compute a deterministic ground-track estimation for educational/globe visualization (explicitly marked 'estimated')."""
+    inc = max(0.0, min(98.0, float(inclination_deg)))
+    n = max(8, min(int(steps), 72))
+    points = []
+    for i in range(n):
+        frac = i / float(n)
+        angle = 2.0 * math.pi * frac
+        lat = round(inc * math.sin(angle), 4)
+        lon = ((start_lon + 360.0 * frac - (period_min / 1440.0) * 360.0 * frac + 180.0) % 360.0) - 180.0
+        points.append({"step": i, "lat": lat, "lon": round(lon, 4), "alt_km": 420.0})
+    return {
+        "name": str(name)[:60],
+        "data_class": "estimated",
+        "note": "Simplified circular Keplerian ground-track estimation; use live CelesTrak GP/SGP4 for precise passes.",
+        "points": points,
+    }
+
+
+def parse_voice_navigation(command: str) -> dict:
+    """Parse voice-controlled map navigation commands (e.g. 'fly to Tokyo', 'zoom to 37.7, -122.4', 'show earthquakes')."""
+    text = str(command or "").strip().lower()
+    coord_m = re.search(r"(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)", text)
+    if coord_m:
+        la, lo = _validate_coords(float(coord_m.group(1)), float(coord_m.group(2)))
+        return {"action": "fly_to", "lat": la, "lon": lo, "label": f"{la:.2f}, {lo:.2f}"}
+    for place, (la, lo) in KNOWN_PLACES.items():
+        if place in text:
+            return {"action": "fly_to", "lat": la, "lon": lo, "label": place.title()}
+    for fid, spec in PUBLIC_GEOSPATIAL_FEEDS.items():
+        if spec["category"] in text or fid in text:
+            return {"action": "toggle_layer", "feed": fid, "category": spec["category"]}
+    if "sar" in text or "search" in text:
+        return {"action": "open_sar", "label": "SAR Planning Grid"}
+    return {"action": "noop", "message": "Say 'fly to London', coordinates '39.7, -105.0', or 'show earthquakes'."}
+
+
+def _init_annotations_db(mem) -> None:
+    with mem._lock:
+        mem.db.execute(
+            """CREATE TABLE IF NOT EXISTS geo_annotations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                label TEXT NOT NULL,
+                lat REAL NOT NULL,
+                lon REAL NOT NULL,
+                category TEXT NOT NULL DEFAULT 'note',
+                notes TEXT NOT NULL DEFAULT '',
+                created_at REAL NOT NULL
+            )"""
+        )
+        mem.db.commit()
+
+
+def add_annotation(mem, label: str, lat: float, lon: float, *, category: str = "note", notes: str = "") -> dict:
+    la, lo = _validate_coords(lat, lon)
+    clean_label = str(label or "Waypoint").strip()[:80]
+    _init_annotations_db(mem)
+    now = time.time()
+    with mem._lock:
+        cur = mem.db.execute(
+            "INSERT INTO geo_annotations (label, lat, lon, category, notes, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (clean_label, la, lo, str(category or "note")[:30], str(notes or "")[:240], now),
+        )
+        mem.db.commit()
+        aid = cur.lastrowid
+    return {"id": aid, "label": clean_label, "lat": la, "lon": lo, "category": category, "notes": notes, "data_class": "user_annotation"}
+
+
+def list_annotations(mem) -> list[dict]:
+    _init_annotations_db(mem)
+    with mem._lock:
+        rows = mem.db.execute(
+            "SELECT id, label, lat, lon, category, notes, created_at FROM geo_annotations ORDER BY id DESC LIMIT 100"
+        ).fetchall()
+    return [
+        {"id": r[0], "label": r[1], "lat": r[2], "lon": r[3], "category": r[4], "notes": r[5], "created_at": r[6], "data_class": "user_annotation"}
+        for r in rows
+    ]
+
+
+def delete_annotation(mem, annotation_id: int) -> dict:
+    _init_annotations_db(mem)
+    with mem._lock:
+        mem.db.execute("DELETE FROM geo_annotations WHERE id=?", (int(annotation_id),))
+        mem.db.commit()
+    return {"ok": True, "deleted": int(annotation_id)}
+
+
+def workspace_status(cfg: dict, mem=None) -> dict:
     return {
         "internet_enabled": bool(cfg.get("allow_internet_tools")),
         "lockdown": bool(cfg.get("lockdown")),
         "feeds": [
-            {"id": fid, "label": spec["label"], "category": spec["category"], "url": spec["url"]}
+            {
+                "id": fid, "label": spec["label"], "category": spec["category"], "url": spec["url"],
+                "data_class": spec.get("data_class", "delayed"),
+                "attribution": spec.get("attribution", ""),
+                "freshness": spec.get("freshness", ""),
+                "coverage": spec.get("coverage", ""),
+            }
             for fid, spec in PUBLIC_GEOSPATIAL_FEEDS.items()
         ],
+        "annotations": list_annotations(mem) if mem is not None else [],
+        "sample_orbital_track": estimate_orbital_track(),
+        "ethics_policy": "Public feeds & user annotations only. Covert surveillance and private individual tracking are prohibited.",
     }

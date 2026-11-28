@@ -127,6 +127,51 @@ pub fn classify_command_risk(cmd: &str) -> &'static str {
     "T2"
 }
 
+/// Validate a Docker container invocation against Jarvis's hardened sandbox policy:
+/// rejects `--privileged`, Docker socket mounts, host networking/PID namespaces,
+/// and requires `--read-only`, `--cap-drop=ALL`, and a non-root `--user`.
+pub fn validate_container_run_args(args: &[&str]) -> Result<(), &'static str> {
+    let mut has_read_only = false;
+    let mut has_cap_drop_all = false;
+    let mut has_non_root = false;
+
+    for (i, raw) in args.iter().enumerate() {
+        let lower = raw.to_ascii_lowercase();
+        if lower == "--privileged" || lower.starts_with("--privileged=") {
+            return Err("Privileged containers are forbidden");
+        }
+        if lower.contains("docker.sock") || lower.contains("docker_engine") {
+            return Err("Mounting the Docker socket is forbidden");
+        }
+        if lower == "--network=host" || lower == "--pid=host" {
+            return Err("Host network and PID namespaces are forbidden");
+        }
+        if lower == "--read-only" {
+            has_read_only = true;
+        }
+        if lower == "--cap-drop=all" {
+            has_cap_drop_all = true;
+        }
+        if lower == "--user" {
+            if let Some(next) = args.get(i + 1) {
+                if !next.starts_with("0:") && *next != "0" && !next.eq_ignore_ascii_case("root") {
+                    has_non_root = true;
+                }
+            }
+        }
+    }
+    if !has_read_only {
+        return Err("Container must enforce --read-only root filesystem");
+    }
+    if !has_cap_drop_all {
+        return Err("Container must enforce --cap-drop=ALL");
+    }
+    if !has_non_root {
+        return Err("Container must specify a non-root --user");
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,5 +250,23 @@ corrupted line
         assert_eq!(classify_command_risk("powershell -enc AAAA"), "BLOCKED");
         assert_eq!(classify_command_risk("Remove-Item -Recurse temp"), "T3");
         assert_eq!(classify_command_risk("git status"), "T2");
+    }
+
+    #[test]
+    fn enforces_hardened_container_policy() {
+        let safe = [
+            "docker", "run", "--rm", "--read-only", "--user", "65534:65534",
+            "--cap-drop=ALL", "--network", "none", "python:3.12-slim", "python", "-V",
+        ];
+        assert!(validate_container_run_args(&safe).is_ok());
+
+        let priv_bad = ["docker", "run", "--privileged", "--read-only", "--cap-drop=ALL", "--user", "65534:65534"];
+        assert!(validate_container_run_args(&priv_bad).is_err());
+
+        let sock_bad = ["docker", "run", "-v", "/var/run/docker.sock:/var/run/docker.sock", "--read-only", "--cap-drop=ALL", "--user", "65534:65534"];
+        assert!(validate_container_run_args(&sock_bad).is_err());
+
+        let root_bad = ["docker", "run", "--read-only", "--cap-drop=ALL", "--user", "0:0"];
+        assert!(validate_container_run_args(&root_bad).is_err());
     }
 }

@@ -14,6 +14,7 @@ CONFIG_PATH = APP_DIR / "config.json"
 MODES = ("everyday", "coding", "research", "cybersecurity", "briefing", "talk")
 THEMES = ("hud", "simple", "light", "contrast", "midnight", "paper")
 WORKSPACE_VIEWS = ("classic", "command", "ambient")
+SYSTEM_PERFORMANCE_PROFILES = ("lightweight", "balanced", "command_center")
 VOICE_CHOICES = ("auto", "windows", "piper")
 VOICE_LIMITS = {"follow_up_seconds": 60, "room_context_seconds": 600}
 
@@ -27,6 +28,7 @@ DEFAULTS = {
     "embed_keep_alive": "2m",
     "memory_embeddings": True,
     "performance_profile": "standard",
+    "system_performance_profile": "balanced",  # lightweight | balanced | command_center
     "theme": "hud",
     "workspace_view": "classic",
     "voice_choice": "auto",

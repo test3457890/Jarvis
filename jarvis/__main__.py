@@ -1022,7 +1022,7 @@ class App:
 
     def geospatial_operation(self, data=None):
         if data is None:
-            return geospatial.workspace_status(self.cfg)
+            return geospatial.workspace_status(self.cfg, self.memory)
         action = str(data.get("action") or "").strip().lower()
         if action == "sar_grid":
             return geospatial.sar_search_grid(
@@ -1035,7 +1035,19 @@ class App:
             return {"distance_km": km, "bearing_deg": brg}
         if action == "feed":
             return geospatial.fetch_public_feed(self.cfg, str(data.get("feed_id") or ""))
-        raise ValueError("Choose sar_grid, distance, or feed.")
+        if action == "add_annotation":
+            return geospatial.add_annotation(
+                self.memory, str(data.get("label") or "Waypoint"),
+                float(data.get("lat", 0.0)), float(data.get("lon", 0.0)),
+                category=str(data.get("category") or "note"), notes=str(data.get("notes") or ""),
+            )
+        if action == "delete_annotation":
+            return geospatial.delete_annotation(self.memory, int(data.get("id") or 0))
+        if action == "orbital_track":
+            return geospatial.estimate_orbital_track(str(data.get("name") or "ISS (Estimated)"))
+        if action == "voice_nav":
+            return geospatial.parse_voice_navigation(str(data.get("command") or ""))
+        raise ValueError("Choose sar_grid, distance, feed, add_annotation, delete_annotation, orbital_track, or voice_nav.")
 
     def preview_voice(self, assistant="jarvis"):
         if not self.speaker:
@@ -1159,6 +1171,203 @@ class App:
             res = voice_runtime.download_voice_pack(str(data.get("pack_id") or ""), cfg=self.cfg)
             return {**res, "studio": speech_engines.studio_state(self.cfg)}
         raise ValueError("Choose save, preview, cancel, reset, install_runtime, download_pack, or delete_pack.")
+
+    def uia_operation(self, data=None):
+        """Computer Control (Phase 3): Windows UIA accessibility tree, app discovery & approved actions."""
+        from . import uia_control
+        if data is None:
+            return uia_control.workspace_state()
+        action = str(data.get("action") or "").strip().lower()
+        if action == "inspect":
+            return uia_control.inspect_accessibility_tree(str(data.get("window") or ""), int(data.get("max_nodes") or 35))
+        if action == "preview":
+            return uia_control.preview_desktop_action(
+                str(data.get("desktop_action") or ""),
+                target=str(data.get("target") or ""),
+                value=str(data.get("value") or ""),
+                is_password=bool(data.get("is_password", False)),
+            )
+        if action == "execute":
+            return uia_control.execute_approved_action(
+                self.cfg,
+                str(data.get("desktop_action") or ""),
+                target=str(data.get("target") or ""),
+                value=str(data.get("value") or ""),
+                approved=bool(data.get("approved", False)),
+                is_password=bool(data.get("is_password", False)),
+            )
+        if action == "cancel":
+            return uia_control.cancel_active()
+        raise ValueError("Choose inspect, preview, execute, or cancel.")
+
+    def smarthome_operation(self, data=None):
+        """Smart Home & Authorized Camera Center (Phase 5)."""
+        from . import smarthome
+        if data is None:
+            return smarthome.workspace_state(self.memory)
+        action = str(data.get("action") or "").strip().lower()
+        if action == "register":
+            dev = smarthome.register_device(
+                self.memory, self.cfg,
+                device_id=str(data.get("id") or ""),
+                name=str(data.get("name") or ""),
+                kind=str(data.get("kind") or ""),
+                endpoint=str(data.get("endpoint") or ""),
+                zone=str(data.get("zone") or "General"),
+                owner_authorized=bool(data.get("owner_authorized", False)),
+                credential=str(data.get("credential") or ""),
+            )
+            return {"device": dev, "workspace": smarthome.workspace_state(self.memory)}
+        if action == "remove":
+            res = smarthome.remove_device(self.memory, self.cfg, str(data.get("id") or ""))
+            return {**res, "workspace": smarthome.workspace_state(self.memory)}
+        if action == "recording":
+            dev = smarthome.set_recording(
+                self.memory, self.cfg, str(data.get("id") or ""),
+                bool(data.get("enabled", False)), approved=bool(data.get("approved", False)),
+            )
+            return {"device": dev, "workspace": smarthome.workspace_state(self.memory)}
+        if action == "event":
+            ev = smarthome.record_event(
+                self.memory, str(data.get("id") or ""), str(data.get("kind") or "motion"), str(data.get("summary") or ""),
+            )
+            return {"event": ev, "workspace": smarthome.workspace_state(self.memory)}
+        raise ValueError("Choose register, remove, recording, or event.")
+
+    def sentinel_ops_operation(self, data=None):
+        """Sentinel Defensive Cybersecurity Workspace (Phase 6)."""
+        from . import sentinel_ops
+        if data is None:
+            return sentinel_ops.workspace_state(self.memory)
+        action = str(data.get("action") or "").strip().lower()
+        if action == "fim_verify":
+            return sentinel_ops.fim_verify(self.memory)
+        if action == "secret_scan":
+            root = str(data.get("path") or self.cfg.get("code_dir") or ".")
+            return sentinel_ops.scan_secrets(root)
+        if action == "firewall_preview":
+            return sentinel_ops.preview_defensive_firewall_rule(
+                str(data.get("name") or "JarvisDefensiveBlock"),
+                str(data.get("remote_ip") or ""),
+                direction=str(data.get("direction") or "Inbound"),
+                action=str(data.get("rule_action") or "Block"),
+            )
+        if action == "export_evidence":
+            return sentinel_ops.export_incident_evidence(self.memory, title=str(data.get("title") or "incident"))
+        raise ValueError("Choose fim_verify, secret_scan, firewall_preview, or export_evidence.")
+
+    def containers_operation(self, data=None):
+        """Hardened Container & Isolated Execution Manager (Phase 7)."""
+        from . import containers
+        if data is None:
+            return containers.workspace_state()
+        action = str(data.get("action") or "").strip().lower()
+        if action == "preview_run":
+            args = containers.build_hardened_run_args(
+                str(data.get("image") or "python:3.12-slim"),
+                list(data.get("command") or ["python", "--version"]),
+                memory_mb=int(data.get("memory_mb") or 512),
+                cpus=float(data.get("cpus") or 1.0),
+                allow_network=bool(data.get("allow_network", False)),
+            )
+            return {"ok": True, "dry_run": True, "command": args}
+        if action == "kill":
+            return containers.emergency_kill_container(
+                self.cfg, str(data.get("id") or ""), approved=bool(data.get("approved", False)),
+            )
+        raise ValueError("Choose preview_run or kill.")
+
+    def coop_agents_operation(self, data=None):
+        """Cooperative Jarvis + TUKI Multi-Agent Planner & Visual Automation Builder (Phase 8)."""
+        from . import coop_agents
+        if data is None:
+            return coop_agents.workspace_state(self.memory)
+        action = str(data.get("action") or "").strip().lower()
+        if action == "create_plan":
+            plan = coop_agents.create_plan(
+                self.memory, str(data.get("title") or "Cooperative Plan"),
+                str(data.get("goal") or ""), list(data.get("steps") or []),
+                depth=int(data.get("depth") or 0),
+            )
+            return {"plan": plan, "workspace": coop_agents.workspace_state(self.memory)}
+        if action == "advance":
+            plan = coop_agents.advance_step(
+                self.memory, str(data.get("plan_id") or ""), str(data.get("step_id") or ""),
+                outcome=str(data.get("outcome") or ""), approve=bool(data.get("approve", False)),
+                verify=bool(data.get("verify", False)),
+            )
+            return {"plan": plan, "workspace": coop_agents.workspace_state(self.memory)}
+        if action == "cancel":
+            plan = coop_agents.cancel_plan(self.memory, str(data.get("plan_id") or ""))
+            return {"plan": plan, "workspace": coop_agents.workspace_state(self.memory)}
+        if action == "save_automation":
+            auto = coop_agents.save_automation(
+                self.memory, self.cfg,
+                name=str(data.get("name") or "Routine"),
+                trigger_type=str(data.get("trigger_type") or "manual"),
+                trigger_spec=str(data.get("trigger_spec") or ""),
+                condition_expr=str(data.get("condition_expr") or ""),
+                action_spec=str(data.get("action_spec") or ""),
+                enabled=bool(data.get("enabled", False)),
+            )
+            return {"automation": auto, "workspace": coop_agents.workspace_state(self.memory)}
+        raise ValueError("Choose create_plan, advance, cancel, or save_automation.")
+
+    def office_operation(self, data=None):
+        """Professional Document Generation, Citations & Knowledge Graph (Phase 9)."""
+        from . import office_docs
+        if data is None:
+            return {
+                "citations": office_docs.list_citations(self.memory),
+                "knowledge_graph": office_docs.query_knowledge_graph(self.memory),
+                "export_dir": str(office_docs.output_docs_dir(self.cfg)),
+            }
+        action = str(data.get("action") or "").strip().lower()
+        if action == "generate_docx":
+            return office_docs.generate_docx(
+                self.cfg, str(data.get("filename") or "report.docx"),
+                str(data.get("title") or "Jarvis Report"), list(data.get("paragraphs") or []),
+            )
+        if action == "generate_pptx":
+            return office_docs.generate_pptx(
+                self.cfg, str(data.get("filename") or "deck.pptx"), list(data.get("slides") or []),
+            )
+        if action == "add_citation":
+            c = office_docs.add_citation(
+                self.memory, str(data.get("cite_key") or "ref"), str(data.get("authors") or ""),
+                str(data.get("year") or "2026"), str(data.get("title") or ""),
+                venue=str(data.get("venue") or ""), url=str(data.get("url") or ""),
+            )
+            return {"citation": c, "citations": office_docs.list_citations(self.memory)}
+        if action == "add_edge":
+            e = office_docs.add_knowledge_edge(
+                self.memory, str(data.get("subject") or ""), str(data.get("relation") or ""),
+                str(data.get("object") or ""), source=str(data.get("source") or "user"),
+            )
+            return {"edge": e, "knowledge_graph": office_docs.query_knowledge_graph(self.memory)}
+        raise ValueError("Choose generate_docx, generate_pptx, add_citation, or add_edge.")
+
+    def catalogue_operation(self, data=None):
+        """Searchable MCP & Connector Catalogue (Phase 11)."""
+        if data is None:
+            return {"items": connectors.search_catalogue()}
+        action = str(data.get("action") or "search").strip().lower()
+        if action == "preview":
+            return connectors.preview_catalogue_install(str(data.get("id") or ""))
+        return {"items": connectors.search_catalogue(str(data.get("query") or ""), str(data.get("category") or ""))}
+
+    def tools_catalogue_operation(self):
+        """Searchable live skill/tool catalogue for the Command Center HUD."""
+        from . import skills
+        tools = []
+        for name, spec in sorted(skills.SKILLS.items()):
+            tools.append({
+                "name": name,
+                "description": spec.get("description", ""),
+                "risky": bool(spec.get("risky")),
+                "tier": skills.risk_tier(name),
+            })
+        return {"count": len(tools), "tools": tools}
 
     def confirm(self, yes: bool, expected_id: str):
         result = self.brain.confirm_pending(yes, expected_id=expected_id)
