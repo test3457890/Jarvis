@@ -2822,17 +2822,35 @@ function renderVoiceStudio(st) {
   const pronLines = Object.entries(st.pronunciations || {}).map(([k, v]) => `${k}=${v}`);
   $('vs-pron').value = pronLines.join('\n');
   const rec = st.recommended_profile || {};
-  $('vs-rec').textContent = `Recommended: ${rec.profile || 'balanced'} (${rec.device || 'auto'}) — ${rec.reason || ''} · Active Jarvis: ${st.jarvis?.resolved?.selected || 'none'} · Active TUKI: ${st.tuki?.resolved?.selected || 'none'}`;
+  const rt = st.runtime || {};
+  $('vs-rec').textContent = `Recommended: ${rec.profile || 'balanced'} (${rec.device || 'auto'}) · Runtime: ${rt.ok ? 'Python ' + rt.python + ' neural worker READY' : 'Not installed'} · Active Jarvis: ${st.jarvis?.resolved?.selected || 'none'} · Active TUKI: ${st.tuki?.resolved?.selected || 'none'}`;
   const tbody = $('vs-packs-table').querySelector('tbody');
   tbody.replaceChildren();
   for (const p of (st.storage?.packs || [])) {
     const tr = el('tr');
-    tr.append(
-      el('td', '', p.label),
-      el('td', '', p.license),
-      el('td', '', `${p.estimated_mb} MB`),
-      el('td', '', p.installed ? `Installed (${p.disk_mb} MB)` : 'Optional (not downloaded)')
-    );
+    const actCell = el('td');
+    if (p.installed) {
+      const delBtn = el('button', '', `Remove (${p.disk_mb} MB)`); delBtn.type = 'button';
+      delBtn.onclick = async () => {
+        $('vs-status').textContent = `Removing ${p.id}…`;
+        const r = await api('/api/voice-studio', {action:'delete_pack', pack_id:p.id});
+        $('vs-status').textContent = r.error || `Removed ${p.id}.`;
+        loadVoiceStudio();
+      };
+      actCell.appendChild(delBtn);
+    } else if (p.id.startsWith('kokoro-v1.0-onnx')) {
+      const dlBtn = el('button', '', `Download (${p.estimated_mb} MB)`); dlBtn.type = 'button';
+      dlBtn.onclick = async () => {
+        $('vs-status').textContent = `Downloading ${p.id} (~${p.estimated_mb} MB)…`;
+        const r = await api('/api/voice-studio', {action:'download_pack', pack_id:p.id});
+        $('vs-status').textContent = r.error || `Installed & SHA-256 verified ${p.id}.`;
+        loadVoiceStudio();
+      };
+      actCell.appendChild(dlBtn);
+    } else {
+      actCell.textContent = 'Optional (manual setup)';
+    }
+    tr.append(el('td', '', p.label), el('td', '', p.license), el('td', '', `${p.estimated_mb} MB`), actCell);
     tbody.appendChild(tr);
   }
 }

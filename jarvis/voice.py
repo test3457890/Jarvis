@@ -132,12 +132,67 @@ class Speaker:
                     self._q.task_done()
                 except queue.Empty:
                     break
+        if os.name == "nt":
+            try:
+                import winsound
+                winsound.PlaySound(None, winsound.SND_PURGE)
+            except Exception:
+                pass
+        try:
+            from jarvis import voice_runtime
+            voice_runtime.CLIENT.cancel()
+        except Exception:
+            pass
 
     def _stopped(self, generation):
         return generation != self._generation
 
     def wait(self):
         self._q.join()
+
+    def _play_wav_interruptible(self, wav_path: str, generation: int, duration_s: float) -> None:
+        if os.name == "nt":
+            import winsound
+            winsound.PlaySound(wav_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+            deadline = time.monotonic() + max(0.2, float(duration_s or 1.0) + 0.15)
+            while time.monotonic() < deadline:
+                if self._stopped(generation):
+                    winsound.PlaySound(None, winsound.SND_PURGE)
+                    return
+                time.sleep(0.02)
+
+    def _try_neural_speak(self, text: str, assistant: str, generation: int) -> bool:
+        """Attempt neural TTS via the unified speech_engines resolver; return True if spoken."""
+        if "_windows_voice" in self.__dict__:
+            return False
+        try:
+            from jarvis import speech_engines
+        except ImportError:
+            return False
+        resolved = speech_engines.resolve_engine(self.cfg, assistant)
+        eng = resolved.get("selected")
+        if eng not in ("kokoro_onnx", "kokoro", "qwen3_tts", "chatterbox"):
+            return False
+        fd, wav = tempfile.mkstemp(prefix=f"jarvis_live_{assistant}_", suffix=".wav")
+        os.close(fd)
+        try:
+            res = speech_engines.synthesize_to_wav(
+                self.cfg, text, assistant=assistant, out_path=wav, allow_fallback=False,
+            )
+            self.last_engine = res.get("engine", eng)
+            self.last_voice = res.get("voice", "")
+            if self._stopped(generation):
+                return True
+            self._play_wav_interruptible(wav, generation, res.get("audio_seconds", 1.0))
+            return True
+        except Exception as exc:
+            print(f"[voice] Neural engine '{eng}' unavailable ({exc}); falling back to system voice.")
+            return False
+        finally:
+            try:
+                os.unlink(wav)
+            except OSError:
+                pass
 
     def _worker(self):
         engine = None
@@ -148,16 +203,21 @@ class Speaker:
                 continue
             self.speaking.set()
             try:
+                if self._try_neural_speak(text, assistant, generation):
+                    continue
                 profile = voice_profile(self.cfg, assistant)
                 if profile["piper_model"]:
                     try:
                         self._piper(text, generation, profile["piper_model"])
+                        self.last_engine = "piper"
+                        self.last_voice = os.path.basename(profile["piper_model"])
                         continue
                     except (OSError, subprocess.SubprocessError) as error:
                         print(f"[voice] Piper unavailable, trying the Windows voice: {type(error).__name__}")
                 if engine is None:
                     engine = self._windows_voice()
                 self._apply_profile(engine, profile)
+                self.last_engine = "windows_sapi"
                 if self._stopped(generation):
                     continue
                 engine.say(text)
@@ -192,6 +252,14 @@ class Speaker:
 
     def describe(self, assistant="jarvis"):
         """Name the voice an assistant will use, for the HUD preview."""
+        try:
+            from jarvis import speech_engines
+            resolved = speech_engines.resolve_engine(self.cfg, assistant)
+            if resolved.get("selected") in ("kokoro_onnx", "kokoro", "qwen3_tts", "chatterbox"):
+                vid = self.cfg.get("tuki_neural_voice" if assistant == "tuki" else "jarvis_neural_voice") or ("bf_emma" if assistant == "tuki" else "bm_george")
+                return f"Neural {resolved['selected']} ({vid})"
+        except ImportError:
+            pass
         profile = voice_profile(self.cfg, assistant)
         if profile["piper_model"]:
             return f"Piper voice {os.path.basename(profile['piper_model'])}"

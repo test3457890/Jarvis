@@ -20,12 +20,22 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import wave
 from pathlib import Path
 
-from . import config, hardware, secure
+from . import config, hardware, secure, voice_runtime
+
+
+def _has_pkg(name: str) -> bool:
+    if name in sys.modules:
+        return True
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ValueError, ImportError):
+        return False
 
 # ------------------------------------------------------------------ Engine Registry
 ENGINES = {
@@ -327,41 +337,52 @@ def delete_voice_pack(pack_id: str) -> dict:
 def engine_availability(cfg: dict | None = None) -> dict[str, dict]:
     cfg = cfg or {}
     root = model_storage_dir()
-    kokoro_onnx_pkg = importlib.util.find_spec("kokoro_onnx") is not None and importlib.util.find_spec("onnxruntime") is not None
+    rt_health = voice_runtime.CLIENT.health()
+    rt_pkgs = rt_health.get("packages") or {}
+
+    kokoro_onnx_pkg = (
+        (_has_pkg("kokoro_onnx") and _has_pkg("onnxruntime"))
+        or (bool(rt_pkgs.get("kokoro_onnx")) and bool(rt_pkgs.get("onnxruntime")))
+    )
     kokoro_onnx_model = any(
-        (root / pid / f).is_file()
+        (root / pid / f).is_file() and (root / pid / "voices-v1.0.bin").is_file()
         for pid, f in (("kokoro-v1.0-onnx-int8", "kokoro-v1.0.int8.onnx"), ("kokoro-v1.0-onnx-fp32", "kokoro-v1.0.onnx"))
     )
+    kokoro_pt_pkg = _has_pkg("kokoro") or bool(rt_pkgs.get("kokoro"))
+    qwen_pkg = _has_pkg("qwen_tts") or bool(rt_pkgs.get("qwen_tts"))
+    qwen_model = (root / "qwen3-tts-voice-design" / "config.json").is_file()
+    chatterbox_pkg = _has_pkg("chatterbox") or bool(rt_pkgs.get("chatterbox"))
     piper_exe = shutil.which(str(cfg.get("piper_exe") or "piper")) is not None
     piper_model = bool(cfg.get("piper_model") and Path(cfg["piper_model"]).is_file())
-    sapi_ok = os.name == "nt" and importlib.util.find_spec("pyttsx3") is not None
+    sapi_ok = os.name == "nt" and _has_pkg("pyttsx3")
 
     return {
         "kokoro_onnx": {
             "package_installed": kokoro_onnx_pkg,
             "model_installed": kokoro_onnx_model,
             "ready": kokoro_onnx_pkg and kokoro_onnx_model,
-            "reason": "Ready" if (kokoro_onnx_pkg and kokoro_onnx_model) else (
-                "Install kokoro-onnx + onnxruntime (Python 3.11-3.13) and Kokoro ONNX pack."
+            "reason": "Ready (Python 3.12 neural runtime + Kokoro ONNX pack)" if (kokoro_onnx_pkg and kokoro_onnx_model) else (
+                "Download Kokoro ONNX voice pack in Voice Studio." if kokoro_onnx_pkg
+                else "Install isolated Python 3.12 neural runtime and Kokoro ONNX pack in Voice Studio."
             ),
         },
         "kokoro": {
-            "package_installed": importlib.util.find_spec("kokoro") is not None,
+            "package_installed": kokoro_pt_pkg,
             "model_installed": False,
-            "ready": importlib.util.find_spec("kokoro") is not None,
-            "reason": "Ready" if importlib.util.find_spec("kokoro") is not None else "Optional PyTorch kokoro package not installed.",
+            "ready": False,
+            "reason": "Optional PyTorch kokoro package & local weights required.",
         },
         "qwen3_tts": {
-            "package_installed": importlib.util.find_spec("qwen_tts") is not None,
-            "model_installed": (root / "qwen3-tts-voice-design" / "config.json").is_file(),
-            "ready": importlib.util.find_spec("qwen_tts") is not None and (root / "qwen3-tts-voice-design" / "config.json").is_file(),
-            "reason": "Optional qwen-tts + GPU weights not installed.",
+            "package_installed": qwen_pkg,
+            "model_installed": qwen_model,
+            "ready": qwen_pkg and qwen_model,
+            "reason": "Ready (Qwen3-TTS VoiceDesign)" if (qwen_pkg and qwen_model) else "Optional qwen-tts + local GPU weights not installed.",
         },
         "chatterbox": {
-            "package_installed": importlib.util.find_spec("chatterbox") is not None,
+            "package_installed": chatterbox_pkg,
             "model_installed": False,
-            "ready": importlib.util.find_spec("chatterbox") is not None,
-            "reason": "Optional chatterbox-tts package not installed.",
+            "ready": False,
+            "reason": "Optional chatterbox-tts package & local weights required.",
         },
         "piper": {
             "package_installed": piper_exe,
@@ -412,6 +433,12 @@ def resolve_engine(cfg: dict, assistant: str = "jarvis") -> dict:
     profile = VOICE_PERFORMANCE_PROFILES[profile_key]
     override_key = "tuki_speech_engine" if who == "tuki" else "jarvis_speech_engine"
     preferred = str(cfg.get(override_key) or "auto").strip().lower()
+    legacy_choice = str(cfg.get("tuki_voice_choice" if who == "tuki" else "voice_choice") or "auto").strip().lower()
+    explicit_sapi = str(cfg.get("tuki_sapi_voice_contains" if who == "tuki" else "sapi_voice_contains") or "").strip()
+    if preferred == "auto" and (legacy_choice == "windows" or explicit_sapi):
+        preferred = "windows_sapi"
+    elif preferred == "auto" and legacy_choice == "piper":
+        preferred = "piper"
     avail = engine_availability(cfg)
 
     chain = [preferred] + [e for e in profile["engine_order"] if e != preferred] if preferred in ENGINES else list(profile["engine_order"])
@@ -448,37 +475,96 @@ def _wav_duration_seconds(path: Path) -> float:
         return round(frames / float(rate), 3)
 
 
-def synthesize_to_wav(cfg: dict, text: str, *, assistant: str = "jarvis", out_path: str | Path | None = None) -> dict:
-    """Synthesize speech locally to a WAV file and return authentic timing & RTF metrics."""
+def _synthesize_sapi(cfg: dict, spoken: str, who: str, dest: Path) -> tuple[str, float]:
+    import pyttsx3
+    from . import voice as voice_mod
+    started = time.perf_counter()
+    engine = pyttsx3.init()
+    voices = engine.getProperty("voices")
+    picked, _ = voice_mod.assistant_voice(voices, cfg, who)
+    voice_used = ""
+    if picked is not None:
+        engine.setProperty("voice", picked.id)
+        voice_used = picked.name
+    rate = int(cfg.get("tuki_speech_rate" if who == "tuki" else "speech_rate", 200 if who == "tuki" else 185))
+    engine.setProperty("rate", max(100, min(320, rate)))
+    engine.save_to_file(spoken, str(dest))
+    engine.runAndWait()
+    engine.stop()
+    return voice_used, round(time.perf_counter() - started, 3)
+
+
+def synthesize_to_wav(
+    cfg: dict,
+    text: str,
+    *,
+    assistant: str = "jarvis",
+    out_path: str | Path | None = None,
+    voice_override: str | None = None,
+    engine_override: str | None = None,
+    allow_fallback: bool = True,
+) -> dict:
+    """Synthesize speech locally to a WAV file via the unified engine resolver and return authentic metrics."""
     who = "tuki" if assistant == "tuki" else "jarvis"
     spoken = apply_pronunciation(str(text or "").strip(), cfg.get("voice_pronunciations"))
     if not spoken:
         raise ValueError("Provide text to synthesize.")
     resolved = resolve_engine(cfg, who)
-    eng = resolved["selected"]
+    eng = engine_override or resolved["selected"]
     if eng == "none":
         raise RuntimeError(resolved["fallback_reason"])
 
     dest = Path(out_path) if out_path else Path(tempfile.mkstemp(prefix=f"jarvis_{who}_", suffix=".wav")[1])
     dest.parent.mkdir(parents=True, exist_ok=True)
-    started = time.perf_counter()
-    voice_used = ""
+    fallback_used = bool(resolved["fallback_used"])
+    fallback_reason = str(resolved.get("fallback_reason") or "")
+
+    if eng in ("kokoro_onnx", "kokoro", "qwen3_tts", "chatterbox"):
+        voice_id = voice_override or str(
+            cfg.get("tuki_neural_voice" if who == "tuki" else "jarvis_neural_voice")
+            or ("bf_emma" if who == "tuki" else "bm_george")
+        )
+        rate_wpm = int(cfg.get("tuki_speech_rate" if who == "tuki" else "speech_rate", 200 if who == "tuki" else 185))
+        speed = round(max(0.6, min(1.8, rate_wpm / 185.0)), 2)
+        try:
+            res = voice_runtime.CLIENT.request({
+                "cmd": "synthesize",
+                "engine": eng,
+                "voice": voice_id,
+                "text": spoken,
+                "speed": speed,
+                "device": resolved["device"],
+                "instruct": ORIGINAL_VOICE_DESIGNS[who],
+                "model_dir": str(model_storage_dir()),
+                "out_path": str(dest),
+            }, timeout=90.0)
+            return {
+                "ok": True,
+                "assistant": who,
+                "engine": res["engine"],
+                "voice": res["voice"],
+                "fallback_used": fallback_used,
+                "fallback_reason": fallback_reason,
+                "spoken_text": spoken,
+                "wav_path": str(dest),
+                "bytes": res["bytes"],
+                "ttfa_seconds": res.get("ttfa_seconds"),
+                "total_seconds": res["total_seconds"],
+                "audio_seconds": res["audio_seconds"],
+                "rtf": res["rtf"],
+            }
+        except Exception as exc:
+            if not allow_fallback or os.name != "nt":
+                raise
+            fallback_used = True
+            fallback_reason = f"{eng} failed ({exc}); fell back to windows_sapi."
+            secure.audit("voice_engine_fallback", {"from": eng, "to": "windows_sapi", "reason": str(exc)[:160]})
+            eng = "windows_sapi"
 
     if eng == "windows_sapi":
-        import pyttsx3
-        from . import voice as voice_mod
-        engine = pyttsx3.init()
-        voices = engine.getProperty("voices")
-        picked, _ = voice_mod.assistant_voice(voices, cfg, who)
-        if picked is not None:
-            engine.setProperty("voice", picked.id)
-            voice_used = picked.name
-        rate = int(cfg.get("tuki_speech_rate" if who == "tuki" else "speech_rate", 200 if who == "tuki" else 185))
-        engine.setProperty("rate", max(100, min(320, rate)))
-        engine.save_to_file(spoken, str(dest))
-        engine.runAndWait()
-        engine.stop()
+        voice_used, total_s = _synthesize_sapi(cfg, spoken, who, dest)
     elif eng == "piper":
+        started = time.perf_counter()
         model = str(cfg.get("tuki_piper_model" if who == "tuki" else "piper_model") or "")
         exe = str(cfg.get("piper_exe") or "piper")
         subprocess.run(
@@ -487,10 +573,10 @@ def synthesize_to_wav(cfg: dict, text: str, *, assistant: str = "jarvis", out_pa
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         voice_used = Path(model).stem
+        total_s = round(time.perf_counter() - started, 3)
     else:
-        raise RuntimeError(f"Engine '{eng}' synthesis requires its optional package and downloaded weights.")
+        raise RuntimeError(f"Unsupported speech engine '{eng}'.")
 
-    total_s = round(time.perf_counter() - started, 3)
     duration_s = _wav_duration_seconds(dest) if dest.is_file() and dest.stat().st_size > 44 else 0.0
     rtf = round(total_s / duration_s, 3) if duration_s > 0 else None
     return {
@@ -498,10 +584,12 @@ def synthesize_to_wav(cfg: dict, text: str, *, assistant: str = "jarvis", out_pa
         "assistant": who,
         "engine": eng,
         "voice": voice_used,
-        "fallback_used": resolved["fallback_used"],
+        "fallback_used": fallback_used,
+        "fallback_reason": fallback_reason,
         "spoken_text": spoken,
         "wav_path": str(dest),
         "bytes": dest.stat().st_size if dest.is_file() else 0,
+        "ttfa_seconds": total_s,
         "total_seconds": total_s,
         "audio_seconds": duration_s,
         "rtf": rtf,
@@ -553,6 +641,7 @@ def studio_state(cfg: dict) -> dict:
         },
         "pronunciations": {**DEFAULT_PRONUNCIATIONS, **(cfg.get("voice_pronunciations") or {})},
         "storage": storage_summary(),
+        "runtime": voice_runtime.CLIENT.health(),
         "installed_sapi_voices": voice_mod.installed_voice_names(),
         "audio_devices": voice_mod.audio_devices(),
     }

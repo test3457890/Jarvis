@@ -1,10 +1,33 @@
 {
-  "timestamp": "2026-11-28 08:32:25",
+  "timestamp": "2026-11-28 08:43:28",
   "python": "3.15.2",
+  "neural_runtime": {
+    "ok": true,
+    "python": "3.12.16",
+    "packages": {
+      "kokoro_onnx": true,
+      "onnxruntime": true,
+      "kokoro": false,
+      "qwen_tts": false,
+      "chatterbox": false,
+      "soundfile": true,
+      "torch": false
+    },
+    "ort_providers": [
+      "AzureExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "cuda_available": false,
+    "loaded_models": [
+      "kokoro_onnx:C:\\Users\\brett\\AppData\\Roaming\\Jarvis\\voice-models\\kokoro-v1.0-onnx-int8\\kokoro-v1.0.int8.onnx"
+    ],
+    "id": 19,
+    "installed": true
+  },
   "os": "Windows 10",
   "ram_total_gb": 31.86,
   "ram_percent_after": 76.3,
-  "cpu_percent_after": 33.6,
+  "cpu_percent_after": 0.0,
   "gpus": [
     {
       "name": "Quadro RTX 5000",
@@ -13,34 +36,34 @@
       "vram_free_gb": 15.74,
       "vram_percent": 0.2,
       "utilization_percent": 0.0,
-      "temperature_c": 61.5,
+      "temperature_c": 53.0,
       "driver": "621.24"
     }
   ],
   "engine_availability": {
     "kokoro_onnx": {
-      "package_installed": false,
-      "model_installed": false,
-      "ready": false,
-      "reason": "Install kokoro-onnx + onnxruntime (Python 3.11-3.13) and Kokoro ONNX pack."
+      "package_installed": true,
+      "model_installed": true,
+      "ready": true,
+      "reason": "Ready (Python 3.12 neural runtime + Kokoro ONNX pack)"
     },
     "kokoro": {
       "package_installed": false,
       "model_installed": false,
       "ready": false,
-      "reason": "Optional PyTorch kokoro package not installed."
+      "reason": "Optional PyTorch kokoro package & local weights required."
     },
     "qwen3_tts": {
       "package_installed": false,
       "model_installed": false,
       "ready": false,
-      "reason": "Optional qwen-tts + GPU weights not installed."
+      "reason": "Optional qwen-tts + local GPU weights not installed."
     },
     "chatterbox": {
       "package_installed": false,
       "model_installed": false,
       "ready": false,
-      "reason": "Optional chatterbox-tts package not installed."
+      "reason": "Optional chatterbox-tts package & local weights required."
     },
     "piper": {
       "package_installed": false,
@@ -55,32 +78,126 @@
       "reason": "Ready (Windows SAPI5)"
     }
   },
-  "barge_in_detection_ms": 0.0052,
-  "benchmarks": [
+  "barge_in_detection_ms": 0.0039,
+  "neural_benchmarks": [
+    {
+      "assistant": "jarvis",
+      "engine": "kokoro_onnx",
+      "voice": "bm_george",
+      "cold_seconds": 16.892,
+      "warm_seconds": 15.303,
+      "ttfa_seconds": 15.298,
+      "audio_seconds": 9.024,
+      "rtf": 1.696,
+      "sample_wav": "docs/measurements/voice-samples/kokoro_jarvis_george.wav",
+      "sample_bytes": 433196
+    },
+    {
+      "assistant": "jarvis",
+      "engine": "kokoro_onnx",
+      "voice": "bm_daniel",
+      "cold_seconds": null,
+      "warm_seconds": 13.299,
+      "ttfa_seconds": 13.292,
+      "audio_seconds": 7.509,
+      "rtf": 1.771,
+      "sample_wav": "docs/measurements/voice-samples/kokoro_jarvis_daniel.wav",
+      "sample_bytes": 360492
+    },
+    {
+      "assistant": "jarvis",
+      "engine": "kokoro_onnx",
+      "voice": "bm_fable",
+      "cold_seconds": null,
+      "warm_seconds": 13.262,
+      "ttfa_seconds": 13.257,
+      "audio_seconds": 7.915,
+      "rtf": 1.676,
+      "sample_wav": "docs/measurements/voice-samples/kokoro_jarvis_fable.wav",
+      "sample_bytes": 379948
+    },
+    {
+      "assistant": "jarvis",
+      "engine": "kokoro_onnx",
+      "voice": "bm_lewis",
+      "cold_seconds": null,
+      "warm_seconds": 18.481,
+      "ttfa_seconds": 18.474,
+      "audio_seconds": 8.597,
+      "rtf": 2.15,
+      "sample_wav": "docs/measurements/voice-samples/kokoro_jarvis_lewis.wav",
+      "sample_bytes": 412716
+    },
+    {
+      "assistant": "tuki",
+      "engine": "kokoro_onnx",
+      "voice": "bf_emma",
+      "cold_seconds": null,
+      "warm_seconds": 15.54,
+      "ttfa_seconds": 15.535,
+      "audio_seconds": 8.533,
+      "rtf": 1.821,
+      "sample_wav": "docs/measurements/voice-samples/kokoro_tuki_emma.wav",
+      "sample_bytes": 409644
+    },
+    {
+      "assistant": "tuki",
+      "engine": "kokoro_onnx",
+      "voice": "bf_isabella",
+      "cold_seconds": null,
+      "warm_seconds": 15.953,
+      "ttfa_seconds": 15.948,
+      "audio_seconds": 8.789,
+      "rtf": 1.815,
+      "sample_wav": "docs/measurements/voice-samples/kokoro_tuki_isabella.wav",
+      "sample_bytes": 421932
+    },
+    {
+      "assistant": "tuki",
+      "engine": "kokoro_onnx",
+      "voice": "af_bella",
+      "cold_seconds": null,
+      "warm_seconds": 17.139,
+      "ttfa_seconds": 17.133,
+      "audio_seconds": 9.941,
+      "rtf": 1.724,
+      "sample_wav": "docs/measurements/voice-samples/kokoro_tuki_bella.wav",
+      "sample_bytes": 477228
+    },
+    {
+      "assistant": "tuki",
+      "engine": "kokoro_onnx",
+      "voice": "af_heart",
+      "cold_seconds": null,
+      "warm_seconds": 15.238,
+      "ttfa_seconds": 15.233,
+      "audio_seconds": 9.536,
+      "rtf": 1.598,
+      "sample_wav": "docs/measurements/voice-samples/kokoro_tuki_heart.wav",
+      "sample_bytes": 457772
+    }
+  ],
+  "sapi_baseline_benchmarks": [
     {
       "assistant": "jarvis",
       "engine": "windows_sapi",
       "voice": "Microsoft David Desktop - English (United States)",
-      "fallback_used": true,
-      "cold_seconds": 0.648,
-      "warm_seconds": 0.132,
+      "cold_seconds": 0.328,
+      "warm_seconds": 0.126,
       "audio_seconds": 8.973,
-      "cold_rtf": 0.072,
-      "warm_rtf": 0.015,
-      "sample_wav": "docs/measurements/voice-samples/jarvis_sample.wav",
+      "rtf": 0.014,
+      "sample_wav": "docs/measurements/voice-samples/jarvis_sapi_baseline.wav",
       "sample_bytes": 395750
     },
     {
       "assistant": "tuki",
       "engine": "windows_sapi",
       "voice": "Microsoft Zira Desktop - English (United States)",
-      "fallback_used": true,
-      "cold_seconds": 0.238,
-      "warm_seconds": 0.18,
+      "cold_seconds": 0.148,
+      "warm_seconds": 0.153,
       "audio_seconds": 8.063,
-      "cold_rtf": 0.03,
-      "warm_rtf": 0.022,
-      "sample_wav": "docs/measurements/voice-samples/tuki_sample.wav",
+      "rtf": 0.019,
+      "sample_wav": "docs/measurements/voice-samples/tuki_sapi_baseline.wav",
       "sample_bytes": 355634
     }
   ]
