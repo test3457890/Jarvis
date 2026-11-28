@@ -287,3 +287,60 @@ def health_summary(cfg: dict, *, probe_local: bool = False) -> dict:
         "providers": rows,
         "usage": USAGE.summary(),
     }
+
+
+_NON_CHAT_RE = re.compile(r"(embed|embedding|whisper|tts|dall-e|imagen|moderation|rerank|bge-|nomic-embed)", re.I)
+_VISION_RE = re.compile(r"(vision|vl|4o|gemini-2|claude-3|claude-sonnet-4|gemma3|llava|pixtral)", re.I)
+_REASONING_RE = re.compile(r"(o1|o3|o4|deepseek-r1|qwen3|qwq|thinking)", re.I)
+
+
+def model_capabilities(model_id: str) -> dict:
+    """Infer deterministic chat/tool/vision/reasoning capabilities for a discovered model ID."""
+    mid = str(model_id or "").strip()
+    is_non_chat = bool(_NON_CHAT_RE.search(mid))
+    return {
+        "model": mid,
+        "chat_capable": bool(mid) and not is_non_chat,
+        "supports_vision": bool(_VISION_RE.search(mid)) and not is_non_chat,
+        "supports_reasoning": bool(_REASONING_RE.search(mid)) and not is_non_chat,
+        "supports_tools": bool(mid) and not is_non_chat,
+    }
+
+
+def select_healthy_local_provider(cfg: dict) -> dict:
+    """Controlled local-only failover across Ollama, LM Studio, and local OpenAI-compat.
+
+    NEVER falls back silently to any cloud provider.
+    """
+    preferred = cfg.get("chat_provider", "ollama")
+    order = [preferred] + [p for p in ("ollama", "lmstudio", "openai_local") if p != preferred]
+    urls = {
+        "ollama": cfg.get("ollama_url", "http://127.0.0.1:11434"),
+        "lmstudio": cfg.get("lmstudio_url", "http://127.0.0.1:1234"),
+        "openai_local": cfg.get("local_chat_url", "http://127.0.0.1:8081"),
+    }
+    checked = []
+    for pid in order:
+        if pid not in LOCAL_PROVIDERS:
+            continue
+        probe = _probe_loopback(urls[pid], LOCAL_PROVIDERS[pid]["models_path"], cfg)
+        chat_models = [m for m in probe["models"] if model_capabilities(m)["chat_capable"]]
+        checked.append({"id": pid, "reachable": probe["reachable"], "chat_models": chat_models})
+        if probe["reachable"]:
+            return {
+                "ok": True,
+                "selected": pid,
+                "failover_used": pid != preferred,
+                "endpoint": urls[pid],
+                "chat_models": chat_models,
+                "checked": checked,
+                "cloud_fallback": False,
+            }
+    return {
+        "ok": False,
+        "selected": None,
+        "failover_used": False,
+        "chat_models": [],
+        "checked": checked,
+        "cloud_fallback": False,
+    }
