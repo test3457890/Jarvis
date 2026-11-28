@@ -188,7 +188,9 @@ def read_public_page(url, cfg, *, content_types=('text/html', 'text/plain')):
             sock.settimeout(15)
             try:
                 sock.connect(address)
-                self.sock = ssl.create_default_context().wrap_socket(sock, server_hostname=host)
+                ctx = ssl.create_default_context()
+                ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+                self.sock = ctx.wrap_socket(sock, server_hostname=host)
             except BaseException:
                 sock.close()
                 raise
