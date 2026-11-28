@@ -232,7 +232,7 @@ def cancel_reminder(ctx, text):
 @skill("Save a lasting fact about the user or their life (preferences, people, plans).",
        params={"fact": ("string", "The fact, written as a full sentence", True)})
 def remember(ctx, fact):
-    ctx.memory.remember(fact)
+    ctx.memory.remember(fact, project=ctx.cfg.get("active_project", ""))
     return "Saved to memory."
 
 

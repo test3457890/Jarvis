@@ -291,8 +291,8 @@ class Memory:
     def fact_details(self) -> list:
         self.purge_expired()
         with self._lock:
-            rows = self.db.execute('SELECT id, text, ts, origin, expires FROM facts ORDER BY id').fetchall()
-        return [dict(zip(('id', 'text', 'saved', 'origin', 'expires'), row)) for row in rows]
+            rows = self.db.execute('SELECT id, text, ts, origin, expires, project FROM facts ORDER BY id').fetchall()
+        return [dict(zip(('id', 'text', 'saved', 'origin', 'expires', 'project'), row)) for row in rows]
 
     def set_fact_expiry(self, fact_id: int, expires) -> bool:
         if expires is not None and (type(expires) not in (int, float) or
@@ -323,19 +323,26 @@ class Memory:
             self.db.commit()
         return [t for _, t in matches]
 
-    def recall(self, query: str, k: int = 5) -> list:
+    def recall(self, query: str, k: int = 5, project: str = "") -> list:
         self.purge_expired()
         with self._lock:
-            rows = self.db.execute("SELECT text, embedding FROM facts").fetchall()
+            if project:
+                rows = self.db.execute(
+                    "SELECT text, embedding, project FROM facts WHERE project='' OR project=?", (project,)
+                ).fetchall()
+            else:
+                rows = self.db.execute("SELECT text, embedding, project FROM facts").fetchall()
         if not rows:
             return []
         qvec = self.embed(query) if self.embed else None
         q_words = _words(query)
         scored = []
-        for text, emb in rows:
+        for text, emb, proj in rows:
             score = len(q_words & _words(text)) * 0.15
             if qvec and emb:
                 score += _cosine(qvec, json.loads(emb))
+            if project and proj == project and score > 0:
+                score += 0.1  # boost facts scoped to the active project
             scored.append((score, text))
         scored.sort(reverse=True)
         threshold = 0.45 if qvec else 0.15

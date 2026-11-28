@@ -861,6 +861,23 @@ def remove_worktree(ctx, worktree_path: str) -> str:
     return f"Removed isolated worktree {target.name}."
 
 
+@skill("Create an isolated sibling Git worktree on a new branch after user approval.",
+       params={"branch": ("string", "New branch name for the worktree", True)},
+       risky=True, manual=True,
+       preview=lambda ctx, branch: f"create an isolated Git worktree for branch '{branch}' next to {code_dir(ctx.cfg).resolve()}")
+def create_coding_worktree(ctx, branch):
+    info = create_worktree(ctx, branch)
+    return f"Created isolated worktree on branch '{info['branch']}' at {info['path']}. Select it in Setup to code inside it."
+
+
+@skill("Remove a Jarvis-managed sibling Git worktree after user approval.",
+       params={"path": ("string", "Full path to the managed worktree folder", True)},
+       risky=True, manual=True,
+       preview=lambda ctx, path: f"remove the clean isolated Git worktree at {path}")
+def remove_coding_worktree(ctx, path):
+    return remove_worktree(ctx, path)
+
+
 @skill("Build or byte-compile the coding project after the user approves the exact command.",
        params={"filename": ("string", "A file in the project", False)}, risky=True, manual=True,
        preview=_build_preview)

@@ -334,3 +334,45 @@ def test_new_http_api_routes_require_auth_and_work(isolated_app):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_nomad_rejects_xml_dtd_and_nul_payloads(isolated_app, monkeypatch):
+    from jarvis import nomad
+    cfg, _, ctx, _ = isolated_app
+    monkeypatch.setattr(nomad, "_get", lambda url, c, timeout=10: '<!DOCTYPE rss [<!ENTITY x "boom">]><rss></rss>')
+    assert "unsafe XML" in nomad.search_library(ctx, "compass")
+    monkeypatch.setattr(nomad, "_get", lambda url, c, timeout=10: "<rss>\x00</rss>")
+    assert "unsafe XML" in nomad.search_library(ctx, "compass")
+
+
+def test_project_scoped_memory_isolation_and_confirmed_worktree_command(isolated_app, tmp_path):
+    cfg, db, ctx, _ = isolated_app
+    db.remember("Global preference: dark theme.", project="")
+    db.remember("Alpha rocket fuel ratio is 3:1.", project="alpha")
+    db.remember("Beta submarine depth is 400m.", project="beta")
+
+    alpha_hits = db.recall("rocket fuel submarine depth", project="alpha")
+    assert any("Alpha rocket" in h for h in alpha_hits)
+    assert all("Beta submarine" not in h for h in alpha_hits)
+
+    # /worktree command requires confirmation before creating a sibling worktree
+    repo = tmp_path / "wt_repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "t@example.local"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=repo, check=True)
+    (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "a.py"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True)
+    cfg["code_dir"] = str(repo)
+    brain = Brain(cfg, db)
+    preview = brain.ask("/worktree feat/safe-branch")
+    assert "isolated Git worktree" in preview and brain.ctx.pending is not None
+    created = brain.confirm_pending(True, expected_id=brain.ctx.pending["id"])
+    assert "Created isolated worktree" in created
+    wt_path = repo.parent / "wt_repo-worktrees" / "feat-safe-branch"
+    assert wt_path.is_dir()
+    rm_preview = brain.ask(f"/worktree-remove {wt_path}")
+    assert "remove the clean isolated Git worktree" in rm_preview and brain.ctx.pending is not None
+    removed = brain.confirm_pending(True, expected_id=brain.ctx.pending["id"])
+    assert "Removed isolated worktree" in removed and not wt_path.exists()

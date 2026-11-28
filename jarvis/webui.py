@@ -6,6 +6,7 @@ every action needs a random session key that only the page Jarvis served knows."
 import json
 import queue
 import secrets
+import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -56,8 +57,21 @@ def serve(app, port: int):
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Cache-Control", "no-store")
+            if code >= 400:
+                self.send_header("Connection", "close")
             self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.wfile.write(body)
+                self.wfile.flush()
+                if code >= 400:
+                    # Half-close write side first so Windows delivers 4xx responses cleanly instead of TCP RST.
+                    self.close_connection = True
+                    try:
+                        self.connection.shutdown(socket.SHUT_WR)
+                    except OSError:
+                        pass
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                pass
 
         def _json(self, obj, code=200):
             self._send(code, json.dumps(obj).encode(), "application/json")

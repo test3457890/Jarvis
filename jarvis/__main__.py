@@ -254,6 +254,7 @@ class App:
                     updated = {**self.cfg, "active_project": name}
                     config.save(updated)
                     self.cfg.update(updated)
+                    self.emit("toggles", self.state())
                 else:
                     raise ValueError("Choose save, activate, or confirmed delete.")
             return {"active": self.cfg.get("active_project", ""), "projects": self.memory.list_projects()}
@@ -335,6 +336,8 @@ class App:
                     candidate["local_chat_url"] = localprovider.endpoint(candidate)
                     if "model" in data:
                         candidate["local_chat_model"] = data["model"]
+                    if "stream" in data:
+                        candidate["local_chat_stream"] = bool(data["stream"])
                     if provider == "openai_local":
                         candidate["local_chat_model"] = localprovider.model_name(candidate.get("local_chat_model"))
                     config.save(candidate)
@@ -352,7 +355,8 @@ class App:
                 else:
                     raise ValueError("Choose Save provider or List active provider models.")
             return {"provider":self.cfg.get("chat_provider", "ollama"),
-                    "url":self.cfg.get("local_chat_url"), "model":self.cfg.get("local_chat_model"), **extra}
+                    "url":self.cfg.get("local_chat_url"), "model":self.cfg.get("local_chat_model"),
+                    "stream":bool(self.cfg.get("local_chat_stream", False)), **extra}
 
     def toggle(self, what):
         with self._settings_lock:

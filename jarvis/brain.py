@@ -249,7 +249,7 @@ class Brain:
         else:
             lines.append("You are answering as Jarvis. For spelling and grammar, preserve the user's "
                          "meaning and style and return the corrected text. Keep ordinary explanations brief.")
-        facts = self.memory.recall(user_text, k=5)
+        facts = self.memory.recall(user_text, k=5, project=cfg.get("active_project", ""))
         if facts:
             lines.append("Things you remember about the user: " + " | ".join(facts))
         if mode != "talk":
@@ -425,6 +425,16 @@ class Brain:
                 return result
             if command == "/git-status" and not value.strip():
                 return coder.git_status(self.ctx)
+            if command == "/worktree" and value.strip():
+                result = skills.run(self.ctx, "create_coding_worktree", {"branch": value.strip()})
+                if self.ctx.pending:
+                    return self.ctx.pending["preview"] + ". Use Confirm or cancel."
+                return result
+            if command == "/worktree-remove" and value.strip():
+                result = skills.run(self.ctx, "remove_coding_worktree", {"path": value.strip()})
+                if self.ctx.pending:
+                    return self.ctx.pending["preview"] + ". Use Confirm or cancel."
+                return result
             if command == "/review" and value.strip():
                 reply, trace = agents.cooperative_review(self, value.strip())
                 self.last_trace = trace
