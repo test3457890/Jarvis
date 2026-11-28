@@ -18,4 +18,5 @@ dist/
 hud-captures/
 rust/*/target/
 rust/*/Cargo.lock
+!rust/jarvis-core/Cargo.lock
 frontend/node_modules/
