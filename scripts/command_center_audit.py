@@ -74,7 +74,7 @@ def run_audit() -> tuple[int, int]:
 
                 check("Console live vitals refresh & authentic screenshot", lambda: (
                     page.get_by_role("button", name="Refresh Live Vitals").click(),
-                    expect(page.locator(".cc-card").filter(has_text="CPU Load (Live)")).to_contain_text(
+                    expect(page.locator(".cc-card:visible").filter(has_text="CPU Load (Live)")).to_contain_text(
                         re.compile(r"\d+(?:\.\d+)?%"), timeout=15000),
                     page.locator(".cc-grid").first.screenshot(path=str(shots_dir / "command-center-vitals-2026-11.png")),
                 ))
