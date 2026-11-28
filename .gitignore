@@ -18,3 +18,4 @@ dist/
 hud-captures/
 rust/*/target/
 rust/*/Cargo.lock
+frontend/node_modules/

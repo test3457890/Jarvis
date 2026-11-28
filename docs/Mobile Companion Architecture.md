@@ -20,3 +20,6 @@
   - Connects to `/api/vitals`, `/api/bgtasks`, `/api/events` (SSE), and `/api/confirm` using `Authorization: Bearer <device-token>` stored in Android Keystore (`EncryptedSharedPreferences`).
 - **Future iOS Companion (SwiftUI + URLSession):**
   - Identical REST + SSE contract; device token stored in iOS Keychain (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`).
+  - **Platform Requirements:** Xcode 16+, iOS 17+, App Transport Security (ATS) enforcing HTTPS/TLS 1.2+ for non-loopback WireGuard/Tailscale endpoints, `NSLocalNetworkUsageDescription` declared in `Info.plist`, FaceID/TouchID biometric gate before approving desktop confirmation cards, and zero public internet exposure.
+- **Authorized Paired-Device & Emulator Automation Guardrails:**
+  - Any optional mobile device status, screenshot, or UI navigation command requires an explicitly paired device token, `Lockdown = OFF`, and per-action user approval; password fields and OS lock/authentication screens are strictly excluded.

@@ -104,3 +104,25 @@ Status legend: **Shipped** = implemented & tested in Jarvis v1.4.1; **Partial** 
 - **Telemetry & Efficiency:** NVIDIA (`pynvml`), AMD (`amdsmi`), Apple Silicon (`IOReport`), Intel RAPL energy monitors; FLOPs/MFU, inter-token latency (ITL), prefill/decode phase metrics, USD cost/savings calculator (`PRICING` table).
 - **Security & Sandboxing:** `GuardrailsEngine` (WARN/REDACT/BLOCK), Secret/PII/Injection scanners, 10 RBAC capabilities, `TaintSet` exfiltration policy, SSRF guard, Ed25519 manifest signing, Docker/Podman `ContainerRunner` with `MountAllowlist`, partial `WasmRunner`.
 - **Protocols & Ecosystem:** 59 tools, 30 channels (WhatsApp Baileys blocked; Signal send-only), 27 connectors, MCP client/server, A2A protocol, DAG workflows, cron `TaskScheduler`.
+
+---
+
+## 6. Command Center Update: 6-Category Classification & Additional References
+
+### 6.1 Additional Reference Audits
+- **`bilawalsidhu/gods-eye-view` (MIT License):** Real-time 3D spatial console using CesiumJS + Model Context Protocol (`src/tools/mcp/`). Public feeds work without keys; high-res 3D photorealistic tiles require an optional Cesium ion / Google Maps token. Integrated as an optional vetted entry in `jarvis/connectors.py` (`gods-eye-view-mcp`), while Jarvis provides a native, zero-tracking, offline-capable 3D Globe workspace (`jarvis/geospatial.py` + `frontend/src/components/Globe3D.tsx`) that explicitly tags every layer as `live`, `delayed`, `estimated`, `simulated`, or `user_annotation`.
+- **Sentinel Defensive Security References (`jarvis/sentinel_ops.py`):**
+  - `wazuh/wazuh` (GPL-2.0): SIEM / Endpoint HIDS — optional local alert adapter.
+  - `OISF/suricata` (GPL-2.0): Network IDS — read-only EVE JSON alert parser (`parse_ids_eve_alerts`).
+  - `zeek/zeek` (BSD-3-Clause): Passive NSM — optional local log integration.
+  - `VirusTotal/yara` (BSD-3-Clause): Defensive pattern matcher — optional local CLI adapter.
+  - `Velocidex/velociraptor` (AGPL-3.0): DFIR telemetry — optional external integration.
+  - `aquasecurity/trivy` (Apache-2.0): Container & dependency CVE scanner — optional local CLI adapter.
+
+### 6.2 6-Category Classification of Reference Capabilities (vs `feature/jarvis-command-center`)
+- **Fully Implemented (Core Local & Command Center):** 19-workspace React/TS/Zustand Command Center HUD + Legacy HUD toggle, CUDA FP32 Kokoro-82M neural TTS (`RTF 0.124`, `<1s` streaming TTFA, `0.29 ms` active cancellation), Windows UIA accessibility-tree inspection & safe approved control, 3D Globe with SAR grid / orbital tracks / annotations / voice nav, Smart Home & Authorized Camera registry (DPAPI), Sentinel FIM / secret scanner / EVE JSON alerts / firewall dry-run preview / evidence pack, Rust `jarvis-core` container & path policy verifier, hardened Docker command builder, cooperative Jarvis+TUKI multi-agent plans with bounded recursion & visual automations, pure-Python `.docx`/`.pptx` generator + citations + knowledge graph, searchable 16-item MCP/Connector catalogue, live vitals & process radar, undo journal, Android companion APK.
+- **Partially Implemented:** Live browser session form-fill & download manager (Playwright allowlist enforced; complex site workflows opt-in), Qwen3-TTS / Chatterbox / Kokoro PyTorch / Piper CLI (real adapters implemented; multi-GB optional weights/CLI not bundled by default), Docker live container management (CLI + hardened sandbox builder implemented; requires running Docker daemon on host).
+- **Requires External Credentials:** Google Workspace OAuth, Microsoft 365 OAuth, GitHub API, Canvas LMS, Brave Search, cloud AI providers (OpenAI/Anthropic/Gemini/Groq/OpenRouter/NIM), Cesium ion 3D terrain tiles, Home Assistant / Frigate tokens, Telegram/Discord/Slack bots.
+- **Requires Hardware:** User-approved SDR receivers, physical ONVIF/RTSP cameras, local GPU >=8 GB VRAM for Qwen3-TTS, local microphone for wake-word STT, physical Android device / emulator for `adb` companion testing.
+- **Missing / Deferred:** Native iOS SwiftUI companion binary (architecture & Xcode requirements documented in `docs/Mobile Companion Architecture.md`; requires macOS/Xcode build host), concurrent Ollama + TTS VRAM benchmark on this workstation (Ollama is not installed on this host).
+- **Not Appropriate (Explicitly Prohibited):** Password/auth form automation, UAC/security prompt bypass, covert surveillance / tracking private individuals, unauthenticated third-party camera discovery, facial identification / biometric tracking, retaliatory DDoS / offensive security automation, privileged containers or mounting `docker.sock`, automatic installation of arbitrary code from GitHub.
