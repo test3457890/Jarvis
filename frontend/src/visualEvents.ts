@@ -23,7 +23,7 @@ export function validateVisualEvent(value: unknown): VisualEvent | null {
   }
   if (x.kind === 'progress' && typeof x.value === 'number' && Number.isFinite(x.value) && x.value >= 0 && x.value <= 100)
     return { id: x.id, kind: 'progress', title: x.title, value: x.value, provenance: x.provenance };
-  if (x.kind === 'comparison' && Array.isArray(x.columns) && x.columns.length > 0 && x.columns.length <= 6 && x.columns.every(c => text(c, 160)) && Array.isArray(x.rows) && x.rows.length <= 30 && x.rows.every(row => Array.isArray(row) && row.length === x.columns.length && row.every(cell => text(cell, 500))))
+  if (x.kind === 'comparison' && Array.isArray(x.columns) && x.columns.length > 0 && x.columns.length <= 6 && x.columns.every(c => text(c, 160)) && Array.isArray(x.rows) && x.rows.length <= 30 && x.rows.every(row => Array.isArray(row) && row.length === (x.columns as unknown[]).length && row.every(cell => text(cell, 500))))
     return { id: x.id, kind: 'comparison', title: x.title, columns: x.columns, rows: x.rows, provenance: x.provenance };
   return null;
 }
