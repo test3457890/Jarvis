@@ -78,6 +78,8 @@ DEFAULTS = {
     "mcp_servers": [],
     "connector_write_permissions": {},
     "domain_permissions": {},
+    # Mobile companion pairing: disabled by default, never exposed to public internet.
+    "remote_companion_enabled": False,
     # Privacy & conversation state
     "temporary_chat": False,
     "active_project": "",

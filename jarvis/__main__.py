@@ -19,8 +19,8 @@ import time
 import webbrowser
 
 from . import (
-    agents, appactions, assistants, bgtasks, browser_auto, clipboard, cloudprovider, config, connections, connectors,
-    desktop, documents, domains, extensions, fastpath, filejobs, hardware, images, localprovider,
+    agents, appactions, assistants, bgtasks, browser_auto, clipboard, cloudprovider, companion, config, connections, connectors,
+    desktop, documents, domains, extensions, fastpath, filejobs, geospatial, hardware, images, localprovider,
     macros, mcp_client, memextract, monitors, net, nomad, planner, pro_workspace, providers, recovery, secure,
     sentinel, setupwizard, skills, telemetry, undo, watchchecks, workflows,
 )
@@ -961,6 +961,32 @@ class App:
         if action == "finance_summary":
             return pro_workspace.finance_budget_summary(self.cfg, data.get("transactions") or [])
         raise ValueError("Choose csv_variance, doc_diff, uat_add, case_create, or finance_summary.")
+
+    def companion_operation(self, data=None):
+        if data is None:
+            return companion.list_devices(self.memory, self.cfg)
+        action = str(data.get("action") or "").strip().lower()
+        if action == "pair_code":
+            return companion.create_pairing_code(self.cfg)
+        if action == "revoke":
+            companion.revoke_device(self.memory, str(data.get("id") or ""))
+            return companion.list_devices(self.memory, self.cfg)
+        raise ValueError("Choose pair_code or revoke.")
+
+    def geospatial_operation(self, data=None):
+        if data is None:
+            return geospatial.workspace_status(self.cfg)
+        action = str(data.get("action") or "").strip().lower()
+        if action == "sar_grid":
+            return geospatial.sar_search_grid(
+                float(data.get("lat", 0.0)), float(data.get("lon", 0.0)),
+                radius_km=float(data.get("radius_km", 5.0)), spacing_km=float(data.get("spacing_km", 1.0)),
+            )
+        if action == "distance":
+            km = geospatial.haversine_km(data["lat1"], data["lon1"], data["lat2"], data["lon2"])
+            brg = geospatial.initial_bearing_deg(data["lat1"], data["lon1"], data["lat2"], data["lon2"])
+            return {"distance_km": km, "bearing_deg": brg}
+        raise ValueError("Choose sar_grid or distance.")
 
     def preview_voice(self, assistant="jarvis"):
         if not self.speaker:

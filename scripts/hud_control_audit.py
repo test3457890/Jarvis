@@ -1005,6 +1005,30 @@ def audit(app, cfg, code, files, url):
             expect(page.locator("#audit-ops-status")).to_contain_text("registered tools")
             page.locator("#audit-ops-panel summary").click()
 
+        @check("Phase 2 Runs & Monitors", "create CPU monitor and evaluate", "monitor persists and evaluates live telemetry")
+        def _():
+            page.locator("#runs-panel summary").click()
+            page.locator("#monitor-name").fill("Audit CPU Watch")
+            page.locator("#monitor-threshold").fill("99")
+            page.locator("#monitor-form button").click()
+            expect(page.locator("#monitors-list")).to_contain_text("Audit CPU Watch")
+            page.locator("#monitors-eval").click()
+            expect(page.locator("#runs-status")).to_contain_text("Evaluated monitors")
+            page.locator("#runs-panel summary").click()
+
+        @check("Phase 7 & 8 Pro & Geospatial", "add UAT item and plot offline SAR grid", "renders UAT item, SAR sweep plot and disabled companion badge")
+        def _():
+            page.locator("#pro-geo-panel summary").click()
+            page.locator("#uat-req").fill("REQ-01")
+            page.locator("#uat-title").fill("Loopback auth verified")
+            page.locator("#uat-form button").click()
+            expect(page.locator("#pro-uat-list")).to_contain_text("REQ-01")
+            page.locator("#sar-form button").click()
+            expect(page.locator("#sar-summary")).to_contain_text("Offline SAR Grid")
+            expect(page.locator("#companion-status")).to_contain_text("Disabled by default")
+            page.screenshot(path=OUT / "nextgen-phase8-pro-geo.png")
+            page.locator("#pro-geo-panel summary").click()
+
         # ---------------------------------------------------------------- layout and connection
         @check("Phone layout", "390 px wide", "no sideways scrolling")
         def _():

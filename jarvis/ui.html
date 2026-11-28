@@ -319,9 +319,9 @@
   body[data-compact=true] header { flex-wrap:wrap; gap:8px; }
   body[data-compact=true] .chat { min-height:60vh; flex-shrink:0; }
   body[data-compact=true] #log { min-height:180px; max-height:40vh; }
-  #vitals-panel, #providers-panel, #audit-ops-panel, #runs-panel { border-top:1px solid var(--line); padding:8px 16px; max-height:52%; overflow:auto; }
-  body[data-mode=talk] #vitals-panel, body[data-mode=talk] #providers-panel, body[data-mode=talk] #audit-ops-panel, body[data-mode=talk] #runs-panel { display:none; }
-  #vitals-panel summary, #providers-panel summary, #audit-ops-panel summary, #runs-panel summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
+  #vitals-panel, #providers-panel, #audit-ops-panel, #runs-panel, #pro-geo-panel { border-top:1px solid var(--line); padding:8px 16px; max-height:52%; overflow:auto; }
+  body[data-mode=talk] #vitals-panel, body[data-mode=talk] #providers-panel, body[data-mode=talk] #audit-ops-panel, body[data-mode=talk] #runs-panel, body[data-mode=talk] #pro-geo-panel { display:none; }
+  #vitals-panel summary, #providers-panel summary, #audit-ops-panel summary, #runs-panel summary, #pro-geo-panel summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
   .vitals-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:8px; margin:8px 0; }
   .vital-card { border:1px solid var(--line); border-radius:6px; padding:8px; background:var(--panel); min-width:0; }
   .vital-card .v-label { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; }
@@ -407,7 +407,8 @@
   <section class="panel chat">
     <nav id="command-nav" aria-label="Command Center tools">
       <button type="button" data-panel="vitals-panel">Vitals</button><button type="button" data-panel="providers-panel">Providers</button>
-      <button type="button" data-panel="audit-ops-panel">Audit &amp; Undo</button><button type="button" data-panel="runs-panel">Runs &amp; Monitors</button><button type="button" data-panel="planner">Plan</button>
+      <button type="button" data-panel="audit-ops-panel">Audit &amp; Undo</button><button type="button" data-panel="runs-panel">Runs &amp; Monitors</button>
+      <button type="button" data-panel="pro-geo-panel">Pro &amp; Geospatial</button><button type="button" data-panel="planner">Plan</button>
       <button type="button" data-panel="knowledge">Research</button><button type="button" data-panel="workflows">Workflows</button>
       <button type="button" data-panel="connections-panel">Connections</button><button type="button" data-panel="sentinel-panel">Sentinel</button>
       <button type="button" data-panel="setup-panel">Setup</button>
@@ -670,6 +671,28 @@
       <div id="monitors-list" class="hint"></div>
       <div id="macros-list" class="hint"></div>
       <pre id="daily-summary-out" hidden></pre>
+    </details>
+    <details id="pro-geo-panel" name="assistant-tools">
+      <summary>Professional, finance &amp; geospatial workspace</summary>
+      <p class="hint">UAT evidence tracker, case files, offline SAR search-grid planner, public geospatial awareness catalog, and opt-in mobile companion status (disabled by default).</p>
+      <form id="uat-form" class="ft-row">
+        <input id="uat-req" type="text" placeholder="Req ID (e.g. REQ-01)" maxlength="40" aria-label="Requirement ID" style="max-width:8rem" required>
+        <input id="uat-title" type="text" placeholder="Requirement title" maxlength="160" aria-label="Requirement title" required>
+        <select id="uat-status-sel" aria-label="UAT status"><option value="passed">Passed</option><option value="pending">Pending</option><option value="failed">Failed</option><option value="blocked">Blocked</option></select>
+        <button>Add UAT</button>
+      </form>
+      <div id="pro-uat-list" class="hint"></div>
+      <form id="sar-form" class="ft-row">
+        <input id="sar-lat" type="number" step="0.0001" value="39.7392" aria-label="Center latitude" style="max-width:7rem" required>
+        <input id="sar-lon" type="number" step="0.0001" value="-104.9903" aria-label="Center longitude" style="max-width:7rem" required>
+        <input id="sar-rad" type="number" step="0.5" value="4" aria-label="Radius km" style="max-width:5rem" required>
+        <button>Generate SAR grid (offline)</button>
+      </form>
+      <div class="spark-wrap" aria-label="Offline SAR sweep track preview">
+        <div class="hint" id="sar-summary">Enter coordinates to plot an offline parallel-track SAR sweep grid.</div>
+        <svg id="sar-svg" viewBox="0 0 260 90" role="img" aria-label="SAR search grid plot"></svg>
+      </div>
+      <div id="companion-status" class="hint" role="status"></div>
     </details>
     <details id="sentinel-panel" name="assistant-tools">
       <summary>Sentinel security &amp; MCP</summary>
@@ -2490,6 +2513,52 @@ $('daily-summary-btn').onclick = async () => {
   const res = await api('/api/daily-summary');
   $('daily-summary-out').hidden = false;
   $('daily-summary-out').textContent = JSON.stringify(res, null, 2);
+};
+
+// ---- Phase 7 & 8 Next-Gen: Professional Workspace, SAR Grid & Companion Status
+async function loadProAndGeo() {
+  try {
+    const [pro, comp] = await Promise.all([api('/api/pro'), api('/api/companion')]);
+    const box = $('pro-uat-list'); box.replaceChildren();
+    for (const u of pro.uat || []) {
+      box.appendChild(el('div', 'memory-row', `[${u.status.toUpperCase()}] ${u.req_id}: ${u.title}${u.evidence ? ' — ' + u.evidence : ''}`));
+    }
+    if (!(pro.uat || []).length) box.textContent = 'No UAT items recorded yet.';
+    $('companion-status').textContent = `Mobile companion: ${comp.enabled ? 'Opt-in enabled' : 'Disabled by default'} · ${comp.remote_exposure} · ${(comp.devices || []).length} paired device(s).`;
+  } catch (error) { $('companion-status').textContent = error.message || 'Could not load workspace.'; }
+}
+$('pro-geo-panel').ontoggle = () => { if ($('pro-geo-panel').open) loadProAndGeo(); };
+$('uat-form').onsubmit = async event => {
+  event.preventDefault();
+  const res = await api('/api/pro', {
+    action:'uat_add', req_id:$('uat-req').value.trim(), title:$('uat-title').value.trim(), status:$('uat-status-sel').value,
+  });
+  if (!res.error) { $('uat-form').reset(); loadProAndGeo(); }
+};
+$('sar-form').onsubmit = async event => {
+  event.preventDefault();
+  const res = await api('/api/geospatial', {
+    action:'sar_grid', lat:Number($('sar-lat').value), lon:Number($('sar-lon').value), radius_km:Number($('sar-rad').value), spacing_km:1.0,
+  });
+  if (res.error) { $('sar-summary').textContent = res.error; return; }
+  $('sar-summary').textContent = `Offline SAR Grid: ${res.tracks} tracks · ${res.area_km2} km² · ~${res.estimated_sweep_km} km sweep (${res.waypoints.length} waypoints).`;
+  const svg = $('sar-svg'); svg.replaceChildren();
+  const ns = 'http://www.w3.org/2000/svg';
+  const wps = res.waypoints || [];
+  if (wps.length >= 2) {
+    const lats = wps.map(w => w.lat), lons = wps.map(w => w.lon);
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats) || minLat + 0.01;
+    const minLon = Math.min(...lons), maxLon = Math.max(...lons) || minLon + 0.01;
+    const pts = wps.map(w => {
+      const x = (12 + ((w.lon - minLon) / Math.max(1e-6, maxLon - minLon)) * 236).toFixed(1);
+      const y = (80 - ((w.lat - minLat) / Math.max(1e-6, maxLat - minLat)) * 70).toFixed(1);
+      return `${x},${y}`;
+    });
+    const poly = document.createElementNS(ns, 'polyline');
+    poly.setAttribute('fill', 'none'); poly.setAttribute('stroke', '#4fd8ff'); poly.setAttribute('stroke-width', '2');
+    poly.setAttribute('points', pts.join(' '));
+    svg.appendChild(poly);
+  }
 };
 </script>
 </body>
