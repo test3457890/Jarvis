@@ -14,7 +14,7 @@ The protocol is currently a frontend consumer. A minimal browser-local camera pr
 
 ## Verification
 
-Three committed Node tests passed on CI (unsafe URLs/HTML, invalid progress/tables, corrupted saved data). The strict TypeScript/Vite production build passed and rebuilt the checked-in HUD assets. CI on the implementation branch: legacy HUD 73/73 and modern browser 32/32, including a synthetic canvas reload/reorder/export check; Linux Python 405 passed, 11 skipped; Rust policy tests and Windows installer passed. Windows Python 406 passed, 10 skipped. All six jobs passed in [CI run 46188663762](https://github.com/test3457890/Jarvis/actions/runs/46188663762) on code commit `475307d3`; later commits changed only this handoff and the screenshot. The optional camera path is tested only with a synthetic browser MediaStream fixture; no hardware-dependent webcam, microphone, GPU, spatial measurement or gesture claim is made. The screenshot at `docs/screenshots/command-center-intelligence-canvas.png` was captured in an authenticated Playwright browser with visibly labeled synthetic fixture content.
+Three committed Node tests passed on CI (unsafe URLs/HTML, invalid progress/tables, corrupted saved data). The strict TypeScript/Vite production build passed and rebuilt the checked-in HUD assets. CI on the implementation branch: legacy HUD 73/73 and modern browser 32/32, including a synthetic canvas reload/reorder/export check; Linux Python 405 passed, 11 skipped; Rust policy tests and Windows installer passed. Windows Python 406 passed, 10 skipped. All six jobs passed in [CI run 46188663762](https://github.com/test3457890/Jarvis/actions/runs/46188663762) on code commit `475307d3`; later commits changed only this handoff and the screenshot. The optional camera path passed a synthetic browser MediaStream fixture test for start, Stop, late permission cancellation and Lockdown refusal. No hardware-dependent webcam, microphone, GPU, spatial measurement or gesture claim is made. The screenshot at `docs/screenshots/command-center-intelligence-canvas.png` was captured in an authenticated Playwright browser with visibly labeled synthetic fixture content.
 
 ## Next implementation milestones
 
@@ -40,7 +40,7 @@ Public repository metadata was inspected for Huw Prosser's Fury and ArUco projec
 | Typed, bounded text/source/table/progress cards | Implemented and tested in browser/build CI |
 | Browser-local card persistence, reordering and JSON export | Implemented and tested with synthetic fixture |
 | Authenticated backend visual result producer and evidence binding | Not implemented |
-| Local browser camera preview and cancellation | Implemented; synthetic browser test pending CI, real hardware untested |
+| Local browser camera preview and cancellation | Implemented; synthetic browser test passed; real hardware untested |
 | Multi-camera orchestration, gesture control, marker tracking and physical measurements | Not implemented; requires hardware testing |
 | Workshop, 3D assets, device adapters and cinematic sound effects | Not implemented |
 | Windows host resource measurements and new hardware screenshots | Not measured in this branch |
@@ -48,3 +48,7 @@ Public repository metadata was inspected for Huw Prosser's Fury and ArUco projec
 ## Local camera privacy and test boundary
 
 Open **Smart Home & Cameras** in the Command Center and choose **Start camera**. Your browser asks for permission; browser-level permission settings remain authoritative. **Stop camera** stops local tracks immediately, including after a late permission response. Leaving that workspace or turning on Lockdown also stops the preview. **Capture frame** displays one still image only in browser memory; Stop clears it. No camera frame is sent to an assistant, model provider, remote endpoint or browser storage. Use the operating system's physical privacy switch when desired. Camera preview was tested using a generated browser MediaStream, so device enumeration, driver compatibility, actual capture quality and GPU impact remain unverified on the Windows workstation.
+
+## Latest integrated verification
+
+On code commit `05b7bc5060614c665cd94f6b1875fb80699d7826`, [CI run 46189596673](https://github.com/test3457890/Jarvis/actions/runs/46189596673) passed all six jobs: frontend TypeScript/Vite build and three visual-event tests; modern browser 33/33 and legacy HUD 73/73; Linux Python 405 passed, 11 skipped; Windows Python 406 passed, 10 skipped; Rust policy tests and Windows install. Synthetic media verified the browser lifecycle only. The user workstation's camera, microphone, GPU scheduling, real measurements and multidevice behavior remain untested.
