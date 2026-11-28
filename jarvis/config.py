@@ -53,6 +53,9 @@ DEFAULTS = {
     "enabled_extensions": {},
     "name": "Jarvis",
     "user_name": "",
+    "response_style": "balanced",
+    "language": "en-GB",
+    "standing_instructions": "",
     # Local language model served by Ollama (must support tool calling).
     "model": "qwen3:8b",
     # Small local model used to turn memories into vectors for smarter recall.
