@@ -134,10 +134,13 @@ jobs:
       - run: python -m scripts.capture_hud
       - name: Exercise every HUD control
         run: python -m scripts.hud_control_audit
+      - name: Audit modern Command Center and capture synthetic canvas
+        run: python -m scripts.command_center_audit
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: jarvis-hud-screenshots
           path: |
             hud-captures/*.png
             hud-captures/control-report.md
+            docs/screenshots/command-center-intelligence-canvas.png
           if-no-files-found: error
