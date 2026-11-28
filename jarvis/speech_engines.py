@@ -580,6 +580,8 @@ def synthesize_to_wav(
         raise RuntimeError(f"Unsupported speech engine '{eng}'.")
 
     duration_s = _wav_duration_seconds(dest) if dest.is_file() and dest.stat().st_size > 44 else 0.0
+    if duration_s <= 0:
+        raise RuntimeError(f"{eng} produced no audio frames.")
     rtf = round(total_s / duration_s, 3) if duration_s > 0 else None
     return {
         "ok": True,

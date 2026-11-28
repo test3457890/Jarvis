@@ -6,6 +6,7 @@ Live account verification requires user-owned OAuth Client IDs and Bot tokens.
 """
 import io
 import json
+import urllib.parse
 import pytest
 
 from jarvis import config, net, secure, service_adapters
@@ -68,9 +69,9 @@ def test_mocked_google_ms365_teams_slack_discord_and_home_assistant(monkeypatch)
             return _FakeResp(json.dumps({"value": [{"id": "o1", "subject": "Quarterly Review", "receivedDateTime": "2026-11-28"}]}).encode())
         if "joinedTeams" in u:
             return _FakeResp(json.dumps({"value": [{"id": "tm1", "displayName": "Engineering"}]}).encode())
-        if "slack.com" in u:
+        if urllib.parse.urlsplit(u).hostname == "slack.com":
             return _FakeResp(json.dumps({"ok": True, "channels": [{"id": "C1", "name": "general"}]}).encode())
-        if "discord.com" in u:
+        if urllib.parse.urlsplit(u).hostname == "discord.com":
             return _FakeResp(json.dumps([{"id": "d1", "author": {"username": "alice"}, "content": "Hello team"}]).encode())
         if "/api/states" in u:
             return _FakeResp(json.dumps([{"entity_id": "light.office", "state": "on"}]).encode())

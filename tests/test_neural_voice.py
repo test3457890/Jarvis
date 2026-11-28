@@ -49,10 +49,15 @@ def test_graceful_fallback_and_live_sapi_wav_synthesis(tmp_path):
         assert resolved["selected"] in ("kokoro_onnx", "windows_sapi")
         assert resolved["fallback_used"] is True
         wav = tmp_path / "jarvis_sapi_test.wav"
-        res = speech_engines.synthesize_to_wav(
-            cfg, "Good evening, sir. TUKI is online.", assistant="jarvis",
-            out_path=wav, engine_override="windows_sapi",
-        )
+        try:
+            res = speech_engines.synthesize_to_wav(
+                cfg, "Good evening, sir. TUKI is online.", assistant="jarvis",
+                out_path=wav, engine_override="windows_sapi",
+            )
+        except RuntimeError as exc:
+            if os.environ.get("GITHUB_ACTIONS") == "true" and "produced no audio frames" in str(exc):
+                pytest.skip("GitHub Windows runner has no usable SAPI audio output")
+            raise
         assert res["ok"] is True and res["engine"] == "windows_sapi"
         assert wav.is_file() and res["bytes"] > 44
         assert res["audio_seconds"] > 0 and res["rtf"] is not None

@@ -143,9 +143,12 @@ def serve(app, port: int):
                 return
             if self.path.startswith("/cc-assets/"):
                 rel = self.path[len("/cc-assets/"):].split("?", 1)[0]
-                target = (CC_DIR / "assets" / rel).resolve()
-                assets_root = (CC_DIR / "assets").resolve()
-                if target.parent != assets_root or not target.is_file():
+                assets = {
+                    "cc-app.js": CC_DIR / "assets" / "cc-app.js",
+                    "cc-index.css": CC_DIR / "assets" / "cc-index.css",
+                }
+                target = assets.get(rel)
+                if target is None or not target.is_file():
                     return self._json({"error": "not found"}, 404)
                 ctype = (
                     "application/javascript; charset=utf-8" if target.suffix == ".js"
