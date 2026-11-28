@@ -213,6 +213,10 @@ def run_audit() -> tuple[int, int]:
                     page.evaluate("window.__TEST_RESOLVE__(new MediaStream([window.__TEST_LATE_TRACK__]))")
                     expect(camera.get_by_role("status")).to_contain_text("Camera off")
                     page.wait_for_function("window.__TEST_LATE_TRACK__.readyState === 'ended'")
+                    page.route("**/api/state", lambda route: route.fulfill(status=200, content_type="application/json", body='{"lockdown":true}'))
+                    camera.get_by_role("button", name="Start camera").click()
+                    expect(camera.get_by_role("status")).to_contain_text("Lockdown blocks camera activation")
+                    page.unroute("**/api/state")
                     page.locator("button[data-cc-ws='console']").click()
                 check("Local camera starts only on click and stops synthetic track", verify_local_camera)
 
