@@ -47,8 +47,11 @@ def until(condition, timeout=5.0, message="condition not met"):
     """Wait for app state changed by an asynchronous HUD request."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if condition():
-            return
+        try:
+            if condition():
+                return
+        except (PermissionError, FileNotFoundError, json.JSONDecodeError):
+            pass
         time.sleep(0.05)
     raise AssertionError(message)
 
@@ -968,6 +971,83 @@ def audit(app, cfg, code, files, url):
             expect(page.locator("#t-temp")).to_have_attribute("aria-pressed", "false")
             assert app.cfg.get("temporary_chat") is False
             page.locator("#setup-panel summary").click()
+
+        @check("Phase 1 Vitals & Processes", "open Vitals panel and refresh", "shows live CPU/RAM/Disk/Processes and captures screenshot")
+        def _():
+            page.locator("#vitals-panel summary").click()
+            expect(page.locator("#vitals-cards .vital-card").first).to_be_visible()
+            expect(page.locator("#vitals-status")).to_contain_text("Updated")
+            page.locator("#vitals-refresh").click()
+            page.screenshot(path=OUT / "nextgen-phase1-vitals.png")
+            page.locator("#vitals-panel summary").click()
+
+        @check("Phase 1 Providers & Privacy", "inspect 9+ providers and toggle privacy mode", "lists Ollama/LM Studio/OpenAI/Groq/NIM and persists privacy_mode")
+        def _():
+            page.locator("#providers-panel summary").click()
+            expect(page.locator("#providers-table tbody tr").first).to_be_visible()
+            expect(page.locator("#providers-table")).to_contain_text("Ollama")
+            expect(page.locator("#providers-table")).to_contain_text("Groq")
+            page.locator("#privacy-mode-select").select_option("local")
+            page.locator("#privacy-mode-save").click()
+            expect(page.locator("#providers-status")).to_contain_text("local")
+            assert app.cfg.get("privacy_mode") == "local"
+            page.locator("#privacy-mode-select").select_option("hybrid")
+            page.locator("#privacy-mode-save").click()
+            expect(page.locator("#providers-status")).to_contain_text("hybrid")
+            page.locator("#providers-panel summary").click()
+
+        @check("Phase 1 Dry-Run, Tool History & Undo", "dry-run power tool and inspect history", "reports T3 tier without executing")
+        def _():
+            page.locator("#audit-ops-panel summary").click()
+            page.locator("#dryrun-tool").fill("power")
+            page.locator("#dryrun-args").fill('{"action":"shutdown"}')
+            page.locator("#dryrun-form button").click()
+            expect(page.locator("#dryrun-output")).to_be_visible()
+            expect(page.locator("#dryrun-output")).to_contain_text('"tier": "T3"')
+            page.locator("#tool-history-refresh").click()
+            expect(page.locator("#audit-ops-status")).to_contain_text("registered tools")
+            page.locator("#audit-ops-panel summary").click()
+
+        @check("Phase 2 Runs & Monitors", "create CPU monitor and evaluate", "monitor persists and evaluates live telemetry")
+        def _():
+            page.locator("#runs-panel summary").click()
+            page.locator("#monitor-name").fill("Audit CPU Watch")
+            page.locator("#monitor-threshold").fill("99")
+            page.locator("#monitor-form button").click()
+            expect(page.locator("#monitors-list")).to_contain_text("Audit CPU Watch")
+            page.locator("#monitors-eval").click()
+            expect(page.locator("#runs-status")).to_contain_text("Evaluated monitors")
+            page.locator("#runs-panel summary").click()
+
+        @check("Phase 7 & 8 Pro & Geospatial", "add UAT item and plot offline SAR grid", "renders UAT item, SAR sweep plot and disabled companion badge")
+        def _():
+            page.locator("#pro-geo-panel summary").click()
+            page.locator("#uat-req").fill("REQ-01")
+            page.locator("#uat-title").fill("Loopback auth verified")
+            page.locator("#uat-form button").click()
+            expect(page.locator("#pro-uat-list")).to_contain_text("REQ-01")
+            page.locator("#sar-form button").click()
+            expect(page.locator("#sar-summary")).to_contain_text("Offline SAR Grid")
+            expect(page.locator("#companion-status")).to_contain_text("Disabled by default")
+            page.screenshot(path=OUT / "nextgen-phase8-pro-geo.png")
+            page.locator("#pro-geo-panel summary").click()
+
+        @check("Dedicated Workspaces", "switch across Console, Vitals, Audit, Repair, Runs, Professional & Settings", "each tab activates its panel and captures screenshots")
+        def _():
+            for ws, panel_id, shot in (
+                ("audit", "#audit-ops-panel", "nextgen-workspace-audit.png"),
+                ("repair", "#sentinel-panel", None),
+                ("runs", "#runs-panel", "nextgen-workspace-runs.png"),
+                ("pro", "#pro-geo-panel", None),
+                ("voice", "#voice-studio-panel", "nextgen-voice-studio.png"),
+                ("console", None, None),
+            ):
+                page.locator(f"#workspace-tabs button[data-ws='{ws}']").click()
+                expect(page.locator(f"#workspace-tabs button[data-ws='{ws}']")).to_have_attribute("aria-pressed", "true")
+                if panel_id:
+                    expect(page.locator(panel_id)).to_have_attribute("open", "")
+                if shot:
+                    page.screenshot(path=OUT / shot)
 
         # ---------------------------------------------------------------- layout and connection
         @check("Phone layout", "390 px wide", "no sideways scrolling")

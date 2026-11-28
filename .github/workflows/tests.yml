@@ -48,7 +48,11 @@ jobs:
             )
             if ($errors.Count) { $errors | Out-String | Write-Error; exit 1 }
           }
-      - run: python -m pip install "pytest>=8,<10" "Pillow>=10.4" "pypdf>=5,<7" "python-docx>=1.1,<2" "numpy>=1.26"
+      - run: python -m pip install "pytest>=8,<10" "Pillow>=10.4" "pypdf>=5,<7" "python-docx>=1.1,<2" "numpy>=1.26" "playwright>=1.40" "pyttsx3>=2.90"
+      - run: python -m playwright install --with-deps chromium
+        if: runner.os == 'Linux'
+      - run: python -m playwright install chromium
+        if: runner.os == 'Windows'
       - run: python -m pytest -q
       - run: python -m scripts.package_release
 
@@ -81,15 +85,25 @@ jobs:
           } finally { Stop-Process -Id $process.Id -Force }
       - run: python -m scripts.package_release
 
+  rust-core:
+    name: Rust jarvis-core policy verifier
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - run: cargo test --locked --manifest-path rust/jarvis-core/Cargo.toml
+
   hud:
     name: Capture HUD examples
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - run: python -m pip install playwright "Pillow>=10.4" "numpy>=1.26"
@@ -97,7 +111,7 @@ jobs:
       - run: python -m scripts.capture_hud
       - name: Exercise every HUD control
         run: python -m scripts.hud_control_audit
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: jarvis-hud-screenshots
           path: |

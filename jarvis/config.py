@@ -14,6 +14,7 @@ CONFIG_PATH = APP_DIR / "config.json"
 MODES = ("everyday", "coding", "research", "cybersecurity", "briefing", "talk")
 THEMES = ("hud", "simple", "light", "contrast", "midnight", "paper")
 WORKSPACE_VIEWS = ("classic", "command", "ambient")
+SYSTEM_PERFORMANCE_PROFILES = ("lightweight", "balanced", "command_center")
 VOICE_CHOICES = ("auto", "windows", "piper")
 VOICE_LIMITS = {"follow_up_seconds": 60, "room_context_seconds": 600}
 
@@ -27,6 +28,7 @@ DEFAULTS = {
     "embed_keep_alive": "2m",
     "memory_embeddings": True,
     "performance_profile": "standard",
+    "system_performance_profile": "balanced",  # lightweight | balanced | command_center
     "theme": "hud",
     "workspace_view": "classic",
     "voice_choice": "auto",
@@ -35,6 +37,16 @@ DEFAULTS = {
     "tuki_sapi_voice_contains": "",
     "tuki_piper_model": "",
     "tuki_speech_rate": 200,
+    # Voice Studio neural speech profiles & independent Jarvis/TUKI engine settings
+    "voice_performance_profile": "balanced",  # cinematic | balanced | performance | compatibility
+    "voice_compute_device": "auto",  # auto | cpu | gpu
+    "jarvis_speech_engine": "auto",
+    "jarvis_neural_voice": "bm_george",
+    "jarvis_voice_pitch": 1.0,
+    "tuki_speech_engine": "auto",
+    "tuki_neural_voice": "bf_emma",
+    "tuki_voice_pitch": 1.05,
+    "voice_pronunciations": {},
     # First-run wizard. Existing installs are marked complete when their config loads.
     "setup_complete": False,
     "voice_enabled": True,
@@ -53,24 +65,33 @@ DEFAULTS = {
     "enabled_extensions": {},
     "name": "Jarvis",
     "user_name": "",
+    "response_style": "balanced",
+    "language": "en-GB",
+    "standing_instructions": "",
     # Local language model served by Ollama (must support tool calling).
     "model": "qwen3:8b",
     # Small local model used to turn memories into vectors for smarter recall.
     "embed_model": "nomic-embed-text",
     "ollama_url": "http://127.0.0.1:11434",
+    "lmstudio_url": "http://127.0.0.1:1234",
     "chat_provider": "ollama",
     "local_chat_url": "http://127.0.0.1:8081",
     "local_chat_model": "",
     "local_chat_stream": False,
+    "privacy_mode": "hybrid",
+    "fast_path_enabled": True,
     # Optional per-request-consented cloud AI provider (off by default, never silent fallback).
     "allow_cloud_provider": False,
     "cloud_provider": "",
     "cloud_model": "",
+    "custom_cloud_url": "",
     # Approved saved RSS/Atom feed subscriptions and local stdio MCP servers (disabled by default).
     "saved_feeds": [],
     "mcp_servers": [],
     "connector_write_permissions": {},
     "domain_permissions": {},
+    # Mobile companion pairing: disabled by default, never exposed to public internet.
+    "remote_companion_enabled": False,
     # Privacy & conversation state
     "temporary_chat": False,
     "active_project": "",

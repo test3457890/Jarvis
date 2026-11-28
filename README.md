@@ -2,11 +2,13 @@
 
 Jarvis is an offline-first AI assistant for Windows. It runs local Ollama models for everyday work and TUKI technical tasks, with voice controls, a weekly planner, document search, and a coding workspace with reviewable edits. Local tools work offline after setup. Web search and other online services require separate configuration.
 
-Download the Windows source ZIP and checksum from [Releases](https://github.com/test3457890/Jarvis/releases) (current version: `1.4.0`; previous published release: [v1.3.0](https://github.com/test3457890/Jarvis/releases/tag/v1.3.0)). See the [release notes](docs/ReleaseNotes.md) for what changed and the [capability matrix](docs/Capabilities.md) for requirements and testing status.
+Download the Windows source ZIP and checksum from [Releases](https://github.com/test3457890/Jarvis/releases) (stable release: [v1.4.1](https://github.com/test3457890/Jarvis/releases/tag/v1.4.1); development release candidate on `feature/jarvis-next-phase`: `2.0.0-rc1`). See the [release notes](docs/ReleaseNotes.md) for what changed and the [capability matrix](docs/Capabilities.md) for requirements and testing status.
+
+The newer `feature/jarvis-command-center` branch is under development. It adds a 19-workspace HUD and additional backend modules, but several workspaces still expose partial workflows or require credentials, hardware, or further security review. See the [current development tracker](docs/Development%20Tracker.md) and [Command Center handoff](docs/Command%20Center%20Handoff.md) for measured tests, boundaries, and remaining work. The published v1.4.1 release is unchanged.
 
 [Install Jarvis](#install-once) · [First launch](#first-launch-setup-wizard) · [File tasks](#file-tasks-in-selected-folders) · [Jarvis and TUKI](#jarvis-and-tuki) · [Project NOMAD](#project-nomad-integration) · [What is in this repository](#what-is-in-this-repository)
 
-See [CHANGELOG.md](CHANGELOG.md), the [capability matrix](docs/Capabilities.md), the [HUD control report](docs/ControlReport.md), the [architecture guide](docs/Architecture.md), the [defensive security model](docs/Security%20Model.md), and [third-party attribution](docs/Third%20Party%20Attribution.md).
+See [CHANGELOG.md](CHANGELOG.md), the [capability matrix](docs/Capabilities.md), the [feature completion & security audit](docs/Feature%20Completion%20Audit.md), the [reference inventory](docs/Reference%20Comparison%20and%20Inventory.md), the [HUD control report](docs/ControlReport.md), the [architecture guide](docs/Architecture.md), the [mobile companion architecture](docs/Mobile%20Companion%20Architecture.md), the [defensive security model](docs/Security%20Model.md), and [third-party attribution](docs/Third%20Party%20Attribution.md).
 For future features, full status tracking, and session handoffs, see the [master development plan](docs/Master%20Development%20Plan.md), the [consolidated development tracker](docs/Development%20Tracker.md), the [44-item status audit](docs/Roadmap%20Status.md), and the [engineering handoff](docs/Engineering%20Handoff.md).
 
 For the November 2026 owner/Claude hardware pass, use the [Windows verification checklist](docs/Windows%20Verification.md).
@@ -35,7 +37,11 @@ real Ollama, NOMAD, audio, image-generation or Windows hardware behavior.
 
 | Screen capture audit | App actions audit | Extension, Sentinel, and HUD controls |
 |---|---|---|
-| ![Synthetic screen frame shown before a local vision question](docs/screenshots/audit-screen.png) | ![Approved app action controls in the HUD audit](docs/screenshots/audit-apps.png) | [See the 67-control report](docs/ControlReport.md) |
+| ![Synthetic screen frame shown before a local vision question](docs/screenshots/audit-screen.png) | ![Approved app action controls in the HUD audit](docs/screenshots/audit-apps.png) | [See the 73-control report](docs/ControlReport.md) |
+
+| Jarvis 2.0 Live System Vitals | Audit & Dry-Run Workspace | Runs, Monitors & Pro/3D Globe |
+|---|---|---|
+| ![Live system vitals and sparklines](docs/screenshots/nextgen-phase1-vitals.png) | ![Audit, tool history and dry-run workspace](docs/screenshots/nextgen-workspace-audit.png) | ![Professional workspace and offline 3D globe](docs/screenshots/nextgen-phase8-pro-geo.png) |
 
 Screenshots use synthetic conversation, sample files and stubbed model replies, captured by
 `python -m scripts.capture_hud` and `python -m scripts.hud_control_audit`. The audit screen

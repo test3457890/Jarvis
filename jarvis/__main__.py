@@ -11,6 +11,7 @@ import datetime as dt
 import getpass
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -19,17 +20,17 @@ import time
 import webbrowser
 
 from . import (
-    agents, appactions, assistants, cloudprovider, config, connections, connectors,
-    documents, domains, extensions, filejobs, hardware, images, localprovider,
-    mcp_client, net, nomad, planner, recovery, secure, sentinel, setupwizard,
-    skills, watchchecks, workflows,
+    agents, appactions, assistants, bgtasks, browser_auto, clipboard, cloudprovider, companion, config, connections, connectors,
+    desktop, documents, domains, extensions, fastpath, filejobs, geospatial, hardware, images, localprovider,
+    macros, mcp_client, memextract, monitors, net, nomad, planner, pro_workspace, providers, recovery, secure,
+    sentinel, setupwizard, skills, speech_engines, telemetry, undo, voice_profile, watchchecks, workflows,
 )
 from .brain import Brain
 from .memory import Memory
 
 
 class App:
-    def __init__(self, cfg, use_voice=True):
+    def __init__(self, cfg, use_voice=True, start_watchdog=None):
         from .webui import EventBus
         self.cfg = cfg
         self.bus = EventBus()
@@ -37,12 +38,20 @@ class App:
         watchchecks.init_db(self.memory)
         self.brain = Brain(cfg, self.memory)
         workflows.init_db(self.memory)
+        bgtasks.recover_interrupted(self.memory)
+        monitors.init_db(self.memory)
+        macros.init_db(self.memory)
         self._workflow_cancelled = threading.Event()
         self._workflow_lock = threading.Lock()
         self._settings_lock = threading.Lock()
         self._turn_lock = threading.Lock()
+        self._sensitive_lock = threading.Lock()
+        self._sensitive_pending = None
+        self._watchdog_stop = threading.Event()
+        self._watchdog_thread = None
         self._stream_spoken = 0
         self._allow_stream_speech = False
+        self.echo_guard = voice_profile.EchoGuard()
         self.brain.on_stream = self._stream_reply
         self.brain.on_metrics = lambda values: self.emit("metrics", values)
         self._image_job = threading.Lock()
@@ -67,7 +76,10 @@ class App:
             print(f"[voice] Speaker unavailable: {e}")
         if use_voice:
             threading.Thread(target=self._start_listener, daemon=True, name="listener").start()
-        threading.Thread(target=self._watchdog, daemon=True, name="watchdog").start()
+        should_start_watchdog = use_voice if start_watchdog is None else bool(start_watchdog)
+        if should_start_watchdog:
+            self._watchdog_thread = threading.Thread(target=self._watchdog, daemon=True, name="watchdog")
+            self._watchdog_thread.start()
 
     # ------------------------------------------------------------ plumbing
     def emit(self, kind, data):
@@ -443,6 +455,8 @@ class App:
     def stop(self):
         self.brain.cancelled.set()
         self._workflow_cancelled.set()
+        with self._sensitive_lock:
+            self._sensitive_pending = None
         if self.listener:
             self.listener.cancel_manual()
         if self.speaker:
@@ -451,6 +465,13 @@ class App:
         self.emit("pending", None)
         self.emit("stream", "")
         return {"ok": True}
+
+    def shutdown(self):
+        """Stop background work before the owning application closes its memory database."""
+        self._watchdog_stop.set()
+        self.stop()
+        if self._watchdog_thread and self._watchdog_thread is not threading.current_thread():
+            self._watchdog_thread.join(timeout=5)
 
     def dictation_operation(self, data):
         if not self.listener:
@@ -523,9 +544,13 @@ class App:
         if self._allow_stream_speech and self.speaker and not self.brain.cancelled.is_set():
             # Speech starts early only in Talk mode, which has no action tools.
             tail = text[self._stream_spoken:]
-            for sentence in re.finditer(r".+?[.!?](?:\s+|$)", tail, re.S):
-                self.speaker.say(sentence[0], self.brain.assistant)
-                self._stream_spoken += len(sentence[0])
+            sentences, remaining = voice_profile.stream_sentences(tail)
+            if sentences:
+                consumed = len(tail) - len(remaining)
+                for sentence in sentences:
+                    self.echo_guard.note_speaking(sentence)
+                    self.speaker.say(sentence, self.brain.assistant)
+                self._stream_spoken += consumed
 
     def settings_operation(self, data=None):
         with self.brain._lock, self._settings_lock:
@@ -822,6 +847,225 @@ class App:
         self.emit("toggles", self.state())
         return setupwizard.summary(self.cfg)
 
+    def vitals_operation(self):
+        return telemetry.snapshot()
+
+    def providers_operation(self, data=None):
+        if data is None:
+            return providers.health_summary(self.cfg, probe_local=False)
+        action = str(data.get("action") or "").strip().lower()
+        if action == "probe":
+            return providers.health_summary(self.cfg, probe_local=True)
+        if action == "privacy_mode":
+            if self.cfg.get("lockdown"):
+                raise ValueError("Turn off Lockdown to change privacy mode.")
+            mode = str(data.get("privacy_mode") or "").strip().lower()
+            if mode not in providers.PRIVACY_MODES:
+                raise ValueError("Choose local, hybrid, or cloud privacy mode.")
+            with self.brain._lock, self._settings_lock:
+                updated = {**self.cfg, "privacy_mode": mode}
+                config.save(updated)
+                self.cfg["privacy_mode"] = mode
+            secure.audit("privacy_mode_changed", {"privacy_mode": mode})
+            return providers.health_summary(self.cfg, probe_local=False)
+        raise ValueError("Choose probe or privacy_mode.")
+
+    def tool_history_operation(self):
+        return {
+            "total_skills": len(skills.SKILLS),
+            "history": skills.recent_tool_history(limit=40),
+        }
+
+    def dry_run_operation(self, data):
+        if not isinstance(data, dict) or not isinstance(data.get("tool"), str) or not data["tool"].strip():
+            raise ValueError("Provide a tool name to inspect.")
+        args = data.get("args")
+        if args is not None and not isinstance(args, dict):
+            raise ValueError("Tool args must be a JSON object.")
+        return skills.dry_run(self.brain.ctx, data["tool"].strip(), args or {})
+
+    def undo_operation(self):
+        return {"entries": undo.JOURNAL.list_entries(limit=40)}
+
+    def bgtasks_operation(self, data=None):
+        if data is None:
+            return {"tasks": bgtasks.list_tasks(self.memory)}
+        action = str(data.get("action") or "").strip().lower()
+        if action == "create":
+            task = bgtasks.create_task(self.memory, data.get("title", ""), data.get("steps") or [], kind=data.get("kind", "sequential"))
+            return {"task": task, "tasks": bgtasks.list_tasks(self.memory)}
+        if action == "run":
+            task = bgtasks.execute_task(self.memory, self.brain.ctx, str(data.get("id") or ""))
+            return {"task": task, "tasks": bgtasks.list_tasks(self.memory)}
+        if action == "cancel":
+            task = bgtasks.cancel_task(self.memory, str(data.get("id") or ""))
+            return {"task": task, "tasks": bgtasks.list_tasks(self.memory)}
+        if action == "delete":
+            bgtasks.delete_task(self.memory, str(data.get("id") or ""))
+            return {"tasks": bgtasks.list_tasks(self.memory)}
+        raise ValueError("Choose create, run, cancel, or delete.")
+
+    def monitors_operation(self, data=None):
+        if data is None:
+            return {"monitors": monitors.list_monitors(self.memory), "metrics": monitors.METRICS}
+        action = str(data.get("action") or "").strip().lower()
+        if action == "create":
+            mon = monitors.create_monitor(
+                self.memory, name=data.get("name", ""), metric=data.get("metric", ""),
+                operator=data.get("operator", ">"), threshold=data.get("threshold", 90),
+            )
+            return {"monitor": mon, "monitors": monitors.list_monitors(self.memory)}
+        if action in ("pause", "resume"):
+            rows = monitors.set_enabled(self.memory, str(data.get("id") or ""), action == "resume")
+            return {"monitors": rows}
+        if action == "delete":
+            return {"monitors": monitors.delete_monitor(self.memory, str(data.get("id") or ""))}
+        if action == "evaluate":
+            alerts = monitors.evaluate_all(self.memory)
+            return {"alerts": alerts, "monitors": monitors.list_monitors(self.memory)}
+        raise ValueError("Choose create, pause, resume, delete, or evaluate.")
+
+    def macros_operation(self, data=None):
+        if data is None:
+            return {"macros": macros.list_macros(self.memory), "recording": macros.recording_status()}
+        action = str(data.get("action") or "").strip().lower()
+        if action == "save":
+            m = macros.save_macro(self.memory, name=data.get("name", ""), steps=data.get("steps") or [],
+                                  description=data.get("description", ""), macro_id=data.get("id"))
+            return {"macro": m, "macros": macros.list_macros(self.memory)}
+        if action == "delete":
+            macros.delete_macro(self.memory, str(data.get("id") or ""))
+            return {"macros": macros.list_macros(self.memory)}
+        if action == "preview":
+            return macros.preview_macro(self.memory, self.brain.ctx, str(data.get("id") or ""))
+        if action == "replay":
+            return macros.replay_macro(self.memory, self.brain.ctx, str(data.get("id") or ""))
+        if action == "record_start":
+            return {"recording": macros.start_recording(data.get("name", ""), data.get("description", ""))}
+        if action == "record_step":
+            return {"recording": macros.record_step(data.get("tool", ""), data.get("args") or {})}
+        if action == "record_stop":
+            return macros.stop_recording(self.memory, save=bool(data.get("save", True)))
+        raise ValueError("Choose save, delete, preview, replay, record_start, record_step, or record_stop.")
+
+    def daily_summary_operation(self, data=None):
+        if data and data.get("action") == "extract":
+            existing = [f[1] for f in self.memory.all_facts()]
+            raw_text = str(data.get("text") or "").strip()
+            if not raw_text:
+                raw_text = "\n".join(
+                    m.get("content", "") for m in self.memory.recent_messages(limit=20)
+                    if m.get("role") == "user"
+                )
+            return {"candidates": memextract.extract_candidates(raw_text, existing_facts=existing)}
+        if data and data.get("action") == "approve":
+            saved = memextract.approve_candidate(self.memory, data.get("text", ""), project=self.cfg.get("active_project", ""))
+            return {"saved": saved}
+        return memextract.daily_summary(self.memory, self.cfg)
+
+    def pro_operation(self, data=None):
+        if data is None:
+            return {"uat": pro_workspace.uat_list(self.memory), "cases": pro_workspace.case_list(self.memory)}
+        action = str(data.get("action") or "").strip().lower()
+        if action == "csv_variance":
+            return pro_workspace.compare_csv_tables(
+                data.get("baseline", ""), data.get("actual", ""),
+                key_col=str(data.get("key_col") or "item"), value_col=str(data.get("value_col") or "amount"),
+            )
+        if action == "xlsx_variance":
+            import base64
+            try:
+                base_raw = base64.b64decode(str(data.get("baseline_b64") or ""), validate=True)
+                act_raw = base64.b64decode(str(data.get("actual_b64") or ""), validate=True)
+            except Exception as exc:
+                raise ValueError("Invalid base64 XLSX payload.") from exc
+            return pro_workspace.compare_xlsx_tables(
+                base_raw, act_raw,
+                key_col=str(data.get("key_col") or "item"), value_col=str(data.get("value_col") or "amount"),
+            )
+        if action == "doc_diff":
+            return pro_workspace.compare_revisions(
+                data.get("text_a", ""), data.get("text_b", ""),
+                label_a=str(data.get("label_a") or "Revision A"), label_b=str(data.get("label_b") or "Revision B"),
+            )
+        if action == "uat_add":
+            item = pro_workspace.uat_add(
+                self.memory, req_id=data.get("req_id", ""), title=data.get("title", ""),
+                status=data.get("status", "pending"), evidence=data.get("evidence", ""),
+            )
+            return {"item": item, "uat": pro_workspace.uat_list(self.memory)}
+        if action == "case_create":
+            c = pro_workspace.case_create(self.memory, title=data.get("title", ""), category=data.get("category", "general"), note=data.get("note", ""))
+            return {"case": c, "cases": pro_workspace.case_list(self.memory)}
+        if action == "finance_summary":
+            return pro_workspace.finance_budget_summary(self.cfg, data.get("transactions") or [])
+        raise ValueError("Choose csv_variance, doc_diff, uat_add, case_create, or finance_summary.")
+
+    def companion_operation(self, data=None):
+        if data is None:
+            return companion.list_devices(self.memory, self.cfg)
+        action = str(data.get("action") or "").strip().lower()
+        if action == "pair_code":
+            return companion.create_pairing_code(self.cfg)
+        if action == "complete_pair":
+            return companion.complete_pairing(
+                self.memory, self.cfg,
+                code=str(data.get("code") or ""),
+                device_name=str(data.get("device_name") or ""),
+                platform=str(data.get("platform") or "android"),
+            )
+        if action == "device_status":
+            tok = str(data.get("token") or "")
+            dev = companion.verify_device_token(self.memory, self.cfg, tok)
+            if not dev:
+                raise PermissionError("Unauthorized, expired, or revoked companion device token.")
+            return {
+                "device": dev,
+                "vitals": telemetry.snapshot(include_processes=False),
+                "tasks": bgtasks.list_tasks(self.memory, limit=10),
+                "notifications": companion.recent_notifications(10),
+            }
+        if action == "command":
+            return companion.execute_approved_command(
+                self.memory, self.brain.ctx,
+                token=str(data.get("token") or ""),
+                tool=str(data.get("tool") or ""),
+                args=data.get("args") if isinstance(data.get("args"), dict) else {},
+            )
+        if action == "revoke":
+            companion.revoke_device(self.memory, str(data.get("id") or ""))
+            return companion.list_devices(self.memory, self.cfg)
+        raise ValueError("Choose pair_code, complete_pair, device_status, command, or revoke.")
+
+    def geospatial_operation(self, data=None):
+        if data is None:
+            return geospatial.workspace_status(self.cfg, self.memory)
+        action = str(data.get("action") or "").strip().lower()
+        if action == "sar_grid":
+            return geospatial.sar_search_grid(
+                float(data.get("lat", 0.0)), float(data.get("lon", 0.0)),
+                radius_km=float(data.get("radius_km", 5.0)), spacing_km=float(data.get("spacing_km", 1.0)),
+            )
+        if action == "distance":
+            km = geospatial.haversine_km(data["lat1"], data["lon1"], data["lat2"], data["lon2"])
+            brg = geospatial.initial_bearing_deg(data["lat1"], data["lon1"], data["lat2"], data["lon2"])
+            return {"distance_km": km, "bearing_deg": brg}
+        if action == "feed":
+            return geospatial.fetch_public_feed(self.cfg, str(data.get("feed_id") or ""))
+        if action == "add_annotation":
+            return geospatial.add_annotation(
+                self.memory, str(data.get("label") or "Waypoint"),
+                float(data.get("lat", 0.0)), float(data.get("lon", 0.0)),
+                category=str(data.get("category") or "note"), notes=str(data.get("notes") or ""),
+            )
+        if action == "delete_annotation":
+            return geospatial.delete_annotation(self.memory, int(data.get("id") or 0))
+        if action == "orbital_track":
+            return geospatial.estimate_orbital_track(str(data.get("name") or "ISS (Estimated)"))
+        if action == "voice_nav":
+            return geospatial.parse_voice_navigation(str(data.get("command") or ""))
+        raise ValueError("Choose sar_grid, distance, feed, add_annotation, delete_annotation, orbital_track, or voice_nav.")
+
     def preview_voice(self, assistant="jarvis"):
         if not self.speaker:
             return {"error": "Speech is unavailable."}
@@ -835,13 +1079,369 @@ class App:
         describe = getattr(self.speaker, "describe", None)
         return {"ok": True, "voice": describe(assistant) if describe else ""}
 
+    def voice_studio_operation(self, data=None):
+        """Dedicated Voice Studio backend: profiles, independent Jarvis/TUKI engines, pronunciation, storage & previews."""
+        if data is None:
+            return speech_engines.studio_state(self.cfg)
+        action = str(data.get("action") or "").strip().lower()
+        if action == "save":
+            if self.cfg.get("lockdown"):
+                raise ValueError("Turn off Lockdown to change Voice Studio settings.")
+            with self.brain._lock, self._settings_lock:
+                updated = dict(self.cfg)
+                prof = str(data.get("profile") or updated.get("voice_performance_profile", "balanced")).strip().lower()
+                if prof not in speech_engines.VOICE_PERFORMANCE_PROFILES:
+                    raise ValueError("Choose cinematic, balanced, performance, or compatibility.")
+                updated["voice_performance_profile"] = prof
+                dev = str(data.get("compute_device") or updated.get("voice_compute_device", "auto")).strip().lower()
+                if dev not in ("auto", "cpu", "gpu"):
+                    raise ValueError("Compute device must be auto, cpu, or gpu.")
+                updated["voice_compute_device"] = dev
+                for key in ("jarvis_speech_engine", "tuki_speech_engine"):
+                    if key in data:
+                        val = str(data[key] or "auto").strip().lower()
+                        if val != "auto" and val not in speech_engines.ENGINES:
+                            raise ValueError(f"Unknown speech engine '{val}'.")
+                        updated[key] = val
+                for key in ("jarvis_neural_voice", "tuki_neural_voice"):
+                    if key in data:
+                        updated[key] = str(data[key] or "").strip()[:80]
+                for key, lo, hi in (("speech_rate", 100, 320), ("tuki_speech_rate", 100, 320)):
+                    if key in data:
+                        r = int(data[key])
+                        if not lo <= r <= hi:
+                            raise ValueError(f"{key} must be between {lo} and {hi} WPM.")
+                        updated[key] = r
+                for key in ("jarvis_voice_pitch", "tuki_voice_pitch"):
+                    if key in data:
+                        p = float(data[key])
+                        if not 0.5 <= p <= 1.5:
+                            raise ValueError("Voice pitch multiplier must be between 0.5 and 1.5.")
+                        updated[key] = round(p, 2)
+                if "pronunciations" in data:
+                    pmap = data["pronunciations"]
+                    if not isinstance(pmap, dict) or len(pmap) > 100:
+                        raise ValueError("Pronunciations must be a dictionary of up to 100 terms.")
+                    updated["voice_pronunciations"] = {
+                        str(k).strip()[:60]: str(v).strip()[:80]
+                        for k, v in pmap.items() if str(k).strip() and str(v).strip()
+                    }
+                config.save(updated)
+                self.cfg.update(updated)
+            secure.audit("voice_studio_saved", {"profile": prof, "device": dev})
+            return speech_engines.studio_state(self.cfg)
+        if action == "preview":
+            who = "tuki" if str(data.get("assistant") or "").lower() == "tuki" else "jarvis"
+            sentence = str(data.get("text") or "").strip()[:400]
+            if not sentence:
+                sentence = (
+                    "TUKI online. Checking SQLite telemetry, VRAM budgets, and independent verification."
+                    if who == "tuki"
+                    else "Good evening, sir. All local neural systems are calibrated and awaiting your instruction."
+                )
+            res = speech_engines.synthesize_to_wav(self.cfg, sentence, assistant=who)
+            if self.speaker and data.get("speak"):
+                self.speaker.say(sentence, who)
+            # Clean up temp wav unless explicitly kept
+            try:
+                Path(res["wav_path"]).unlink(missing_ok=True)
+            except OSError:
+                pass
+            return {k: v for k, v in res.items() if k != "wav_path"}
+        if action == "reset":
+            if self.cfg.get("lockdown"):
+                raise ValueError("Turn off Lockdown to reset Voice Studio settings.")
+            with self.brain._lock, self._settings_lock:
+                updated = dict(self.cfg)
+                for k in (
+                    "voice_performance_profile", "voice_compute_device", "jarvis_speech_engine",
+                    "jarvis_neural_voice", "jarvis_voice_pitch", "tuki_speech_engine",
+                    "tuki_neural_voice", "tuki_voice_pitch", "speech_rate", "tuki_speech_rate",
+                    "voice_pronunciations",
+                ):
+                    updated[k] = config.DEFAULTS[k]
+                config.save(updated)
+                self.cfg.update(updated)
+            secure.audit("voice_studio_reset", {})
+            return speech_engines.studio_state(self.cfg)
+        if action == "delete_pack":
+            if self.cfg.get("lockdown"):
+                raise ValueError("Turn off Lockdown to delete voice packs.")
+            return {"storage": speech_engines.delete_voice_pack(str(data.get("pack_id") or ""))}
+        if action == "cancel":
+            from . import voice_runtime
+            voice_runtime.CLIENT.cancel()
+            if self.speaker:
+                self.speaker.stop()
+            return {"ok": True, "cancelled": True}
+        if action == "install_runtime":
+            if self.cfg.get("lockdown"):
+                raise ValueError("Turn off Lockdown to install the neural speech runtime.")
+            from . import voice_runtime
+            res = voice_runtime.install_runtime(cfg=self.cfg)
+            voice_runtime.CLIENT.health(force=True)
+            return {**res, "studio": speech_engines.studio_state(self.cfg)}
+        if action == "download_pack":
+            if self.cfg.get("lockdown"):
+                raise ValueError("Turn off Lockdown to download voice packs.")
+            from . import voice_runtime
+            res = voice_runtime.download_voice_pack(str(data.get("pack_id") or ""), cfg=self.cfg)
+            return {**res, "studio": speech_engines.studio_state(self.cfg)}
+        raise ValueError("Choose save, preview, cancel, reset, install_runtime, download_pack, or delete_pack.")
+
+    def uia_operation(self, data=None):
+        """Computer Control (Phase 3): Windows UIA accessibility tree, app discovery & approved actions."""
+        from . import uia_control
+        if data is None:
+            return uia_control.workspace_state()
+        action = str(data.get("action") or "").strip().lower()
+        if action == "inspect":
+            return uia_control.inspect_accessibility_tree(str(data.get("window") or ""), int(data.get("max_nodes") or 35))
+        if action == "preview":
+            return uia_control.preview_desktop_action(
+                str(data.get("desktop_action") or ""),
+                target=str(data.get("target") or ""),
+                value=str(data.get("value") or ""),
+                is_password=bool(data.get("is_password", False)),
+            )
+        if action == "execute":
+            desktop_action = str(data.get("desktop_action") or "")
+            target = str(data.get("target") or "")
+            value = str(data.get("value") or "")
+            is_password = bool(data.get("is_password", False))
+            preview = uia_control.preview_desktop_action(desktop_action, target=target, value=value, is_password=is_password)
+            if self.cfg.get("lockdown") or preview["blocked"]:
+                raise PermissionError(preview["reason"] if preview["blocked"] else "Desktop automation is blocked during Lockdown.")
+            return self._queue_sensitive_action(
+                f"Desktop {desktop_action}: {target or value}",
+                lambda: uia_control.execute_approved_action(
+                    self.cfg, desktop_action, target=target, value=value,
+                    approved=True, is_password=is_password),
+            )
+        if action == "cancel":
+            return uia_control.cancel_active()
+        raise ValueError("Choose inspect, preview, execute, or cancel.")
+
+    def smarthome_operation(self, data=None):
+        """Smart Home & Authorized Camera Center (Phase 5)."""
+        from . import smarthome
+        if data is None:
+            return smarthome.workspace_state(self.memory)
+        action = str(data.get("action") or "").strip().lower()
+        if action == "register":
+            if not data.get("owner_authorized"):
+                raise PermissionError("Explicit owner authorization is required to register a device.")
+            if self.cfg.get("lockdown"):
+                raise PermissionError("Cannot register devices during Lockdown.")
+            device_id = str(data.get("id") or "")
+            name = str(data.get("name") or "")
+            kind = str(data.get("kind") or "")
+            endpoint = smarthome._validate_endpoint(kind, str(data.get("endpoint") or ""))
+            zone = str(data.get("zone") or "General")
+            credential = str(data.get("credential") or "")
+            return self._queue_sensitive_action(
+                f"Register {kind} device {name or device_id} at {endpoint}",
+                lambda: smarthome.register_device(
+                    self.memory, self.cfg, device_id=device_id, name=name, kind=kind,
+                    endpoint=endpoint, zone=zone, owner_authorized=True, credential=credential),
+            )
+        if action == "remove":
+            device_id = str(data.get("id") or "")
+            dev = smarthome.get_device(self.memory, device_id)
+            if self.cfg.get("lockdown"):
+                raise PermissionError("Cannot remove devices during Lockdown.")
+            return self._queue_sensitive_action(
+                f"Remove device {dev['name']} ({device_id})",
+                lambda: smarthome.remove_device(self.memory, self.cfg, device_id),
+            )
+        if action == "recording":
+            device_id = str(data.get("id") or "")
+            enabled = bool(data.get("enabled", False))
+            dev = smarthome.get_device(self.memory, device_id)
+            if self.cfg.get("lockdown") or dev["kind"] == "public_webcam":
+                raise PermissionError("Camera recording control is unavailable for this device or mode.")
+            return self._queue_sensitive_action(
+                f"{'Enable' if enabled else 'Disable'} recording on {dev['name']}",
+                lambda: smarthome.set_recording(self.memory, self.cfg, device_id, enabled, approved=True),
+            )
+        if action == "event":
+            ev = smarthome.record_event(
+                self.memory, str(data.get("id") or ""), str(data.get("kind") or "motion"), str(data.get("summary") or ""),
+            )
+            return {"event": ev, "workspace": smarthome.workspace_state(self.memory)}
+        raise ValueError("Choose register, remove, recording, or event.")
+
+    def sentinel_ops_operation(self, data=None):
+        """Sentinel Defensive Cybersecurity Workspace (Phase 6)."""
+        from . import sentinel_ops
+        if data is None:
+            return sentinel_ops.workspace_state(self.memory)
+        action = str(data.get("action") or "").strip().lower()
+        if action == "fim_verify":
+            return sentinel_ops.fim_verify(self.memory)
+        if action == "secret_scan":
+            root = str(data.get("path") or self.cfg.get("code_dir") or ".")
+            return sentinel_ops.scan_secrets(root)
+        if action == "firewall_preview":
+            return sentinel_ops.preview_defensive_firewall_rule(
+                str(data.get("name") or "JarvisDefensiveBlock"),
+                str(data.get("remote_ip") or ""),
+                direction=str(data.get("direction") or "Inbound"),
+                action=str(data.get("rule_action") or "Block"),
+            )
+        if action == "export_evidence":
+            return sentinel_ops.export_incident_evidence(self.memory, title=str(data.get("title") or "incident"))
+        raise ValueError("Choose fim_verify, secret_scan, firewall_preview, or export_evidence.")
+
+    def containers_operation(self, data=None):
+        """Hardened Container & Isolated Execution Manager (Phase 7)."""
+        from . import containers
+        if data is None:
+            return containers.workspace_state()
+        action = str(data.get("action") or "").strip().lower()
+        if action == "preview_run":
+            args = containers.build_hardened_run_args(
+                str(data.get("image") or "python:3.12-slim"),
+                list(data.get("command") or ["python", "--version"]),
+                memory_mb=int(data.get("memory_mb") or 512),
+                cpus=float(data.get("cpus") or 1.0),
+                allow_network=bool(data.get("allow_network", False)),
+            )
+            return {"ok": True, "dry_run": True, "command": args}
+        if action == "kill":
+            container_id = str(data.get("id") or "")
+            if self.cfg.get("lockdown"):
+                raise PermissionError("Container actions are blocked during Lockdown.")
+            if not containers._SAFE_NAME_RE.fullmatch(container_id):
+                raise ValueError("Invalid container ID or name.")
+            return self._queue_sensitive_action(
+                f"Kill container {container_id}",
+                lambda: containers.emergency_kill_container(self.cfg, container_id, approved=True),
+            )
+        raise ValueError("Choose preview_run or kill.")
+
+    def coop_agents_operation(self, data=None):
+        """Cooperative Jarvis + TUKI Multi-Agent Planner & Visual Automation Builder (Phase 8)."""
+        from . import coop_agents
+        if data is None:
+            return coop_agents.workspace_state(self.memory)
+        action = str(data.get("action") or "").strip().lower()
+        if action == "create_plan":
+            plan = coop_agents.create_plan(
+                self.memory, str(data.get("title") or "Cooperative Plan"),
+                str(data.get("goal") or ""), list(data.get("steps") or []),
+                depth=int(data.get("depth") or 0),
+            )
+            return {"plan": plan, "workspace": coop_agents.workspace_state(self.memory)}
+        if action == "advance":
+            plan = coop_agents.advance_step(
+                self.memory, str(data.get("plan_id") or ""), str(data.get("step_id") or ""),
+                outcome=str(data.get("outcome") or ""), approve=bool(data.get("approve", False)),
+                verify=bool(data.get("verify", False)),
+            )
+            return {"plan": plan, "workspace": coop_agents.workspace_state(self.memory)}
+        if action == "cancel":
+            plan = coop_agents.cancel_plan(self.memory, str(data.get("plan_id") or ""))
+            return {"plan": plan, "workspace": coop_agents.workspace_state(self.memory)}
+        if action == "save_automation":
+            auto = coop_agents.save_automation(
+                self.memory, self.cfg,
+                name=str(data.get("name") or "Routine"),
+                trigger_type=str(data.get("trigger_type") or "manual"),
+                trigger_spec=str(data.get("trigger_spec") or ""),
+                condition_expr=str(data.get("condition_expr") or ""),
+                action_spec=str(data.get("action_spec") or ""),
+                enabled=bool(data.get("enabled", False)),
+            )
+            return {"automation": auto, "workspace": coop_agents.workspace_state(self.memory)}
+        raise ValueError("Choose create_plan, advance, cancel, or save_automation.")
+
+    def office_operation(self, data=None):
+        """Professional Document Generation, Citations & Knowledge Graph (Phase 9)."""
+        from . import office_docs
+        if data is None:
+            return {
+                "citations": office_docs.list_citations(self.memory),
+                "knowledge_graph": office_docs.query_knowledge_graph(self.memory),
+                "export_dir": str(office_docs.output_docs_dir(self.cfg)),
+            }
+        action = str(data.get("action") or "").strip().lower()
+        if action == "generate_docx":
+            return office_docs.generate_docx(
+                self.cfg, str(data.get("filename") or "report.docx"),
+                str(data.get("title") or "Jarvis Report"), list(data.get("paragraphs") or []),
+            )
+        if action == "generate_pptx":
+            return office_docs.generate_pptx(
+                self.cfg, str(data.get("filename") or "deck.pptx"), list(data.get("slides") or []),
+            )
+        if action == "add_citation":
+            c = office_docs.add_citation(
+                self.memory, str(data.get("cite_key") or "ref"), str(data.get("authors") or ""),
+                str(data.get("year") or "2026"), str(data.get("title") or ""),
+                venue=str(data.get("venue") or ""), url=str(data.get("url") or ""),
+            )
+            return {"citation": c, "citations": office_docs.list_citations(self.memory)}
+        if action == "add_edge":
+            e = office_docs.add_knowledge_edge(
+                self.memory, str(data.get("subject") or ""), str(data.get("relation") or ""),
+                str(data.get("object") or ""), source=str(data.get("source") or "user"),
+            )
+            return {"edge": e, "knowledge_graph": office_docs.query_knowledge_graph(self.memory)}
+        raise ValueError("Choose generate_docx, generate_pptx, add_citation, or add_edge.")
+
+    def catalogue_operation(self, data=None):
+        """Searchable MCP & Connector Catalogue (Phase 11)."""
+        if data is None:
+            return {"items": connectors.search_catalogue()}
+        action = str(data.get("action") or "search").strip().lower()
+        if action == "preview":
+            return connectors.preview_catalogue_install(str(data.get("id") or ""))
+        return {"items": connectors.search_catalogue(str(data.get("query") or ""), str(data.get("category") or ""))}
+
+    def tools_catalogue_operation(self):
+        """Searchable live skill/tool catalogue for the Command Center HUD."""
+        from . import skills
+        tools = []
+        for name, spec in sorted(skills.SKILLS.items()):
+            tools.append({
+                "name": name,
+                "description": spec.get("description", ""),
+                "risky": bool(spec.get("risky")),
+                "tier": skills.risk_tier(name),
+            })
+        return {"count": len(tools), "tools": tools}
+
     def confirm(self, yes: bool, expected_id: str):
+        with self._sensitive_lock:
+            pending = self._sensitive_pending
+            if pending and pending["id"] == expected_id:
+                self._sensitive_pending = None
+            else:
+                pending = None
+        if pending:
+            self.emit("pending", None)
+            if not yes:
+                return {"result": "Action cancelled."}
+            if time.monotonic() > pending["expires_at"]:
+                return {"result": "Approval expired. Preview the action again."}
+            result = pending["execute"]()
+            return {"result": result}
         result = self.brain.confirm_pending(yes, expected_id=expected_id)
         self.reply(result, speak=True)
         if self.speaker:
             self.speaker.wait()
         self.emit("status", "listening" if self.listener else "idle")
         return {"result": result}
+
+    def _queue_sensitive_action(self, summary, execute):
+        """Hold exact server-side action arguments for one user confirmation, for at most 60 seconds."""
+        pending = {"id": secrets.token_urlsafe(18), "summary": summary[:180],
+                   "expires_at": time.monotonic() + 60, "execute": execute}
+        with self._sensitive_lock:
+            self._sensitive_pending = pending
+        self.emit("pending", {"id": pending["id"], "text": pending["summary"]})
+        return {"pending": True, "id": pending["id"], "summary": pending["summary"]}
 
     def _start_listener(self):
         try:
@@ -863,15 +1463,18 @@ class App:
     def _watchdog(self):
         """Runs in the background: reminders, event heads-ups, deadline nudges,
         the daily briefing, and Canvas syncing. This is what stops things slipping."""
-        time.sleep(3)
+        if self._watchdog_stop.wait(3):
+            return
         self.greet()
         last_canvas = 0
-        while True:
+        while not self._watchdog_stop.is_set():
             try:
                 for text in self.memory.pop_due_reminders():
                     self.notify(f"Reminder: {text}")
                 self.memory.purge_expired()
                 watchchecks.run_due(self.memory, self.cfg, lambda message: self.notify(message, speak=False))
+                for alert in monitors.evaluate_all(self.memory):
+                    self.notify(alert["message"], speak=False)
                 self._event_heads_up()
                 self._deadline_nudges()
                 self._daily_briefing()
@@ -880,7 +1483,7 @@ class App:
                     planner.sync_canvas_now(self.memory, self.cfg)
             except Exception as e:
                 print(f"[watchdog] {e}")
-            time.sleep(30)
+            self._watchdog_stop.wait(30)
 
     def _event_heads_up(self):
         lead = self.cfg.get("event_heads_up_minutes", 15) * 60
@@ -933,11 +1536,19 @@ class App:
 
     # ------------------------------------------------------------ conversation
     def _on_voice(self, command, room_context):
+        if command and self.echo_guard.is_barge_in_command(command):
+            self.echo_guard.clear()
+            self.stop()
+            self.emit("system", "Speech interrupted by voice command.")
+            return
+        if command and self.echo_guard.is_self_echo(command):
+            return
         if not command:  # only the name was said
             self.reply(f"Yes, {self.cfg.get('honorific') or 'sir'}?", speak=True)
             if self.speaker:
                 self.speaker.wait()
-            self.listener.keep_listening_for_follow_up()
+            if self.listener:
+                self.listener.keep_listening_for_follow_up()
             return
         self.handle(command, room_context, "voice")
 
@@ -1027,7 +1638,9 @@ class App:
             elif self.cfg.get("mode") == "coding":
                 spoken = spoken.split("\n\n", 1)[0].split("```", 1)[0].strip()[:350]
             voice = "tuki" if assistant == assistants.TUKI_NAME else "jarvis"
-            self.speaker.say(spoken or "The details are on screen.", voice)
+            spoken_text = spoken or "The details are on screen."
+            self.echo_guard.note_speaking(spoken_text)
+            self.speaker.say(spoken_text, voice)
 
 
 def _system_stats():
@@ -1260,6 +1873,10 @@ def main(argv=None):
     p.add_argument("--mode", choices=config.MODES, help="Start in this mode")
     p.add_argument("--theme", choices=config.THEMES, help="Start with this theme")
     p.add_argument("--no-browser", action="store_true", help="don't open the HUD window")
+    p.add_argument("--native", action="store_true", help="open HUD in a native desktop WebView window (requires pywebview)")
+    p.add_argument("--floating", action="store_true", help="open HUD as an always-on-top compact floating assistant (requires pywebview)")
+    p.add_argument("--tray", action="store_true", help="enable Windows system tray icon")
+    p.add_argument("--hotkeys", action="store_true", help="enable Windows global hotkeys (Ctrl+Alt+J summon, Ctrl+Alt+Backspace kill switch)")
     p.add_argument("--profile", choices=tuple(config.PERFORMANCE_PROFILES), help="Save a performance profile")
     args = p.parse_args(argv)
     # Speech models load from the local cache only. The setup wizard downloads them in a
@@ -1303,22 +1920,48 @@ def main(argv=None):
         return 0
     if args.text:
         cfg["speak_replies"] = False
-        text_chat(App(cfg, use_voice=False))
+        text_chat(App(cfg, use_voice=False, start_watchdog=True))
         return 0
 
     from .webui import serve
-    app = App(cfg, use_voice=not args.no_voice and cfg.get("voice_enabled", True))
+    app = App(cfg, use_voice=not args.no_voice and cfg.get("voice_enabled", True), start_watchdog=True)
     port = cfg.get("web_port", 8765)
     serve(app, port)
     url = f"http://127.0.0.1:{port}"
     print(f"Jarvis HUD: {url}   (Ctrl+C to quit)")
-    if not args.no_browser:
-        webbrowser.open(url)
+    hk_mgr = None
+    tray_icon = None
+    if args.hotkeys:
+        from . import hotkeys
+        hk_mgr = hotkeys.GlobalHotkeyManager(
+            on_summon=lambda: webbrowser.open(url),
+            on_kill_switch=app.stop,
+        )
+        hk_mgr.start()
+    if args.tray:
+        from . import tray
+        tray_icon = tray.SystemTrayIcon(
+            on_open=lambda: webbrowser.open(url),
+            on_stop=app.stop,
+        )
+        tray_icon.start()
     try:
+        if (args.native or args.floating) and not args.no_browser:
+            from . import native_shell
+            if native_shell.launch_native_window(url, floating=bool(args.floating)):
+                return 0
+            print("[native] pywebview not installed; falling back to default browser HUD.")
+        if not args.no_browser:
+            webbrowser.open(url)
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
         print("Goodbye.")
+    finally:
+        if hk_mgr:
+            hk_mgr.stop()
+        if tray_icon:
+            tray_icon.stop()
     return 0
 
 

@@ -13,7 +13,7 @@ from jarvis import __version__
 from scripts.package_release import build
 
 ROOT = Path(__file__).parents[1]
-OLD = ("v1.1.1", "v1.2.1")
+OLD = ("v1.1.1", "v1.2.1", "v1.4.1")
 
 
 def _tag_available(tag):

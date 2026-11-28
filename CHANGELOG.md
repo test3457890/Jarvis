@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased — Command Center remediation (November 28, 2026)
+
+- Corrected the modern HUD approval event and made approvals visible in every workspace.
+- Bound desktop, device enrollment/removal, camera recording, and container-kill confirmations to exact server-side actions with one-use 60-second expiry.
+- Refused unimplemented accessibility click/type operations instead of reporting false success.
+- Stopped embedded App watchdog threads from outliving their test databases and fixed intermittent Windows malformed-request TCP resets.
+- Made Docker inventory timeouts visible, disallowed implicit image pulls and container network access without destination allowlists, and verified a hardened run with an existing local image.
+- Expanded the modern browser audit to read authenticated backend state in all 19 workspaces. Current evidence: 409 Python tests passed, 7 skipped; 6 Rust tests passed; 73 legacy HUD and 31 modern HUD browser checks passed.
+
+## 2.0.0-rc1 (Release Candidate — Pre-Release)
+
+- **Live System Vitals & Dedicated Workspaces**: Real-time CPU, RAM, NVIDIA GPU/VRAM/temperature, disk, battery, network throughput, SVG sparklines, top 8 processes (`jarvis/telemetry.py`), and dedicated Console, Vitals, Audit, Repair, Runs, Professional, and Settings workspaces preserving all 6 legacy themes and 3 legacy views.
+- **9+ AI Providers, Capabilities & Controlled Local Failover**: Ollama, LM Studio, local OpenAI-compatible, OpenAI, Anthropic, Google Gemini, NVIDIA NIM, OpenRouter, Groq, and Custom HTTPS OpenAI-compatible (`jarvis/providers.py`, `jarvis/cloudprovider.py`) with `privacy_mode`, model capability metadata, USD cost estimation, local-only failover (zero silent cloud fallback), and policy-enforced audited Fast-Path (`jarvis/fastpath.py`).
+- **T0–T3 Risk Tiers, Dry-Run, Stale-Target Guard, Undo Journal & Rust Core**: Explicit T0–T3 risk classification, `dry_run()` inspector, file `stat()` stale-target blocking, unified Undo Journal, secret redaction (`jarvis/secure.py`), and expanded Rust `jarvis-core` sensitive-path & shell risk verifier (`5/5` tests).
+- **Background Tasks, Monitors & Macros**: SQLite checkpointed background tasks with startup crash recovery, bounded parallel T0 execution, wired outcome verification (`jarvis/bgtasks.py`), telemetry Condition Monitors (`jarvis/monitors.py`), policy-enforced Macros (`jarvis/macros.py`), and reviewable memory extraction (`jarvis/memextract.py`).
+- **Desktop Automation, Route-Guarded Playwright & Native Shell**: Win32 window controls & hotkey policy (`jarvis/desktop.py`), redacted Clipboard History (`jarvis/clipboard.py`), route-guarded Playwright Chromium session blocking subresource/redirect SSRF (`jarvis/browser_auto.py`), Windows System Tray (`jarvis/tray.py`), global hotkeys & Emergency Kill Switch (`jarvis/hotkeys.py`), and `--native`/`--floating`/`--tray`/`--hotkeys` CLI support (`jarvis/native_shell.py`).
+- **Real Voice Pipeline Integration**: `EchoGuard` acoustic self-echo suppression + spoken barge-in (`"Jarvis stop"`) and `stream_sentences()` chunker wired directly into `App` (`jarvis/__main__.py`, `jarvis/voice_profile.py`), plus strictly non-authentication voice enrollment and injection-screened standing instructions.
+- **External Connectors, Professional/Finance & Geospatial 3D Globe**: OAuth 2.0 PKCE exchange/refresh and official API operations (`jarvis/service_adapters.py`), pure-stdlib hardened `.xlsx`/CSV variance comparator, doc diff, UAT & case tracker, fail-closed local finance analytics (`jarvis/pro_workspace.py`), and interactive offline 3D orthographic globe + SAR grid planner (`jarvis/geospatial.py`).
+- **Opt-In Mobile Companion & Android APK CI**: Hardened pairing (disabled by default, 120s single-use code, 5/300s rate limit, SHA-256 hashed tokens with TTL, revocation, T0 read-only allowlist), Kotlin + Jetpack Compose Android app (`mobile/android/`, AndroidX enabled, loopback-only cleartext policy, `EncryptedSharedPreferences`), and pinned-SHA GitHub Actions APK CI workflow (verified passing).
+
+## 1.4.1
+
+- Enforced `ssl.TLSVersion.TLSv1_2` minimum in `jarvis/net.py` (`PinnedHTTPS.connect`).
+
 ## 1.4.0
 
 - **Hardware detection & recommendations (`M01`)**: Inspect real CPU, RAM, disk, and NVIDIA GPU/VRAM (`jarvis/hardware.py`, `/api/hardware`, `python -m jarvis doctor`, and HUD Setup panel) with honest profile recommendations.

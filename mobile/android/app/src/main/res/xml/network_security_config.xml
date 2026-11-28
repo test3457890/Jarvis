@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Deny unrestricted cleartext HTTP across the app -->
+    <base-config cleartextTrafficPermitted="false" />
+    <!-- Narrowly permit loopback cleartext ONLY for local ADB reverse development -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

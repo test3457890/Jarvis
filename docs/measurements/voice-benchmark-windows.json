@@ -1,0 +1,293 @@
+{
+  "timestamp": "2026-11-28 11:57:07",
+  "python": "3.15.2",
+  "neural_runtime": {
+    "ok": true,
+    "python": "3.12.16",
+    "packages": {
+      "kokoro_onnx": true,
+      "onnxruntime": true,
+      "kokoro": false,
+      "qwen_tts": false,
+      "chatterbox": false,
+      "soundfile": true,
+      "torch": false
+    },
+    "ort_providers": [
+      "TensorrtExecutionProvider",
+      "CUDAExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "cuda_available": true,
+    "loaded_models": [],
+    "id": 23,
+    "installed": true,
+    "stale_dropped": 1
+  },
+  "os": "Windows 10",
+  "ram_total_gb": 31.86,
+  "ram_percent_after": 76.8,
+  "cpu_percent_after": 0.0,
+  "gpus": [
+    {
+      "name": "Quadro RTX 5000",
+      "vram_total_gb": 16.0,
+      "vram_used_gb": 0.03,
+      "vram_free_gb": 15.74,
+      "vram_percent": 0.2,
+      "utilization_percent": 0.0,
+      "temperature_c": 59.8,
+      "driver": "621.24"
+    }
+  ],
+  "engine_availability": {
+    "kokoro_onnx": {
+      "package_installed": true,
+      "model_installed": true,
+      "ready": true,
+      "reason": "Ready (Python 3.12 neural runtime + Kokoro ONNX pack)"
+    },
+    "kokoro": {
+      "package_installed": false,
+      "model_installed": false,
+      "ready": false,
+      "reason": "Optional PyTorch kokoro package & local weights required."
+    },
+    "qwen3_tts": {
+      "package_installed": false,
+      "model_installed": false,
+      "ready": false,
+      "reason": "Optional qwen-tts + local GPU weights not installed."
+    },
+    "chatterbox": {
+      "package_installed": false,
+      "model_installed": false,
+      "ready": false,
+      "reason": "Optional chatterbox-tts package & local weights required."
+    },
+    "piper": {
+      "package_installed": false,
+      "model_installed": false,
+      "ready": false,
+      "reason": "Optional external Piper CLI executable or .onnx voice not configured."
+    },
+    "windows_sapi": {
+      "package_installed": true,
+      "model_installed": true,
+      "ready": true,
+      "reason": "Ready (Windows SAPI5)"
+    }
+  },
+  "barge_in_detection_ms": 0.0038,
+  "active_cancellation_ms": 0.29,
+  "hardware_precision_matrix": [
+    {
+      "config": "gpu_fp32",
+      "requested_device": "gpu",
+      "actual_provider": "CUDAExecutionProvider",
+      "model_file": "kokoro-v1.0.onnx",
+      "cold_seconds": 1.193,
+      "warm_seconds": 1.091,
+      "audio_seconds": 8.811,
+      "warm_rtf": 0.124
+    },
+    {
+      "config": "gpu_int8",
+      "requested_device": "gpu",
+      "actual_provider": "CUDAExecutionProvider",
+      "model_file": "kokoro-v1.0.int8.onnx",
+      "cold_seconds": 17.959,
+      "warm_seconds": 13.735,
+      "audio_seconds": 8.747,
+      "warm_rtf": 1.57
+    },
+    {
+      "config": "cpu_fp32",
+      "requested_device": "cpu",
+      "actual_provider": "CPUExecutionProvider",
+      "model_file": "kokoro-v1.0.onnx",
+      "cold_seconds": 6.842,
+      "warm_seconds": 5.203,
+      "audio_seconds": 8.811,
+      "warm_rtf": 0.591
+    },
+    {
+      "config": "cpu_int8",
+      "requested_device": "cpu",
+      "actual_provider": "CPUExecutionProvider",
+      "model_file": "kokoro-v1.0.int8.onnx",
+      "cold_seconds": 20.305,
+      "warm_seconds": 16.195,
+      "audio_seconds": 8.875,
+      "warm_rtf": 1.825
+    }
+  ],
+  "streaming_benchmark": {
+    "actual_provider": "CUDAExecutionProvider",
+    "model_file": "kokoro-v1.0.onnx",
+    "chunks": [
+      {
+        "chunk": 0,
+        "arrived_seconds": 0.993,
+        "audio_seconds": 1.387
+      },
+      {
+        "chunk": 1,
+        "arrived_seconds": 2.062,
+        "audio_seconds": 7.808
+      },
+      {
+        "chunk": 2,
+        "arrived_seconds": 2.694,
+        "audio_seconds": 1.515
+      },
+      {
+        "chunk": 3,
+        "arrived_seconds": 3.827,
+        "audio_seconds": 9.173
+      }
+    ],
+    "ttfa_seconds": 0.971,
+    "total_seconds": 3.805,
+    "audio_seconds": 19.883,
+    "rtf": 0.191
+  },
+  "neural_benchmarks": [
+    {
+      "assistant": "jarvis",
+      "engine": "kokoro_onnx",
+      "model_file": "kokoro-v1.0.onnx",
+      "actual_provider": "CUDAExecutionProvider",
+      "voice": "bm_george",
+      "cold_seconds": 7.5,
+      "warm_seconds": 1.147,
+      "ttfa_seconds": 1.143,
+      "audio_seconds": 8.917,
+      "rtf": 0.129,
+      "sample_wav": "docs/measurements/voice-samples/kokoro_jarvis_george.wav",
+      "sample_bytes": 428076
+    },
+    {
+      "assistant": "jarvis",
+      "engine": "kokoro_onnx",
+      "model_file": "kokoro-v1.0.onnx",
+      "actual_provider": "CUDAExecutionProvider",
+      "voice": "bm_daniel",
+      "cold_seconds": null,
+      "warm_seconds": 1.009,
+      "ttfa_seconds": 1.004,
+      "audio_seconds": 7.616,
+      "rtf": 0.132,
+      "sample_wav": "docs/measurements/voice-samples/kokoro_jarvis_daniel.wav",
+      "sample_bytes": 365612
+    },
+    {
+      "assistant": "jarvis",
+      "engine": "kokoro_onnx",
+      "model_file": "kokoro-v1.0.onnx",
+      "actual_provider": "CUDAExecutionProvider",
+      "voice": "bm_fable",
+      "cold_seconds": null,
+      "warm_seconds": 1.207,
+      "ttfa_seconds": 1.203,
+      "audio_seconds": 7.872,
+      "rtf": 0.153,
+      "sample_wav": "docs/measurements/voice-samples/kokoro_jarvis_fable.wav",
+      "sample_bytes": 377900
+    },
+    {
+      "assistant": "jarvis",
+      "engine": "kokoro_onnx",
+      "model_file": "kokoro-v1.0.onnx",
+      "actual_provider": "CUDAExecutionProvider",
+      "voice": "bm_lewis",
+      "cold_seconds": null,
+      "warm_seconds": 1.141,
+      "ttfa_seconds": 1.137,
+      "audio_seconds": 8.704,
+      "rtf": 0.131,
+      "sample_wav": "docs/measurements/voice-samples/kokoro_jarvis_lewis.wav",
+      "sample_bytes": 417836
+    },
+    {
+      "assistant": "tuki",
+      "engine": "kokoro_onnx",
+      "model_file": "kokoro-v1.0.onnx",
+      "actual_provider": "CUDAExecutionProvider",
+      "voice": "bf_emma",
+      "cold_seconds": null,
+      "warm_seconds": 1.134,
+      "ttfa_seconds": 1.127,
+      "audio_seconds": 8.576,
+      "rtf": 0.132,
+      "sample_wav": "docs/measurements/voice-samples/kokoro_tuki_emma.wav",
+      "sample_bytes": 411692
+    },
+    {
+      "assistant": "tuki",
+      "engine": "kokoro_onnx",
+      "model_file": "kokoro-v1.0.onnx",
+      "actual_provider": "CUDAExecutionProvider",
+      "voice": "bf_isabella",
+      "cold_seconds": null,
+      "warm_seconds": 1.172,
+      "ttfa_seconds": 1.168,
+      "audio_seconds": 8.853,
+      "rtf": 0.132,
+      "sample_wav": "docs/measurements/voice-samples/kokoro_tuki_isabella.wav",
+      "sample_bytes": 425004
+    },
+    {
+      "assistant": "tuki",
+      "engine": "kokoro_onnx",
+      "model_file": "kokoro-v1.0.onnx",
+      "actual_provider": "CUDAExecutionProvider",
+      "voice": "af_bella",
+      "cold_seconds": null,
+      "warm_seconds": 1.301,
+      "ttfa_seconds": 1.295,
+      "audio_seconds": 9.877,
+      "rtf": 0.132,
+      "sample_wav": "docs/measurements/voice-samples/kokoro_tuki_bella.wav",
+      "sample_bytes": 474156
+    },
+    {
+      "assistant": "tuki",
+      "engine": "kokoro_onnx",
+      "model_file": "kokoro-v1.0.onnx",
+      "actual_provider": "CUDAExecutionProvider",
+      "voice": "af_heart",
+      "cold_seconds": null,
+      "warm_seconds": 1.169,
+      "ttfa_seconds": 1.165,
+      "audio_seconds": 9.579,
+      "rtf": 0.122,
+      "sample_wav": "docs/measurements/voice-samples/kokoro_tuki_heart.wav",
+      "sample_bytes": 459820
+    }
+  ],
+  "sapi_baseline_benchmarks": [
+    {
+      "assistant": "jarvis",
+      "engine": "windows_sapi",
+      "voice": "Microsoft David Desktop - English (United States)",
+      "cold_seconds": 0.369,
+      "warm_seconds": 0.124,
+      "audio_seconds": 8.973,
+      "rtf": 0.014,
+      "sample_wav": "docs/measurements/voice-samples/jarvis_sapi_baseline.wav",
+      "sample_bytes": 395750
+    },
+    {
+      "assistant": "tuki",
+      "engine": "windows_sapi",
+      "voice": "Microsoft Zira Desktop - English (United States)",
+      "cold_seconds": 0.219,
+      "warm_seconds": 0.142,
+      "audio_seconds": 8.063,
+      "rtf": 0.018,
+      "sample_wav": "docs/measurements/voice-samples/tuki_sapi_baseline.wav",
+      "sample_bytes": 355634
+    }
+  ]
+}

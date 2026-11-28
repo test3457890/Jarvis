@@ -183,4 +183,53 @@ def all_connector_summary(cfg: dict) -> dict:
         "oauth": oauth_status(cfg),
         "cloud_providers": cloudprovider.status(cfg),
         "feeds": list_feeds(cfg),
+        "catalogue_count": len(CONNECTOR_CATALOGUE),
     }
+
+
+CONNECTOR_CATALOGUE = [
+    {"id": "gods-eye-view-mcp", "name": "God's Eye View Geospatial MCP", "category": "geospatial", "license": "MIT", "repo": "https://github.com/bilawalsidhu/gods-eye-view", "permissions": ["internet_public_feeds"], "dependencies": ["Node.js 18+"], "security_review": "Public spatial feeds only; optional Cesium ion token for 3D tiles. No private tracking.", "version": "1.0"},
+    {"id": "home-assistant-mcp", "name": "Home Assistant Local API", "category": "smarthome", "license": "Apache-2.0", "repo": "https://www.home-assistant.io", "permissions": ["local_network", "dpapi_token"], "dependencies": ["Home Assistant instance"], "security_review": "Owner long-lived token stored in DPAPI; explicit device authorization required.", "version": "2026.x"},
+    {"id": "frigate-nvr", "name": "Frigate Local NVR", "category": "smarthome", "license": "MIT", "repo": "https://github.com/blakeblackshear/frigate", "permissions": ["local_network"], "dependencies": ["Frigate NVR"], "security_review": "Owner-configured local NVR events only; facial identification disabled.", "version": "0.14+"},
+    {"id": "wazuh-siem", "name": "Wazuh Defensive SIEM Adapter", "category": "security", "license": "GPL-2.0", "repo": "https://github.com/wazuh/wazuh", "permissions": ["read_alerts"], "dependencies": ["Wazuh Manager / local EVE JSON"], "security_review": "Read-only defensive alert ingestion.", "version": "4.x"},
+    {"id": "suricata-ids", "name": "Suricata EVE JSON Alert Reader", "category": "security", "license": "GPL-2.0", "repo": "https://github.com/OISF/suricata", "permissions": ["read_local_logs"], "dependencies": ["Suricata"], "security_review": "Local EVE JSON log parsing; no packet injection.", "version": "7.x"},
+    {"id": "zeek-nsm", "name": "Zeek Network Security Monitor", "category": "security", "license": "BSD-3-Clause", "repo": "https://github.com/zeek/zeek", "permissions": ["read_local_logs"], "dependencies": ["Zeek"], "security_review": "Passive local network log analysis.", "version": "6.x"},
+    {"id": "trivy-scanner", "name": "Aqua Trivy Vulnerability Scanner", "category": "security", "license": "Apache-2.0", "repo": "https://github.com/aquasecurity/trivy", "permissions": ["read_workspace", "read_containers"], "dependencies": ["trivy CLI"], "security_review": "Defensive dependency and container CVE scanning.", "version": "0.58+"},
+    {"id": "yara-rules", "name": "YARA Pattern Scanner", "category": "security", "license": "BSD-3-Clause", "repo": "https://github.com/VirusTotal/yara", "permissions": ["read_workspace"], "dependencies": ["yara CLI"], "security_review": "Read-only defensive file pattern matching.", "version": "4.5+"},
+    {"id": "github-mcp", "name": "GitHub Official API", "category": "developer", "license": "MIT", "repo": "https://github.com/github/github-mcp-server", "permissions": ["internet_api", "dpapi_token"], "dependencies": ["GitHub PAT"], "security_review": "Scoped token in DPAPI; write actions require confirmation.", "version": "1.x"},
+    {"id": "sqlite-local-mcp", "name": "Local SQLite Inspector MCP", "category": "data", "license": "MIT", "repo": "https://modelcontextprotocol.io", "permissions": ["read_local_db"], "dependencies": ["Python / Node"], "security_review": "Scoped strictly to approved workspace databases.", "version": "1.x"},
+    {"id": "filesystem-scoped-mcp", "name": "Scoped Local Filesystem MCP", "category": "files", "license": "MIT", "repo": "https://modelcontextprotocol.io", "permissions": ["read_approved_folders"], "dependencies": ["Node.js"], "security_review": "Restricted to explicitly approved user directories; never system/credential dirs.", "version": "1.x"},
+    {"id": "playwright-mcp", "name": "Playwright Local Browser Automation", "category": "automation", "license": "Apache-2.0", "repo": "https://github.com/microsoft/playwright", "permissions": ["browser_session"], "dependencies": ["Playwright + Chromium"], "security_review": "Enforces network allowlist and refuses password/auth automation.", "version": "1.50+"},
+    {"id": "google-workspace-oauth", "name": "Google Workspace (Drive, Calendar, Gmail)", "category": "productivity", "license": "Apache-2.0", "repo": "https://developers.google.com/workspace", "permissions": ["oauth_pkce_readonly"], "dependencies": ["Google Cloud OAuth Client ID"], "security_review": "Read-only by default via RFC 7636 PKCE; write requires explicit toggle.", "version": "v2"},
+    {"id": "microsoft-365-oauth", "name": "Microsoft 365 (Outlook, OneDrive, Teams)", "category": "productivity", "license": "MIT", "repo": "https://learn.microsoft.com/graph", "permissions": ["oauth_pkce_readonly"], "dependencies": ["Azure App Registration"], "security_review": "Read-only by default via RFC 7636 PKCE; write requires explicit toggle.", "version": "v1.0"},
+    {"id": "docker-hardened", "name": "Docker Hardened Local Sandbox", "category": "containers", "license": "Apache-2.0", "repo": "https://www.docker.com", "permissions": ["local_docker_cli"], "dependencies": ["Docker Desktop / Engine"], "security_review": "Enforces --read-only, --cap-drop=ALL, non-root, no docker.sock mounts.", "version": "27.x"},
+    {"id": "canvas-lms", "name": "Canvas LMS Academic Sync", "category": "academic", "license": "AGPL-3.0 (API client)", "repo": "https://canvas.instructure.com", "permissions": ["internet_api", "dpapi_token"], "dependencies": ["Canvas API Token"], "security_review": "Read-only course/deadline retrieval via pinned HTTPS.", "version": "v1"},
+]
+
+
+def search_catalogue(query: str = "", category: str = "") -> list[dict]:
+    """Search the vetted connector & MCP server catalogue without installing anything automatically."""
+    q = str(query or "").strip().lower()
+    cat = str(category or "").strip().lower()
+    out = []
+    for item in CONNECTOR_CATALOGUE:
+        if cat and item["category"] != cat:
+            continue
+        hay = f"{item['id']} {item['name']} {item['category']} {item['security_review']}".lower()
+        if not q or q in hay:
+            out.append({**item, "requires_approval": True, "auto_install": False})
+    return out
+
+
+def preview_catalogue_install(connector_id: str) -> dict:
+    """Return a full security, dependency, license, and permission preview before explicit approval."""
+    cid = str(connector_id or "").strip().lower()
+    for item in CONNECTOR_CATALOGUE:
+        if item["id"] == cid:
+            return {
+                "ok": True,
+                "connector": item,
+                "requires_explicit_approval": True,
+                "auto_install_policy": "Disabled — Jarvis never automatically installs arbitrary code from GitHub.",
+            }
+    raise ValueError(f"Connector '{connector_id}' not found in catalogue.")

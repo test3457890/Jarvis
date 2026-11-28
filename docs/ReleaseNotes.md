@@ -1,3 +1,19 @@
+Jarvis 2.0.0-rc1 (Release Candidate on `feature/jarvis-next-phase` — `v1.4.1` remains the published stable release until PR review and final CI pass).
+
+Highlights:
+- **Live System Vitals & Dedicated Workspaces**: Real-time CPU, RAM, NVIDIA GPU/VRAM/temperature, disk, battery, network throughput, SVG sparklines, top 8 processes (`jarvis/telemetry.py`), and dedicated Console, Vitals, Audit, Repair, Runs, Professional, and Settings workspaces preserving all 6 legacy themes and 3 views.
+- **9+ AI Providers, Capabilities & Local Failover**: Ollama, LM Studio, local OpenAI-compatible, OpenAI, Anthropic, Google Gemini, NVIDIA NIM, OpenRouter, Groq, and Custom HTTPS OpenAI-compatible (`jarvis/providers.py`, `jarvis/cloudprovider.py`) with `privacy_mode`, capability awareness, USD cost estimation, controlled local failover (zero silent cloud fallback), and policy-enforced audited Fast-Path (`jarvis/fastpath.py`).
+- **T0–T3 Security, Dry-Run, Stale-Target Guard, Undo Journal & Rust Core**: Explicit T0–T3 risk tiers, `dry_run()` inspector, file `stat()` stale-target blocking, unified Undo Journal, secret redaction (`jarvis/secure.py`), and expanded Rust `jarvis-core` sensitive-path & shell risk verification (`5/5` tests).
+- **Background Tasks, Monitors & Macros**: SQLite checkpointed background tasks with startup crash recovery, bounded parallel T0 execution, wired outcome verification (`jarvis/bgtasks.py`), telemetry Condition Monitors (`jarvis/monitors.py`), policy-enforced Macros (`jarvis/macros.py`), and reviewable memory extraction (`jarvis/memextract.py`).
+- **Desktop, Route-Guarded Playwright & Native Shell**: Win32 window controls & safe hotkey policy (`jarvis/desktop.py`), redacted Clipboard History (`jarvis/clipboard.py`), route-guarded Playwright Chromium session blocking subresource/redirect SSRF (`jarvis/browser_auto.py`), Windows System Tray (`jarvis/tray.py`), global hotkeys & Emergency Kill Switch (`jarvis/hotkeys.py`), and optional `pywebview` `--native` / `--floating` desktop shell (`jarvis/native_shell.py`).
+- **Voice Pipeline Integration**: `EchoGuard` acoustic self-echo suppression + spoken barge-in (`"Jarvis stop"`) and `stream_sentences()` chunker wired directly into `App` (`jarvis/__main__.py`, `jarvis/voice_profile.py`), plus strictly non-authentication voice enrollment and injection-screened standing instructions.
+- **External Connectors, Professional/Finance & Geospatial 3D Globe**: OAuth 2.0 PKCE exchange/refresh and official API operations (`jarvis/service_adapters.py`), pure-stdlib hardened `.xlsx`/CSV variance comparator, doc diff, UAT & case tracker, fail-closed local finance analytics (`jarvis/pro_workspace.py`), and interactive offline 3D orthographic globe + SAR grid planner (`jarvis/geospatial.py`).
+- **Opt-In Mobile Companion**: Hardened pairing (disabled by default, 120s single-use code, 5/300s rate limit, SHA-256 hashed tokens with TTL, revocation, T0 read-only allowlist) paired with the Kotlin + Jetpack Compose Android app (`mobile/android/`, AndroidX enabled, cleartext restricted to loopback dev, `EncryptedSharedPreferences`) and pinned-SHA GitHub Actions APK CI workflow.
+
+See `docs/Feature Completion Audit.md`, `docs/Development Tracker.md`, and `docs/Reference Comparison and Inventory.md` for full honest verification status.
+
+---
+
 Jarvis 1.4.1 is a security patch release following PR #43.
 
 Security Fix:

@@ -23,7 +23,7 @@ def test_coding_suite_scores_and_asks_before_running_code(isolated_app):
                                          lambda name: asked.append(name) or name != "title-case")
     summary = benchmark.summarise_coding(results)
     assert asked == ["empty-average", "title-case"]
-    assert [r.get("tests") for r in results[:2]] == ["passed", "not run (not approved)"]
+    assert [r.get("tests") for r in results[:2]] == ["passed", "not run (not approved)"], results
     assert results[2]["valid_proposal"] is False
     assert summary == {"tasks": 3, "valid_proposals": 2, "tests_run": 1, "tests_passed": 1}
 

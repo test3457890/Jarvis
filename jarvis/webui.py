@@ -14,6 +14,7 @@ from pathlib import Path
 from . import assistants, config, images
 
 UI_FILE = Path(__file__).with_name("ui.html")
+CC_DIR = Path(__file__).with_name("static") / "cc"
 REQUEST_BODY_TIMEOUT = 10
 
 
@@ -85,6 +86,16 @@ def serve(app, port: int):
                 return False
             return secrets.compare_digest(self.headers.get("X-Jarvis-Key", ""), token)
 
+        def _drain_rejected_body(self):
+            """Consume only bytes already arriving for a rejected POST before Windows closes it."""
+            try:
+                self.connection.settimeout(0.2)
+                buffered = self.rfile.peek(4096)
+                if buffered:
+                    self.rfile.read(min(len(buffered), 4096))
+            except (OSError, TimeoutError):
+                pass
+
         def do_GET(self):
             if not self._host_ok():
                 return self._json({"error": "forbidden"}, 403)
@@ -109,6 +120,43 @@ def serve(app, port: int):
                 self.end_headers()
                 self.wfile.write(body)
                 return
+            if self.path == "/command-center" or self.path == "/command-center/":
+                cc_index = CC_DIR / "index.html"
+                if not cc_index.is_file():
+                    return self._json({"error": "Modern Command Center bundle not built yet."}, 503)
+                page = (
+                    cc_index.read_text(encoding="utf-8")
+                    .replace("__JARVIS_KEY__", token)
+                    .replace("__JARVIS_THEME__", app.cfg.get("theme") if app.cfg.get("theme") in config.THEMES else "hud")
+                )
+                csp = ("default-src 'self'; script-src 'self' 'unsafe-inline'; "
+                       "style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:")
+                body = page.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Content-Security-Policy", csp)
+                self.send_header("X-Frame-Options", "DENY")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if self.path.startswith("/cc-assets/"):
+                rel = self.path[len("/cc-assets/"):].split("?", 1)[0]
+                assets = {
+                    "cc-app.js": CC_DIR / "assets" / "cc-app.js",
+                    "cc-index.css": CC_DIR / "assets" / "cc-index.css",
+                }
+                target = assets.get(rel)
+                if target is None or not target.is_file():
+                    return self._json({"error": "not found"}, 404)
+                ctype = (
+                    "application/javascript; charset=utf-8" if target.suffix == ".js"
+                    else "text/css; charset=utf-8" if target.suffix == ".css"
+                    else "image/svg+xml" if target.suffix == ".svg"
+                    else "application/octet-stream"
+                )
+                return self._send(200, target.read_bytes(), ctype)
             if self.path.startswith("/api/events"):
                 if not secrets.compare_digest(self.path.partition("key=")[2], token):
                     return self._json({"error": "forbidden"}, 403)
@@ -182,26 +230,62 @@ def serve(app, port: int):
                 self._json(app.models_operation())
             elif self.path == "/api/provider":
                 self._json(app.provider_operation())
+            elif self.path == "/api/vitals":
+                self._json(app.vitals_operation())
+            elif self.path == "/api/providers":
+                self._json(app.providers_operation())
+            elif self.path == "/api/tools/history":
+                self._json(app.tool_history_operation())
+            elif self.path == "/api/undo":
+                self._json(app.undo_operation())
+            elif self.path == "/api/bgtasks":
+                self._json(app.bgtasks_operation())
+            elif self.path == "/api/monitors":
+                self._json(app.monitors_operation())
+            elif self.path == "/api/macros":
+                self._json(app.macros_operation())
+            elif self.path == "/api/daily-summary":
+                self._json(app.daily_summary_operation())
+            elif self.path == "/api/pro":
+                self._json(app.pro_operation())
+            elif self.path == "/api/companion":
+                self._json(app.companion_operation())
+            elif self.path == "/api/geospatial":
+                self._json(app.geospatial_operation())
+            elif self.path == "/api/voice-studio":
+                self._json(app.voice_studio_operation())
+            elif self.path == "/api/uia":
+                self._json(app.uia_operation())
+            elif self.path == "/api/smarthome":
+                self._json(app.smarthome_operation())
+            elif self.path == "/api/sentinel-ops":
+                self._json(app.sentinel_ops_operation())
+            elif self.path == "/api/containers":
+                self._json(app.containers_operation())
+            elif self.path == "/api/coop-agents":
+                self._json(app.coop_agents_operation())
+            elif self.path == "/api/office":
+                self._json(app.office_operation())
+            elif self.path == "/api/catalogue":
+                self._json(app.catalogue_operation())
+            elif self.path == "/api/tools/catalogue":
+                self._json(app.tools_catalogue_operation())
             else:
                 self._json({"error": "not found"}, 404)
 
         def do_POST(self):
             if not self._host_ok() or not self._authed():
-                # Drain tiny unauthenticated bodies so Windows sockets do not emit TCP RST before the 403 is read.
-                try:
-                    raw_len = int(self.headers.get("Content-Length", "0"))
-                    if 0 < raw_len <= 4096:
-                        self.rfile.read(raw_len)
-                except (ValueError, OSError):
-                    pass
+                self._drain_rejected_body()
                 return self._json({"error": "forbidden"}, 403)
             try:
                 lengths = self.headers.get_all("Content-Length", [])
                 if len(lengths) != 1 or self.headers.get("Transfer-Encoding"):
+                    self._drain_rejected_body()
                     return self._json({"error": "one content length required; transfer encoding is unsupported"}, 400)
                 length = int(lengths[0])
                 limit = images.MAX_UPLOAD_JSON if self.path in ("/api/images/lookup", "/api/documents/preview") else 100_000
                 if not 0 <= length <= limit:
+                    self._drain_rejected_body()
                     return self._json({"error": "invalid content length"}, 400)
                 self.connection.settimeout(REQUEST_BODY_TIMEOUT)
                 body = self.rfile.read(length)
@@ -312,7 +396,11 @@ def serve(app, port: int):
                 except (ValueError, TypeError, OSError) as error:
                     return self._json({"error": str(error)}, 400)
                 self._json(result)
-            elif self.path in ("/api/mcp", "/api/conversations", "/api/projects", "/api/feeds", "/api/documents/preview"):
+            elif self.path in ("/api/mcp", "/api/conversations", "/api/projects", "/api/feeds", "/api/documents/preview",
+                               "/api/providers", "/api/tools/dry-run", "/api/bgtasks", "/api/monitors", "/api/macros", "/api/daily-summary",
+                               "/api/pro", "/api/companion", "/api/geospatial", "/api/voice-studio",
+                               "/api/uia", "/api/smarthome", "/api/sentinel-ops", "/api/containers",
+                               "/api/coop-agents", "/api/office", "/api/catalogue"):
                 try:
                     ops = {
                         "/api/mcp": app.mcp_operation,
@@ -320,9 +408,26 @@ def serve(app, port: int):
                         "/api/projects": app.projects_operation,
                         "/api/feeds": app.feeds_operation,
                         "/api/documents/preview": app.document_preview_operation,
+                        "/api/providers": app.providers_operation,
+                        "/api/tools/dry-run": app.dry_run_operation,
+                        "/api/bgtasks": app.bgtasks_operation,
+                        "/api/monitors": app.monitors_operation,
+                        "/api/macros": app.macros_operation,
+                        "/api/daily-summary": app.daily_summary_operation,
+                        "/api/pro": app.pro_operation,
+                        "/api/companion": app.companion_operation,
+                        "/api/geospatial": app.geospatial_operation,
+                        "/api/voice-studio": app.voice_studio_operation,
+                        "/api/uia": app.uia_operation,
+                        "/api/smarthome": app.smarthome_operation,
+                        "/api/sentinel-ops": app.sentinel_ops_operation,
+                        "/api/containers": app.containers_operation,
+                        "/api/coop-agents": app.coop_agents_operation,
+                        "/api/office": app.office_operation,
+                        "/api/catalogue": app.catalogue_operation,
                     }
                     result = ops[self.path](data)
-                except (ValueError, TypeError, OSError) as error:
+                except (ValueError, TypeError, OSError, PermissionError) as error:
                     return self._json({"error": str(error)}, 400)
                 self._json(result)
             elif self.path == "/api/voice-preview":
@@ -332,7 +437,10 @@ def serve(app, port: int):
                     return self._json({"error": "expected a boolean confirmation"}, 400)
                 if not isinstance(data.get("id"), str) or not data["id"]:
                     return self._json({"error": "expected a request identifier"}, 400)
-                self._json(app.confirm(data["yes"], data["id"]))
+                try:
+                    self._json(app.confirm(data["yes"], data["id"]))
+                except (ValueError, PermissionError, OSError, RuntimeError) as error:
+                    self._json({"error": str(error)}, 400)
             else:
                 self._json({"error": "not found"}, 404)
 

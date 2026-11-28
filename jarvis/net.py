@@ -58,6 +58,9 @@ def allowed_endpoints(cfg: dict) -> set[tuple[str, str, int]]:
         local_chat = local_image_endpoint(cfg.get("local_chat_url"))
         if local_chat:
             allowed.add(_parse_endpoint(local_chat))
+    lmstudio = local_image_endpoint(cfg.get("lmstudio_url", "http://127.0.0.1:1234"))
+    if lmstudio:
+        allowed.add(_parse_endpoint(lmstudio))
 
     nomad = _parse_endpoint(cfg.get("nomad_url", "http://127.0.0.1:8080"))
     if nomad:
@@ -91,11 +94,33 @@ def allowed_endpoints(cfg: dict) -> set[tuple[str, str, int]]:
             allowed.add(("https", "imgs.search.brave.com", 443))
         if cfg.get("github_upload_repo") and secure.has_secret("github_upload_token"):
             allowed.add(("https", "api.github.com", 443))
-        if cfg.get("allow_cloud_provider"):
+        # Official service connectors: allowlisted ONLY when DPAPI credentials exist
+        if secure.has_secret("oauth_google_token") or secure.has_secret("oauth_google_client_id"):
+            allowed.add(("https", "www.googleapis.com", 443))
+            allowed.add(("https", "oauth2.googleapis.com", 443))
+        if secure.has_secret("oauth_microsoft_token") or secure.has_secret("oauth_microsoft_client_id"):
+            allowed.add(("https", "graph.microsoft.com", 443))
+            allowed.add(("https", "login.microsoftonline.com", 443))
+        if secure.has_secret("slack_bot_token"):
+            allowed.add(("https", "slack.com", 443))
+        if secure.has_secret("discord_bot_token"):
+            allowed.add(("https", "discord.com", 443))
+        if secure.has_secret("telegram_bot_token"):
+            allowed.add(("https", "api.telegram.org", 443))
+        ha_url = cfg.get("home_assistant_url") or ""
+        if ha_url and secure.has_secret("home_assistant_token"):
+            ha_ep = _parse_endpoint(ha_url)
+            if ha_ep:
+                allowed.add(ha_ep)
+        if cfg.get("allow_cloud_provider") and not (
+            str(cfg.get("privacy_mode") or "hybrid").strip().lower() == "local" and "privacy_mode" in cfg
+        ):
             from . import cloudprovider
             found = cloudprovider.configured_provider(cfg)
             if found:
-                allowed.add(("https", found[1]["host"], 443))
+                ep = _parse_endpoint(found[1]["endpoint"])
+                if ep:
+                    allowed.add(ep)
 
     return allowed
 

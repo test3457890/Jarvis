@@ -98,6 +98,80 @@ pub fn summarize_audit_file(path: &Path) -> std::io::Result<AuditSummary> {
     Ok(summarize_audit_log(&data))
 }
 
+/// Detect paths pointing to sensitive credential stores, SSH/GPG/cloud keys, or browser profiles.
+pub fn is_sensitive_path(path: &str) -> bool {
+    let lower = path.replace('\\', "/").to_ascii_lowercase();
+    let blocked_tokens = [
+        "/.ssh/", "/.gnupg/", "/.aws/", "/.kube/",
+        "secrets.bin", "id_rsa", "id_ed25519",
+        "/google/chrome/user data", "/microsoft/edge/user data",
+        "/.env", ".pem", ".key",
+    ];
+    blocked_tokens.iter().any(|tok| lower.contains(tok))
+}
+
+/// Classify a shell command's defensive risk: "BLOCKED" for privilege elevation or encoded payloads,
+/// "T3" for destructive operations, or "T2" for standard reviewable commands.
+pub fn classify_command_risk(cmd: &str) -> &'static str {
+    let lower = cmd.to_ascii_lowercase();
+    for forbidden in ["sudo ", "runas ", "doas ", "pkexec ", " -enc ", " -encodedcommand ", "base64 -d"] {
+        if lower.contains(forbidden) || lower.starts_with(forbidden.trim_start()) {
+            return "BLOCKED";
+        }
+    }
+    for destructive in ["rm -rf", "del /f", "format ", "shutdown", "remove-item -recurse", "rmdir /s"] {
+        if lower.contains(destructive) {
+            return "T3";
+        }
+    }
+    "T2"
+}
+
+/// Validate a Docker container invocation against Jarvis's hardened sandbox policy:
+/// rejects `--privileged`, Docker socket mounts, host networking/PID namespaces,
+/// and requires `--read-only`, `--cap-drop=ALL`, and a non-root `--user`.
+pub fn validate_container_run_args(args: &[&str]) -> Result<(), &'static str> {
+    let mut has_read_only = false;
+    let mut has_cap_drop_all = false;
+    let mut has_non_root = false;
+
+    for (i, raw) in args.iter().enumerate() {
+        let lower = raw.to_ascii_lowercase();
+        if lower == "--privileged" || lower.starts_with("--privileged=") {
+            return Err("Privileged containers are forbidden");
+        }
+        if lower.contains("docker.sock") || lower.contains("docker_engine") {
+            return Err("Mounting the Docker socket is forbidden");
+        }
+        if lower == "--network=host" || lower == "--pid=host" {
+            return Err("Host network and PID namespaces are forbidden");
+        }
+        if lower == "--read-only" {
+            has_read_only = true;
+        }
+        if lower == "--cap-drop=all" {
+            has_cap_drop_all = true;
+        }
+        if lower == "--user" {
+            if let Some(next) = args.get(i + 1) {
+                if !next.starts_with("0:") && *next != "0" && !next.eq_ignore_ascii_case("root") {
+                    has_non_root = true;
+                }
+            }
+        }
+    }
+    if !has_read_only {
+        return Err("Container must enforce --read-only root filesystem");
+    }
+    if !has_cap_drop_all {
+        return Err("Container must enforce --cap-drop=ALL");
+    }
+    if !has_non_root {
+        return Err("Container must specify a non-root --user");
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,5 +237,36 @@ corrupted line
         assert_eq!(s.valid_json_objects, 3);
         assert_eq!(s.malformed_lines, 1);
         assert_eq!(s.blocked_events, 2);
+    }
+
+    #[test]
+    fn detects_sensitive_paths_and_command_risk() {
+        assert!(is_sensitive_path("C:\\Users\\alice\\.ssh\\id_rsa"));
+        assert!(is_sensitive_path("/home/alice/.aws/credentials"));
+        assert!(is_sensitive_path("C:\\Users\\alice\\AppData\\Roaming\\Jarvis\\secrets.bin"));
+        assert!(!is_sensitive_path("C:\\Users\\alice\\Documents\\notes.txt"));
+
+        assert_eq!(classify_command_risk("sudo rm -rf /"), "BLOCKED");
+        assert_eq!(classify_command_risk("powershell -enc AAAA"), "BLOCKED");
+        assert_eq!(classify_command_risk("Remove-Item -Recurse temp"), "T3");
+        assert_eq!(classify_command_risk("git status"), "T2");
+    }
+
+    #[test]
+    fn enforces_hardened_container_policy() {
+        let safe = [
+            "docker", "run", "--rm", "--read-only", "--user", "65534:65534",
+            "--cap-drop=ALL", "--network", "none", "python:3.12-slim", "python", "-V",
+        ];
+        assert!(validate_container_run_args(&safe).is_ok());
+
+        let priv_bad = ["docker", "run", "--privileged", "--read-only", "--cap-drop=ALL", "--user", "65534:65534"];
+        assert!(validate_container_run_args(&priv_bad).is_err());
+
+        let sock_bad = ["docker", "run", "-v", "/var/run/docker.sock:/var/run/docker.sock", "--read-only", "--cap-drop=ALL", "--user", "65534:65534"];
+        assert!(validate_container_run_args(&sock_bad).is_err());
+
+        let root_bad = ["docker", "run", "--read-only", "--cap-drop=ALL", "--user", "0:0"];
+        assert!(validate_container_run_args(&root_bad).is_err());
     }
 }
