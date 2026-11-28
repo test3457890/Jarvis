@@ -187,6 +187,25 @@ def run_audit() -> tuple[int, int]:
                     page.get_by_role("button", name="Workspaces").click()
                 check("Intelligence Canvas restores, reorders and exports synthetic cards", verify_canvas)
 
+                def verify_local_camera():
+                    page.locator("button[data-cc-ws='smarthome']").click()
+                    page.evaluate("""() => {
+                        const track = document.createElement('canvas').captureStream(5).getVideoTracks()[0];
+                        window.__TEST_CAMERA_TRACK__ = track;
+                        Object.defineProperty(navigator, 'mediaDevices', {configurable:true, value: {
+                            getUserMedia: async () => new MediaStream([track]),
+                            enumerateDevices: async () => [{kind:'videoinput', deviceId:'synthetic', label:'Synthetic camera'}]
+                        }});
+                    }""")
+                    camera = page.get_by_role("region", name="Local camera preview")
+                    camera.get_by_role("button", name="Start camera").click()
+                    expect(camera.get_by_text("CAMERA ON", exact=False)).to_be_visible()
+                    camera.get_by_role("button", name="Stop camera").click()
+                    expect(camera.get_by_role("status")).to_contain_text("Camera off")
+                    assert page.evaluate("window.__TEST_CAMERA_TRACK__.readyState") == "ended"
+                    page.locator("button[data-cc-ws='console']").click()
+                check("Local camera starts only on click and stops synthetic track", verify_local_camera)
+
                 check("Legacy HUD switch returns cleanly to /", lambda: (
                     page.get_by_role("link", name="Legacy HUD").click(),
                     page.wait_for_url(f"{base}/"),
