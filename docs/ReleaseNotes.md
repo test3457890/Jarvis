@@ -1,3 +1,12 @@
+Jarvis 1.4.1 is a security patch release following PR #43.
+
+Security Fix:
+- Enforced `ssl.TLSVersion.TLSv1_2` minimum in `jarvis/net.py` (`PinnedHTTPS.connect`), resolving CodeQL alert `py/insecure-protocol`.
+
+Verify `Jarvis1.4.1.zip` with `SHA256SUMS.txt` (do not overwrite the published `v1.4.0` release archive).
+
+---
+
 Jarvis 1.4.0 consolidates the Phase 2 workspace and provider expansion (PRs #36-#41) with OpenJarvis-inspired local intelligence, security, and Windows reliability upgrades.
 
 Highlights:
