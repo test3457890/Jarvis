@@ -2513,8 +2513,8 @@ $('runs-panel').ontoggle = () => { if ($('runs-panel').open) loadRunsAndMonitors
 $('bgtasks-refresh').onclick = loadRunsAndMonitors;
 $('monitors-eval').onclick = async () => {
   const res = await api('/api/monitors', {action:'evaluate'});
+  await loadRunsAndMonitors();
   $('runs-status').textContent = res.error || `Evaluated monitors: ${(res.alerts || []).length} alert(s).`;
-  loadRunsAndMonitors();
 };
 $('monitor-form').onsubmit = async event => {
   event.preventDefault();
