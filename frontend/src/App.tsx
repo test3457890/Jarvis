@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api, subscribeEvents } from './api';
 import { useCCStore, WORKSPACES, WorkspaceId } from './store';
 import { WorkspaceView } from './components/Workspaces';
+import { IntelligenceCanvas } from './components/IntelligenceCanvas';
 
 export const App: React.FC = () => {
   const {
@@ -11,6 +12,8 @@ export const App: React.FC = () => {
     coreStatus, activeAssistant, setCoreStatus, setAppState, addMessage, pendingApproval, setPendingApproval,
   } = useCCStore();
   const [palQuery, setPalQuery] = useState('');
+  const [canvasOpen, setCanvasOpen] = useState(false);
+  const [visualEvent, setVisualEvent] = useState<unknown>(null);
 
   useEffect(() => {
     api('/api/state').then(setAppState).catch(() => {});
@@ -20,6 +23,10 @@ export const App: React.FC = () => {
         const who = ev.data.assistant === 'tuki' ? 'tuki' : 'jarvis';
         setCoreStatus('idle', who);
         addMessage(who, ev.data.text);
+        setVisualEvent({ id: `reply-${Date.now()}-${Math.random().toString(36).slice(2)}`, kind: 'summary', title: `${who.toUpperCase()} response`, text: ev.data.text, assistant: who, provenance: 'actual' });
+      } else if (ev.kind === 'visual') {
+        // Model-provided claims are unverified until a trusted producer supplies evidence.
+        setVisualEvent({ ...ev.data, provenance: 'placeholder' });
       } else if (ev.kind === 'pending') {
         setPendingApproval(ev.data?.id ? { id: ev.data.id, summary: ev.data.text || 'Confirm action' } : null);
       }
@@ -67,6 +74,7 @@ export const App: React.FC = () => {
             <span className="cc-badge sim">TUKI: {activeAssistant === 'tuki' ? coreStatus : 'standby'}</span>
           </div>
           <div className="cc-row">
+            <button type="button" aria-pressed={canvasOpen} onClick={() => setCanvasOpen(open => !open)}>{canvasOpen ? 'Workspaces' : 'Intelligence Canvas'}</button>
             <button type="button" onClick={() => setPaletteOpen(true)} title="Command Palette (Ctrl+K)">Palette (Ctrl+K)</button>
             <button type="button" onClick={toggleFullscreen}>{fullscreen ? 'Show Rail' : 'Full Screen'}</button>
             <button type="button" onClick={toggleFloatingMode}>{floatingMode ? 'Dock Window' : 'Floating Mini'}</button>
@@ -122,7 +130,8 @@ export const App: React.FC = () => {
           )}
 
           <main className="cc-main">
-            <WorkspaceView id={workspace} />
+            <div hidden={!canvasOpen}><IntelligenceCanvas incoming={visualEvent} /></div>
+            {!canvasOpen && <WorkspaceView id={workspace} />}
           </main>
         </div>
       </div>

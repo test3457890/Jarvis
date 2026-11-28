@@ -74,7 +74,7 @@ def run_audit() -> tuple[int, int]:
 
                 check("Console live vitals refresh & authentic screenshot", lambda: (
                     page.get_by_role("button", name="Refresh Live Vitals").click(),
-                    expect(page.locator(".cc-card").filter(has_text="CPU Load (Live)")).to_contain_text(
+                    expect(page.locator(".cc-card:visible").filter(has_text="CPU Load (Live)")).to_contain_text(
                         re.compile(r"\d+(?:\.\d+)?%"), timeout=15000),
                     page.locator(".cc-grid").first.screenshot(path=str(shots_dir / "command-center-vitals-2026-11.png")),
                 ))
@@ -104,7 +104,7 @@ def run_audit() -> tuple[int, int]:
                 for workspace, route in backend_routes.items():
                     def verify_backend(ws=workspace, ep=route):
                         page.locator(f"button[data-cc-ws='{ws}']").click()
-                        expect(page.locator("main .cc-card").first).to_be_visible()
+                        expect(page.locator("main .cc-card:visible").first).to_be_visible()
                         response = page.evaluate("""async path => {
                             const res = await fetch(path, {headers: {'X-Jarvis-Key': window.__JARVIS_SESSION__}});
                             const body = await res.json();
@@ -164,6 +164,61 @@ def run_audit() -> tuple[int, int]:
                     expect(page.get_by_role("button", name="Show Rail")).to_be_visible(),
                     page.get_by_role("button", name="Show Rail").click(),
                 ))
+
+                def verify_canvas():
+                    page.evaluate("""() => localStorage.setItem('jarvis-intelligence-canvas-v1', JSON.stringify([
+                        {id:'fixture_1', kind:'summary', title:'Synthetic bench note', text:'Synthetic fixture only', assistant:'tuki', provenance:'simulation'},
+                        {id:'fixture_2', kind:'progress', title:'Synthetic progress', value:35, provenance:'simulation'}
+                    ]))""")
+                    page.reload(wait_until="networkidle")
+                    page.get_by_role("button", name="Intelligence Canvas").click()
+                    canvas = page.get_by_role("region", name="Intelligence Canvas")
+                    expect(canvas.get_by_text("Synthetic bench note")).to_be_visible()
+                    expect(canvas.get_by_text("Synthetic fixture only")).to_be_visible()
+                    canvas.get_by_role("button", name="Move Synthetic progress earlier").click()
+                    assert canvas.locator("article strong").first.inner_text() == "Synthetic progress"
+                    with page.expect_download() as download:
+                        canvas.get_by_role("button", name="Export JSON").click()
+                    assert download.value.suggested_filename == "jarvis-intelligence-canvas.json"
+                    canvas.screenshot(path=str(shots_dir / "command-center-intelligence-canvas.png"))
+                    page.reload(wait_until="networkidle")
+                    page.get_by_role("button", name="Intelligence Canvas").click()
+                    assert page.get_by_role("region", name="Intelligence Canvas").locator("article strong").first.inner_text() == "Synthetic progress"
+                    page.get_by_role("button", name="Workspaces").click()
+                check("Intelligence Canvas restores, reorders and exports synthetic cards", verify_canvas)
+
+                def verify_local_camera():
+                    page.locator("button[data-cc-ws='smarthome']").click()
+                    page.evaluate("""() => {
+                        const track = document.createElement('canvas').captureStream(5).getVideoTracks()[0];
+                        window.__TEST_CAMERA_TRACK__ = track;
+                        Object.defineProperty(navigator, 'mediaDevices', {configurable:true, value: {
+                            getUserMedia: async () => new MediaStream([track]),
+                            enumerateDevices: async () => [{kind:'videoinput', deviceId:'synthetic', label:'Synthetic camera'}]
+                        }});
+                    }""")
+                    camera = page.get_by_role("region", name="Local camera preview")
+                    camera.get_by_role("button", name="Start camera").click()
+                    expect(camera.get_by_text("CAMERA ON", exact=False)).to_be_visible()
+                    camera.get_by_role("button", name="Stop camera").click()
+                    expect(camera.get_by_role("status")).to_contain_text("Camera off")
+                    assert page.evaluate("window.__TEST_CAMERA_TRACK__.readyState") == "ended"
+                    page.evaluate("""() => {
+                        navigator.mediaDevices.getUserMedia = () => new Promise(resolve => { window.__TEST_RESOLVE__ = resolve; });
+                        window.__TEST_LATE_TRACK__ = document.createElement('canvas').captureStream(5).getVideoTracks()[0];
+                    }""")
+                    camera.get_by_role("button", name="Start camera").click()
+                    expect(camera.get_by_role("status")).to_contain_text("Waiting for browser camera permission")
+                    camera.get_by_role("button", name="Stop camera").click()
+                    page.evaluate("window.__TEST_RESOLVE__(new MediaStream([window.__TEST_LATE_TRACK__]))")
+                    expect(camera.get_by_role("status")).to_contain_text("Camera off")
+                    page.wait_for_function("window.__TEST_LATE_TRACK__.readyState === 'ended'")
+                    page.route("**/api/state", lambda route: route.fulfill(status=200, content_type="application/json", body='{"lockdown":true}'))
+                    camera.get_by_role("button", name="Start camera").click()
+                    expect(camera.get_by_role("status")).to_contain_text("Lockdown blocks camera activation")
+                    page.unroute("**/api/state")
+                    page.locator("button[data-cc-ws='console']").click()
+                check("Local camera starts only on click and stops synthetic track", verify_local_camera)
 
                 check("Legacy HUD switch returns cleanly to /", lambda: (
                     page.get_by_role("link", name="Legacy HUD").click(),

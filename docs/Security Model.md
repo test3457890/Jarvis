@@ -46,3 +46,9 @@ Jarvis is built around a fail-closed, local-first security posture. Every capabi
 - Extensions and local stdio MCP servers run as the current Windows user without an OS AppContainer/VM sandbox. Only enable extensions and MCP servers you trust.
 - Release packages and PowerShell scripts are not Authenticode code-signed yet; verify downloads via `SHA256SUMS.txt`. See [WindowsDefender.md](WindowsDefender.md).
 - SQLite backups in `%APPDATA%\Jarvis\backups\` are local unencrypted files; keep them private.
+
+## Spatial canvas and local browser camera preview (development branch)
+
+- Intelligence Canvas accepts only bounded, validated text/source/table/progress event data and renders it through fixed React components. Model-supplied `visual` SSE events are marked placeholders; events never authorize actions, execute HTML/JS or start media capture. HTTPS source links require a user click. The canvas stores up to 40 cards in browser localStorage; this is not encrypted or suitable for confidential content.
+- The optional local camera preview requests browser permission only after an explicit Start click. It uses `getUserMedia({audio:false})` and does not connect to a provider or send camera frames to the backend. Video and captured stills remain in browser memory. Stop, workspace unmount and Lockdown stop media tracks; a pending permission grant is also invalidated on Stop. Physical camera shutoff and browser permissions remain under user control.
+- This first preview has no object recognition, face identification, background recording or arbitrary network-camera access. A synthetic browser track verifies the UI lifecycle; real camera hardware and multi-camera scheduling are not yet verified. Browser-local permissions are a convenience layer, not a substitute for the application's device authorization system for future server-side camera controls.

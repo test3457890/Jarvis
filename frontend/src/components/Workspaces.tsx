@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useCCStore, WorkspaceId } from '../store';
 import { Globe3D } from './Globe3D';
+import { LocalCamera } from './LocalCamera';
 
 export const WorkspaceView: React.FC<{ id: WorkspaceId }> = ({ id }) => {
   const { messages, addMessage, vitals, setVitals, appState } = useCCStore();
@@ -225,10 +226,13 @@ export const WorkspaceView: React.FC<{ id: WorkspaceId }> = ({ id }) => {
 
   if (id === 'smarthome') {
     return (
-      <div className="cc-card">
-        <h3>Smart Home &amp; Authorized Camera Center</h3>
-        <p className="cc-hint">Owner-authorized Home Assistant, ONVIF, RTSP, Frigate NVR, and public weather/traffic webcams only. DPAPI credentials; facial ID prohibited.</p>
-        <p className="cc-hint">Registered authorized devices: {(data?.devices || []).length} · Recent events: {(data?.events || []).length}</p>
+      <div className="cc-stack">
+        <LocalCamera locked={Boolean(appState.lockdown)} />
+        <div className="cc-card">
+          <h3>Smart Home &amp; Authorized Camera Center</h3>
+          <p className="cc-hint">Owner-authorized Home Assistant, ONVIF, RTSP, Frigate NVR, and public weather/traffic webcams only. DPAPI credentials; facial ID prohibited.</p>
+          <p className="cc-hint">Registered authorized devices: {(data?.devices || []).length} · Recent events: {(data?.events || []).length}</p>
+        </div>
       </div>
     );
   }
