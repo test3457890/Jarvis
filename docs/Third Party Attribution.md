@@ -16,6 +16,11 @@ No third-party source code, branding, logos, or binary assets were copied from e
 | OpenDex | https://github.com/wassgha/opendex | Reference only | MIT (reference only) | Compact layout, interchangeable voice & model providers | None |
 | llama.cpp server | https://github.com/ggml-org/llama.cpp | Protocol spec | MIT (protocol spec) | OpenAI-compatible `/v1/models` and `/v1/chat/completions` JSON/SSE wire protocol | None (protocol compatibility only) |
 | Model Context Protocol | https://modelcontextprotocol.io/ | Protocol spec | MIT (open spec) | Stdio JSON-RPC 2.0 `initialize`, `tools/list`, `tools/call` wire protocol | None (protocol compatibility only) |
+| Kokoro / Kokoro-ONNX | https://github.com/hexgrad/kokoro · https://github.com/thewh1teagle/kokoro-onnx | Reference & optional engine | Apache-2.0 / MIT | Optional local ONNX neural TTS & British/TUKI voice IDs | None (optional runtime adapter only) |
+| Qwen3-TTS | https://github.com/QwenLM/Qwen3-TTS | Reference & optional engine | Apache-2.0 | Optional expressive VoiceDesign local GPU synthesis | None (optional runtime adapter only) |
+| Chatterbox | https://github.com/resemble-ai/chatterbox | Reference & optional engine | MIT | Optional expressive local TTS | None (optional runtime adapter only) |
+| Piper (`piper1-gpl`) | https://github.com/OHF-Voice/piper1-gpl | Optional external CLI | **GPL-3.0** | Invoked strictly out-of-process via subprocess (never imported/linked) | None (external subprocess boundary) |
+| faster-whisper | https://github.com/SYSTRAN/faster-whisper | Optional runtime dep | MIT | Local CTranslate2 speech-to-text (`HF_HUB_OFFLINE=1`) | None (optional package) |
 
 ## Runtime and Development Dependencies
 

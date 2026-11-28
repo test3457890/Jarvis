@@ -114,6 +114,11 @@ class Speaker:
 
     def say(self, text: str, assistant: str = "jarvis"):
         text = re.sub(r"[*#`_>|]", "", text).strip()
+        try:
+            from jarvis import speech_engines
+            text = speech_engines.apply_pronunciation(text, self.cfg.get("voice_pronunciations"))
+        except ImportError:
+            pass
         if text:
             with self._guard:
                 self._q.put((self._generation, text, assistant if assistant in ("jarvis", "tuki") else "jarvis"))

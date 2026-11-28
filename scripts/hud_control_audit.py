@@ -1039,6 +1039,7 @@ def audit(app, cfg, code, files, url):
                 ("repair", "#sentinel-panel", None),
                 ("runs", "#runs-panel", "nextgen-workspace-runs.png"),
                 ("pro", "#pro-geo-panel", None),
+                ("voice", "#voice-studio-panel", "nextgen-voice-studio.png"),
                 ("console", None, None),
             ):
                 page.locator(f"#workspace-tabs button[data-ws='{ws}']").click()

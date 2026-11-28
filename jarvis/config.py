@@ -35,6 +35,16 @@ DEFAULTS = {
     "tuki_sapi_voice_contains": "",
     "tuki_piper_model": "",
     "tuki_speech_rate": 200,
+    # Voice Studio neural speech profiles & independent Jarvis/TUKI engine settings
+    "voice_performance_profile": "balanced",  # cinematic | balanced | performance | compatibility
+    "voice_compute_device": "auto",  # auto | cpu | gpu
+    "jarvis_speech_engine": "auto",
+    "jarvis_neural_voice": "bm_george",
+    "jarvis_voice_pitch": 1.0,
+    "tuki_speech_engine": "auto",
+    "tuki_neural_voice": "bf_emma",
+    "tuki_voice_pitch": 1.05,
+    "voice_pronunciations": {},
     # First-run wizard. Existing installs are marked complete when their config loads.
     "setup_complete": False,
     "voice_enabled": True,

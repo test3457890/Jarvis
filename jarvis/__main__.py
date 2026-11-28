@@ -22,7 +22,7 @@ from . import (
     agents, appactions, assistants, bgtasks, browser_auto, clipboard, cloudprovider, companion, config, connections, connectors,
     desktop, documents, domains, extensions, fastpath, filejobs, geospatial, hardware, images, localprovider,
     macros, mcp_client, memextract, monitors, net, nomad, planner, pro_workspace, providers, recovery, secure,
-    sentinel, setupwizard, skills, telemetry, undo, voice_profile, watchchecks, workflows,
+    sentinel, setupwizard, skills, speech_engines, telemetry, undo, voice_profile, watchchecks, workflows,
 )
 from .brain import Brain
 from .memory import Memory
@@ -1049,6 +1049,97 @@ class App:
         self.speaker.say(text, assistant)
         describe = getattr(self.speaker, "describe", None)
         return {"ok": True, "voice": describe(assistant) if describe else ""}
+
+    def voice_studio_operation(self, data=None):
+        """Dedicated Voice Studio backend: profiles, independent Jarvis/TUKI engines, pronunciation, storage & previews."""
+        if data is None:
+            return speech_engines.studio_state(self.cfg)
+        action = str(data.get("action") or "").strip().lower()
+        if action == "save":
+            if self.cfg.get("lockdown"):
+                raise ValueError("Turn off Lockdown to change Voice Studio settings.")
+            with self.brain._lock, self._settings_lock:
+                updated = dict(self.cfg)
+                prof = str(data.get("profile") or updated.get("voice_performance_profile", "balanced")).strip().lower()
+                if prof not in speech_engines.VOICE_PERFORMANCE_PROFILES:
+                    raise ValueError("Choose cinematic, balanced, performance, or compatibility.")
+                updated["voice_performance_profile"] = prof
+                dev = str(data.get("compute_device") or updated.get("voice_compute_device", "auto")).strip().lower()
+                if dev not in ("auto", "cpu", "gpu"):
+                    raise ValueError("Compute device must be auto, cpu, or gpu.")
+                updated["voice_compute_device"] = dev
+                for key in ("jarvis_speech_engine", "tuki_speech_engine"):
+                    if key in data:
+                        val = str(data[key] or "auto").strip().lower()
+                        if val != "auto" and val not in speech_engines.ENGINES:
+                            raise ValueError(f"Unknown speech engine '{val}'.")
+                        updated[key] = val
+                for key in ("jarvis_neural_voice", "tuki_neural_voice"):
+                    if key in data:
+                        updated[key] = str(data[key] or "").strip()[:80]
+                for key, lo, hi in (("speech_rate", 100, 320), ("tuki_speech_rate", 100, 320)):
+                    if key in data:
+                        r = int(data[key])
+                        if not lo <= r <= hi:
+                            raise ValueError(f"{key} must be between {lo} and {hi} WPM.")
+                        updated[key] = r
+                for key in ("jarvis_voice_pitch", "tuki_voice_pitch"):
+                    if key in data:
+                        p = float(data[key])
+                        if not 0.5 <= p <= 1.5:
+                            raise ValueError("Voice pitch multiplier must be between 0.5 and 1.5.")
+                        updated[key] = round(p, 2)
+                if "pronunciations" in data:
+                    pmap = data["pronunciations"]
+                    if not isinstance(pmap, dict) or len(pmap) > 100:
+                        raise ValueError("Pronunciations must be a dictionary of up to 100 terms.")
+                    updated["voice_pronunciations"] = {
+                        str(k).strip()[:60]: str(v).strip()[:80]
+                        for k, v in pmap.items() if str(k).strip() and str(v).strip()
+                    }
+                config.save(updated)
+                self.cfg.update(updated)
+            secure.audit("voice_studio_saved", {"profile": prof, "device": dev})
+            return speech_engines.studio_state(self.cfg)
+        if action == "preview":
+            who = "tuki" if str(data.get("assistant") or "").lower() == "tuki" else "jarvis"
+            sentence = str(data.get("text") or "").strip()[:400]
+            if not sentence:
+                sentence = (
+                    "TUKI online. Checking SQLite telemetry, VRAM budgets, and independent verification."
+                    if who == "tuki"
+                    else "Good evening, sir. All local neural systems are calibrated and awaiting your instruction."
+                )
+            res = speech_engines.synthesize_to_wav(self.cfg, sentence, assistant=who)
+            if self.speaker and data.get("speak"):
+                self.speaker.say(sentence, who)
+            # Clean up temp wav unless explicitly kept
+            try:
+                Path(res["wav_path"]).unlink(missing_ok=True)
+            except OSError:
+                pass
+            return {k: v for k, v in res.items() if k != "wav_path"}
+        if action == "reset":
+            if self.cfg.get("lockdown"):
+                raise ValueError("Turn off Lockdown to reset Voice Studio settings.")
+            with self.brain._lock, self._settings_lock:
+                updated = dict(self.cfg)
+                for k in (
+                    "voice_performance_profile", "voice_compute_device", "jarvis_speech_engine",
+                    "jarvis_neural_voice", "jarvis_voice_pitch", "tuki_speech_engine",
+                    "tuki_neural_voice", "tuki_voice_pitch", "speech_rate", "tuki_speech_rate",
+                    "voice_pronunciations",
+                ):
+                    updated[k] = config.DEFAULTS[k]
+                config.save(updated)
+                self.cfg.update(updated)
+            secure.audit("voice_studio_reset", {})
+            return speech_engines.studio_state(self.cfg)
+        if action == "delete_pack":
+            if self.cfg.get("lockdown"):
+                raise ValueError("Turn off Lockdown to delete voice packs.")
+            return {"storage": speech_engines.delete_voice_pack(str(data.get("pack_id") or ""))}
+        raise ValueError("Choose save, preview, reset, or delete_pack.")
 
     def confirm(self, yes: bool, expected_id: str):
         result = self.brain.confirm_pending(yes, expected_id=expected_id)

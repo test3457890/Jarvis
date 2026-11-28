@@ -204,6 +204,8 @@ def serve(app, port: int):
                 self._json(app.companion_operation())
             elif self.path == "/api/geospatial":
                 self._json(app.geospatial_operation())
+            elif self.path == "/api/voice-studio":
+                self._json(app.voice_studio_operation())
             else:
                 self._json({"error": "not found"}, 404)
 
@@ -336,7 +338,7 @@ def serve(app, port: int):
                 self._json(result)
             elif self.path in ("/api/mcp", "/api/conversations", "/api/projects", "/api/feeds", "/api/documents/preview",
                                "/api/providers", "/api/tools/dry-run", "/api/bgtasks", "/api/monitors", "/api/macros", "/api/daily-summary",
-                               "/api/pro", "/api/companion", "/api/geospatial"):
+                               "/api/pro", "/api/companion", "/api/geospatial", "/api/voice-studio"):
                 try:
                     ops = {
                         "/api/mcp": app.mcp_operation,
@@ -353,6 +355,7 @@ def serve(app, port: int):
                         "/api/pro": app.pro_operation,
                         "/api/companion": app.companion_operation,
                         "/api/geospatial": app.geospatial_operation,
+                        "/api/voice-studio": app.voice_studio_operation,
                     }
                     result = ops[self.path](data)
                 except (ValueError, TypeError, OSError, PermissionError) as error:

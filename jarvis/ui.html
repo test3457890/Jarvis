@@ -319,9 +319,9 @@
   body[data-compact=true] header { flex-wrap:wrap; gap:8px; }
   body[data-compact=true] .chat { min-height:60vh; flex-shrink:0; }
   body[data-compact=true] #log { min-height:180px; max-height:40vh; }
-  #vitals-panel, #providers-panel, #audit-ops-panel, #runs-panel, #pro-geo-panel { border-top:1px solid var(--line); padding:8px 16px; max-height:52%; overflow:auto; }
-  body[data-mode=talk] #vitals-panel, body[data-mode=talk] #providers-panel, body[data-mode=talk] #audit-ops-panel, body[data-mode=talk] #runs-panel, body[data-mode=talk] #pro-geo-panel { display:none; }
-  #vitals-panel summary, #providers-panel summary, #audit-ops-panel summary, #runs-panel summary, #pro-geo-panel summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
+  #vitals-panel, #providers-panel, #audit-ops-panel, #runs-panel, #pro-geo-panel, #voice-studio-panel { border-top:1px solid var(--line); padding:8px 16px; max-height:52%; overflow:auto; }
+  body[data-mode=talk] #vitals-panel, body[data-mode=talk] #providers-panel, body[data-mode=talk] #audit-ops-panel, body[data-mode=talk] #runs-panel, body[data-mode=talk] #pro-geo-panel, body[data-mode=talk] #voice-studio-panel { display:none; }
+  #vitals-panel summary, #providers-panel summary, #audit-ops-panel summary, #runs-panel summary, #pro-geo-panel summary, #voice-studio-panel summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
   .vitals-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:8px; margin:8px 0; }
   .vital-card { border:1px solid var(--line); border-radius:6px; padding:8px; background:var(--panel); min-width:0; }
   .vital-card .v-label { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; }
@@ -415,6 +415,7 @@
       <button type="button" data-ws="repair" aria-pressed="false">Repair</button>
       <button type="button" data-ws="runs" aria-pressed="false">Runs</button>
       <button type="button" data-ws="pro" aria-pressed="false">Professional</button>
+      <button type="button" data-ws="voice" aria-pressed="false">Voice Studio</button>
       <button type="button" data-ws="settings" aria-pressed="false">Settings</button>
     </nav>
     <nav id="command-nav" aria-label="Command Center tools">
@@ -738,6 +739,50 @@
         </div>
       </div>
       <div id="companion-status" class="hint" role="status"></div>
+    </details>
+    <details id="voice-studio-panel" name="assistant-tools">
+      <summary>Voice Studio (Neural TTS, Jarvis &amp; TUKI Voices)</summary>
+      <p class="hint">100% local speech synthesis with hardware-aware profiles, independent Jarvis &amp; TUKI identities, pronunciation dictionary, and verified optional model packs. Zero cloud speech transmission.</p>
+      <div id="vs-rec" class="hint" role="status"></div>
+      <form id="vs-form">
+        <div class="ft-row">
+          <label>Profile <select id="vs-profile">
+            <option value="cinematic">Cinematic (Expressive Neural)</option>
+            <option value="balanced">Balanced (Natural &amp; Low Latency)</option>
+            <option value="performance">Performance (Low Resource)</option>
+            <option value="compatibility">Compatibility (System SAPI5)</option>
+          </select></label>
+          <label>Device <select id="vs-device"><option value="auto">Auto</option><option value="cpu">CPU</option><option value="gpu">GPU</option></select></label>
+        </div>
+        <div class="ft-row">
+          <label>Jarvis Engine <select id="vs-jarvis-engine"><option value="auto">Auto (Profile)</option><option value="kokoro_onnx">Kokoro ONNX</option><option value="kokoro">Kokoro PyTorch</option><option value="qwen3_tts">Qwen3-TTS</option><option value="chatterbox">Chatterbox</option><option value="piper">Piper CLI</option><option value="windows_sapi">Windows SAPI5</option></select></label>
+          <label>Jarvis Voice <select id="vs-jarvis-voice"><option value="bm_george">George (British Refined)</option><option value="bm_daniel">Daniel (British Crisp)</option><option value="bm_fable">Fable (British Warm)</option><option value="bm_lewis">Lewis (British Formal)</option></select></label>
+          <label>WPM <input id="vs-jarvis-rate" type="number" min="100" max="320" value="185" style="max-width:5rem"></label>
+          <label>Pitch <input id="vs-jarvis-pitch" type="number" min="0.5" max="1.5" step="0.05" value="1.0" style="max-width:4.5rem"></label>
+        </div>
+        <div class="ft-row">
+          <label>TUKI Engine <select id="vs-tuki-engine"><option value="auto">Auto (Profile)</option><option value="kokoro_onnx">Kokoro ONNX</option><option value="kokoro">Kokoro PyTorch</option><option value="qwen3_tts">Qwen3-TTS</option><option value="chatterbox">Chatterbox</option><option value="piper">Piper CLI</option><option value="windows_sapi">Windows SAPI5</option></select></label>
+          <label>TUKI Voice <select id="vs-tuki-voice"><option value="bf_emma">Emma (British Analytical)</option><option value="bf_isabella">Isabella (British Warm)</option><option value="af_bella">Bella (Technical Crisp)</option><option value="af_heart">Heart (Natural)</option></select></label>
+          <label>WPM <input id="vs-tuki-rate" type="number" min="100" max="320" value="200" style="max-width:5rem"></label>
+          <label>Pitch <input id="vs-tuki-pitch" type="number" min="0.5" max="1.5" step="0.05" value="1.05" style="max-width:4.5rem"></label>
+        </div>
+        <div class="ft-row">
+          <label style="flex:1 1 16rem">Pronunciation dictionary (term=spoken, one per line)
+            <textarea id="vs-pron" rows="3" style="width:100%;box-sizing:border-box"></textarea>
+          </label>
+        </div>
+        <div class="ft-row">
+          <button type="submit">Save Voice Studio</button>
+          <button id="vs-reset" type="button">Reset to defaults</button>
+        </div>
+      </form>
+      <div class="ft-row">
+        <input id="vs-test-text" type="text" placeholder="Enter test sentence (e.g. Good evening, sir. TUKI verified SQLite telemetry.)" maxlength="400" aria-label="Voice Studio test sentence">
+        <button id="vs-preview-jarvis" type="button">Preview Jarvis</button>
+        <button id="vs-preview-tuki" type="button">Preview TUKI</button>
+      </div>
+      <div id="vs-status" class="hint" role="status"></div>
+      <div class="ng-table-wrap"><table class="ng-table" id="vs-packs-table"><thead><tr><th scope="col">Optional Voice Pack</th><th scope="col">License</th><th scope="col">Est. Size</th><th scope="col">Status</th></tr></thead><tbody></tbody></table></div>
     </details>
     <details id="sentinel-panel" name="assistant-tools">
       <summary>Sentinel security &amp; MCP</summary>
@@ -2742,6 +2787,7 @@ const WS_PANELS = {
   repair: 'sentinel-panel',
   runs: 'runs-panel',
   pro: 'pro-geo-panel',
+  voice: 'voice-studio-panel',
   settings: 'setup-panel',
 };
 document.querySelectorAll('#workspace-tabs button').forEach(btn => {
@@ -2754,9 +2800,87 @@ document.querySelectorAll('#workspace-tabs button').forEach(btn => {
       if ($('sentinel-refresh')) $('sentinel-refresh').click();
     } else if (ws === 'console') {
       $('q').focus();
+    } else if (ws === 'voice') {
+      loadVoiceStudio();
     }
   };
 });
+
+// ---- Voice Studio Workspace
+function renderVoiceStudio(st) {
+  if (!st || st.error) return;
+  $('vs-profile').value = st.profile || 'balanced';
+  $('vs-device').value = st.compute_device || 'auto';
+  $('vs-jarvis-engine').value = st.jarvis?.engine || 'auto';
+  $('vs-jarvis-voice').value = st.jarvis?.voice || 'bm_george';
+  $('vs-jarvis-rate').value = st.jarvis?.rate || 185;
+  $('vs-jarvis-pitch').value = st.jarvis?.pitch ?? 1.0;
+  $('vs-tuki-engine').value = st.tuki?.engine || 'auto';
+  $('vs-tuki-voice').value = st.tuki?.voice || 'bf_emma';
+  $('vs-tuki-rate').value = st.tuki?.rate || 200;
+  $('vs-tuki-pitch').value = st.tuki?.pitch ?? 1.05;
+  const pronLines = Object.entries(st.pronunciations || {}).map(([k, v]) => `${k}=${v}`);
+  $('vs-pron').value = pronLines.join('\n');
+  const rec = st.recommended_profile || {};
+  $('vs-rec').textContent = `Recommended: ${rec.profile || 'balanced'} (${rec.device || 'auto'}) — ${rec.reason || ''} · Active Jarvis: ${st.jarvis?.resolved?.selected || 'none'} · Active TUKI: ${st.tuki?.resolved?.selected || 'none'}`;
+  const tbody = $('vs-packs-table').querySelector('tbody');
+  tbody.replaceChildren();
+  for (const p of (st.storage?.packs || [])) {
+    const tr = el('tr');
+    tr.append(
+      el('td', '', p.label),
+      el('td', '', p.license),
+      el('td', '', `${p.estimated_mb} MB`),
+      el('td', '', p.installed ? `Installed (${p.disk_mb} MB)` : 'Optional (not downloaded)')
+    );
+    tbody.appendChild(tr);
+  }
+}
+async function loadVoiceStudio() {
+  try {
+    const st = await api('/api/voice-studio');
+    if (st.error) throw new Error(st.error);
+    renderVoiceStudio(st);
+  } catch (error) { $('vs-status').textContent = error.message || 'Could not load Voice Studio.'; }
+}
+$('voice-studio-panel').ontoggle = () => { if ($('voice-studio-panel').open) loadVoiceStudio(); };
+$('vs-form').onsubmit = async event => {
+  event.preventDefault();
+  const pronunciations = {};
+  for (const line of $('vs-pron').value.split('\n')) {
+    const idx = line.indexOf('=');
+    if (idx > 0) pronunciations[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+  }
+  const res = await api('/api/voice-studio', {
+    action: 'save',
+    profile: $('vs-profile').value,
+    compute_device: $('vs-device').value,
+    jarvis_speech_engine: $('vs-jarvis-engine').value,
+    jarvis_neural_voice: $('vs-jarvis-voice').value,
+    speech_rate: Number($('vs-jarvis-rate').value) || 185,
+    jarvis_voice_pitch: Number($('vs-jarvis-pitch').value) || 1.0,
+    tuki_speech_engine: $('vs-tuki-engine').value,
+    tuki_neural_voice: $('vs-tuki-voice').value,
+    tuki_speech_rate: Number($('vs-tuki-rate').value) || 200,
+    tuki_voice_pitch: Number($('vs-tuki-pitch').value) || 1.05,
+    pronunciations,
+  });
+  if (res.error) $('vs-status').textContent = res.error;
+  else { renderVoiceStudio(res); $('vs-status').textContent = 'Voice Studio settings saved.'; }
+};
+$('vs-reset').onclick = async () => {
+  const res = await api('/api/voice-studio', {action:'reset'});
+  if (res.error) $('vs-status').textContent = res.error;
+  else { renderVoiceStudio(res); $('vs-status').textContent = 'Voice Studio reset to defaults.'; }
+};
+async function previewStudioVoice(who) {
+  $('vs-status').textContent = `Synthesizing ${who.toUpperCase()} preview locally…`;
+  const res = await api('/api/voice-studio', {action:'preview', assistant:who, text:$('vs-test-text').value.trim(), speak:false});
+  if (res.error) $('vs-status').textContent = res.error;
+  else $('vs-status').textContent = `${res.assistant.toUpperCase()} preview (${res.engine} / ${res.voice || 'default'}): ${res.audio_seconds}s audio in ${res.total_seconds}s (RTF ${res.rtf ?? 'N/A'}) · Spoken: "${res.spoken_text}"`;
+}
+$('vs-preview-jarvis').onclick = () => previewStudioVoice('jarvis');
+$('vs-preview-tuki').onclick = () => previewStudioVoice('tuki');
 </script>
 </body>
 </html>
