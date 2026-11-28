@@ -80,6 +80,65 @@ def focus_window(title_query: str) -> str:
     return f"Focused window: {target['title']}"
 
 
+_WINDOW_STATES = {"minimize": 6, "maximize": 3, "restore": 9}
+_BLOCKED_HOTKEYS = frozenset({"ctrl+alt+del", "ctrl+alt+delete", "win+r", "win+x"})
+
+
+def set_window_state(title_query: str, state: str) -> str:
+    """Minimize, maximize, or restore a visible window by partial title (Windows only)."""
+    if os.name != "nt":
+        raise ValueError("Window state control is currently supported on Windows.")
+    st = str(state or "").strip().lower()
+    if st not in _WINDOW_STATES:
+        raise ValueError(f"Choose a supported window state: {', '.join(sorted(_WINDOW_STATES))}.")
+    needle = str(title_query or "").strip().lower()
+    matches = [w for w in list_windows(80) if needle and needle in w["title"].lower()]
+    if not matches:
+        raise ValueError(f"No visible window matched '{title_query}'.")
+    target = matches[0]
+    ctypes.windll.user32.ShowWindow(target["hwnd"], _WINDOW_STATES[st])
+    secure.audit("window_state_changed", {"title": target["title"][:80], "state": st})
+    return f"Set window '{target['title']}' to {st}."
+
+
+def validate_hotkey(combo: str) -> list[str]:
+    parts = [p.strip().lower() for p in str(combo or "").split("+") if p.strip()]
+    if not 1 <= len(parts) <= 4:
+        raise ValueError("Provide 1 to 4 keys separated by '+' (e.g. ctrl+c).")
+    normalized = "+".join(parts)
+    if normalized in _BLOCKED_HOTKEYS:
+        raise PermissionError(f"Hotkey '{normalized}' is blocked by security policy.")
+    return parts
+
+
+def send_approved_hotkey(combo: str, *, dry_run: bool = False) -> dict:
+    """Validate and optionally send a keyboard shortcut via Win32 keybd_event (approved only)."""
+    parts = validate_hotkey(combo)
+    if dry_run:
+        return {"ok": True, "dry_run": True, "keys": parts}
+    if os.name != "nt":
+        raise ValueError("Keyboard shortcut injection is currently supported on Windows.")
+    vk_map = {
+        "ctrl": 0x11, "alt": 0x12, "shift": 0x10, "enter": 0x0D, "tab": 0x09,
+        "esc": 0x1B, "escape": 0x1B, "space": 0x20, "backspace": 0x08,
+    }
+    vks = []
+    for k in parts:
+        if k in vk_map:
+            vks.append(vk_map[k])
+        elif len(k) == 1 and k.isalnum():
+            vks.append(ord(k.upper()))
+        else:
+            raise ValueError(f"Unsupported key '{k}'.")
+    user32 = ctypes.windll.user32
+    for vk in vks:
+        user32.keybd_event(vk, 0, 0, 0)
+    for vk in reversed(vks):
+        user32.keybd_event(vk, 0, 2, 0)  # KEYEVENTF_KEYUP
+    secure.audit("desktop_hotkey_sent", {"keys": parts})
+    return {"ok": True, "keys": parts}
+
+
 # ------------------------------------------------------------------ Screenshot Organizer
 def screenshots_dir() -> Path:
     d = config.APP_DIR / "screenshots"
