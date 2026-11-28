@@ -120,16 +120,71 @@ def sar_search_grid(center_lat: float, center_lon: float, *, radius_km: float = 
     }
 
 
+def extract_feed_markers(feed_id: str, raw_text: str, *, limit: int = 50) -> tuple[int, list[dict]]:
+    """Parse bounded lat/lon markers from supported public geospatial feeds (never raises on missing fields)."""
+    markers: list[dict] = []
+    if feed_id == "noaa_maritime_buoys":
+        lines = [ln.strip() for ln in (raw_text or "").splitlines() if ln.strip() and not ln.startswith("#")]
+        for ln in lines[:200]:
+            parts = ln.split()
+            if len(parts) >= 3:
+                try:
+                    la, lo = _validate_coords(float(parts[1]), float(parts[2]))
+                    markers.append({"lat": la, "lon": lo, "label": f"Buoy {parts[0]}"})
+                    if len(markers) >= limit:
+                        break
+                except (ValueError, TypeError):
+                    continue
+        return len(lines), markers
+
+    data = json.loads(raw_text)
+    if feed_id == "usgs_earthquakes":
+        feats = data.get("features") or []
+        for f in feats[:limit]:
+            coords = (f.get("geometry") or {}).get("coordinates") or []
+            if len(coords) >= 2:
+                try:
+                    la, lo = _validate_coords(coords[1], coords[0])
+                    props = f.get("properties") or {}
+                    markers.append({"lat": la, "lon": lo, "label": str(props.get("title") or "Earthquake")[:80]})
+                except (ValueError, TypeError):
+                    pass
+        return len(feats), markers
+    if feed_id == "nasa_eonet_wildfires":
+        events = data.get("events") or []
+        for ev in events[:limit]:
+            geom = (ev.get("geometry") or [{}])[-1]
+            coords = geom.get("coordinates") or []
+            if len(coords) >= 2:
+                try:
+                    la, lo = _validate_coords(coords[1], coords[0])
+                    markers.append({"lat": la, "lon": lo, "label": str(ev.get("title") or "Wildfire")[:80]})
+                except (ValueError, TypeError):
+                    pass
+        return len(events), markers
+    if feed_id == "opensky_public_flights":
+        states = data.get("states") or []
+        for st in states[:limit]:
+            if isinstance(st, list) and len(st) >= 7 and st[5] is not None and st[6] is not None:
+                try:
+                    la, lo = _validate_coords(st[6], st[5])
+                    markers.append({"lat": la, "lon": lo, "label": str(st[1] or st[0] or "Flight").strip()[:40]})
+                except (ValueError, TypeError):
+                    pass
+        return len(states), markers
+    items = data if isinstance(data, list) else (data.get("features") or data.get("events") or data.get("states") or [])
+    return len(items), markers
+
+
 def fetch_public_feed(cfg: dict, feed_id: str) -> dict:
     """Fetch an approved public geospatial feed over pinned TLS 1.2+ HTTPS (fail-closed)."""
     if feed_id not in PUBLIC_GEOSPATIAL_FEEDS:
         raise ValueError(f"Unknown public feed '{feed_id}'.")
     spec = PUBLIC_GEOSPATIAL_FEEDS[feed_id]
     text, _ctype = net.read_public_page(spec["url"], cfg, content_types=(spec["content_type"], "application/geo+json"))
-    data = json.loads(text)
-    secure.audit("geospatial_feed_read", {"feed": feed_id})
-    count = len(data.get("features") or data.get("events") or data.get("states") or (data if isinstance(data, list) else []))
-    return {"feed": feed_id, "label": spec["label"], "category": spec["category"], "item_count": count}
+    count, markers = extract_feed_markers(feed_id, text)
+    secure.audit("geospatial_feed_read", {"feed": feed_id, "markers": len(markers)})
+    return {"feed": feed_id, "label": spec["label"], "category": spec["category"], "item_count": count, "markers": markers}
 
 
 def workspace_status(cfg: dict) -> dict:

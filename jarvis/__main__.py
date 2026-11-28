@@ -1487,6 +1487,10 @@ def main(argv=None):
     p.add_argument("--mode", choices=config.MODES, help="Start in this mode")
     p.add_argument("--theme", choices=config.THEMES, help="Start with this theme")
     p.add_argument("--no-browser", action="store_true", help="don't open the HUD window")
+    p.add_argument("--native", action="store_true", help="open HUD in a native desktop WebView window (requires pywebview)")
+    p.add_argument("--floating", action="store_true", help="open HUD as an always-on-top compact floating assistant (requires pywebview)")
+    p.add_argument("--tray", action="store_true", help="enable Windows system tray icon")
+    p.add_argument("--hotkeys", action="store_true", help="enable Windows global hotkeys (Ctrl+Alt+J summon, Ctrl+Alt+Backspace kill switch)")
     p.add_argument("--profile", choices=tuple(config.PERFORMANCE_PROFILES), help="Save a performance profile")
     args = p.parse_args(argv)
     # Speech models load from the local cache only. The setup wizard downloads them in a
@@ -1539,13 +1543,39 @@ def main(argv=None):
     serve(app, port)
     url = f"http://127.0.0.1:{port}"
     print(f"Jarvis HUD: {url}   (Ctrl+C to quit)")
-    if not args.no_browser:
-        webbrowser.open(url)
+    hk_mgr = None
+    tray_icon = None
+    if args.hotkeys:
+        from . import hotkeys
+        hk_mgr = hotkeys.GlobalHotkeyManager(
+            on_summon=lambda: webbrowser.open(url),
+            on_kill_switch=app.stop,
+        )
+        hk_mgr.start()
+    if args.tray:
+        from . import tray
+        tray_icon = tray.SystemTrayIcon(
+            on_open=lambda: webbrowser.open(url),
+            on_stop=app.stop,
+        )
+        tray_icon.start()
     try:
+        if (args.native or args.floating) and not args.no_browser:
+            from . import native_shell
+            if native_shell.launch_native_window(url, floating=bool(args.floating)):
+                return 0
+            print("[native] pywebview not installed; falling back to default browser HUD.")
+        if not args.no_browser:
+            webbrowser.open(url)
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
         print("Goodbye.")
+    finally:
+        if hk_mgr:
+            hk_mgr.stop()
+        if tray_icon:
+            tray_icon.stop()
     return 0
 
 

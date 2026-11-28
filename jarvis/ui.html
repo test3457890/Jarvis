@@ -666,6 +666,7 @@
         <button id="bgtasks-refresh" type="button">Refresh runs</button>
         <button id="monitors-eval" type="button">Evaluate monitors</button>
         <button id="daily-summary-btn" type="button">Daily summary</button>
+        <button id="mem-extract-btn" type="button">Review memory candidates</button>
         <span id="runs-status" role="status" class="hint"></span>
       </div>
       <div id="bgtasks-list" class="hint"></div>
@@ -678,10 +679,17 @@
         </select>
         <select id="monitor-op" aria-label="Monitor operator"><option value=">=">&gt;=</option><option value=">">&gt;</option><option value="<=">&lt;=</option><option value="<">&lt;</option></select>
         <input id="monitor-threshold" type="number" value="85" step="1" aria-label="Threshold" style="max-width:5rem" required>
+        <select id="monitor-schedule" aria-label="Monitor schedule">
+          <option value="*/1 * * * *">Every 1m (*/1 * * * *)</option>
+          <option value="*/5 * * * *">Every 5m (*/5 * * * *)</option>
+          <option value="*/15 * * * *">Every 15m (*/15 * * * *)</option>
+          <option value="0 * * * *">Hourly (0 * * * *)</option>
+        </select>
         <button>Add monitor</button>
       </form>
       <div id="monitors-list" class="hint"></div>
       <div id="macros-list" class="hint"></div>
+      <div id="mem-candidates-list" class="hint"></div>
       <pre id="daily-summary-out" hidden></pre>
     </details>
     <details id="pro-geo-panel" name="assistant-tools">
@@ -694,12 +702,33 @@
         <button>Add UAT</button>
       </form>
       <div id="pro-uat-list" class="hint"></div>
+      <div id="variance-dropzone" class="spark-wrap" aria-label="CSV or XLSX variance upload dropzone">
+        <div class="hint">CSV / XLSX Variance Dropzone: drop two files here or select Baseline &amp; Actual (.csv or .xlsx).</div>
+        <div class="ft-row">
+          <label class="hint">Baseline <input id="variance-base-file" type="file" accept=".csv,.xlsx"></label>
+          <label class="hint">Actual <input id="variance-act-file" type="file" accept=".csv,.xlsx"></label>
+          <input id="variance-key-col" type="text" value="item" aria-label="Key column" style="max-width:6rem">
+          <input id="variance-val-col" type="text" value="amount" aria-label="Value column" style="max-width:6rem">
+          <button id="variance-run-btn" type="button">Compare CSV/XLSX</button>
+        </div>
+        <pre id="variance-out" hidden></pre>
+      </div>
       <form id="sar-form" class="ft-row">
         <input id="sar-lat" type="number" step="0.0001" value="39.7392" aria-label="Center latitude" style="max-width:7rem" required>
         <input id="sar-lon" type="number" step="0.0001" value="-104.9903" aria-label="Center longitude" style="max-width:7rem" required>
         <input id="sar-rad" type="number" step="0.5" value="4" aria-label="Radius km" style="max-width:5rem" required>
         <button>Generate SAR grid (offline)</button>
       </form>
+      <div class="ft-row">
+        <select id="geo-feed-sel" aria-label="Public geospatial feed">
+          <option value="usgs_earthquakes">USGS Earthquakes (M2.5+)</option>
+          <option value="nasa_eonet_wildfires">NASA EONET Wildfires</option>
+          <option value="opensky_public_flights">OpenSky Public Flights</option>
+          <option value="noaa_maritime_buoys">NOAA Maritime Buoys</option>
+        </select>
+        <button id="geo-feed-btn" type="button">Overlay public feed</button>
+        <span id="geo-feed-status" class="hint" role="status"></span>
+      </div>
       <div class="spark-wrap" aria-label="Offline SAR sweep track preview">
         <div class="hint" id="sar-summary">Enter coordinates to plot an offline parallel-track SAR sweep grid and 3D orthographic globe marker.</div>
         <div class="ft-row">
@@ -2530,6 +2559,26 @@ $('daily-summary-btn').onclick = async () => {
   $('daily-summary-out').hidden = false;
   $('daily-summary-out').textContent = JSON.stringify(res, null, 2);
 };
+$('mem-extract-btn').onclick = async () => {
+  const res = await api('/api/daily-summary', {action:'extract'});
+  const box = $('mem-candidates-list'); box.replaceChildren();
+  const cands = res.candidates || [];
+  if (!cands.length) { box.textContent = 'No new memory candidates found in recent messages.'; return; }
+  for (const c of cands) {
+    const row = el('div', 'memory-row');
+    row.appendChild(el('span', '', `[${c.category}] ${c.text} `));
+    const approveBtn = el('button', '', 'Approve'); approveBtn.type = 'button';
+    approveBtn.onclick = async () => {
+      const r = await api('/api/daily-summary', {action:'approve', text:c.text});
+      if (r.error) $('runs-status').textContent = r.error;
+      else { row.remove(); $('runs-status').textContent = 'Approved candidate saved to memory.'; }
+    };
+    const dismissBtn = el('button', '', 'Dismiss'); dismissBtn.type = 'button';
+    dismissBtn.onclick = () => row.remove();
+    row.appendChild(approveBtn); row.appendChild(dismissBtn);
+    box.appendChild(row);
+  }
+};
 
 // ---- Phase 7 & 8 Next-Gen: Professional Workspace, SAR Grid & Companion Status
 async function loadProAndGeo() {
@@ -2551,6 +2600,58 @@ $('uat-form').onsubmit = async event => {
   });
   if (!res.error) { $('uat-form').reset(); loadProAndGeo(); }
 };
+let activeFeedMarkers = [];
+function arrayBufToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
+}
+async function runVarianceFromFiles(baseFile, actFile) {
+  const out = $('variance-out');
+  if (!baseFile || !actFile) { out.hidden = false; out.textContent = 'Select both Baseline and Actual .csv or .xlsx files.'; return; }
+  const keyCol = ($('variance-key-col').value || 'item').trim();
+  const valCol = ($('variance-val-col').value || 'amount').trim();
+  const isXlsx = baseFile.name.toLowerCase().endsWith('.xlsx') && actFile.name.toLowerCase().endsWith('.xlsx');
+  let res;
+  if (isXlsx) {
+    const [bBuf, aBuf] = await Promise.all([baseFile.arrayBuffer(), actFile.arrayBuffer()]);
+    res = await api('/api/pro', {
+      action:'xlsx_variance', baseline_b64:arrayBufToBase64(bBuf), actual_b64:arrayBufToBase64(aBuf),
+      key_col:keyCol, value_col:valCol,
+    });
+  } else {
+    const [bTxt, aTxt] = await Promise.all([baseFile.text(), actFile.text()]);
+    res = await api('/api/pro', {action:'csv_variance', baseline:bTxt, actual:aTxt, key_col:keyCol, value_col:valCol});
+  }
+  out.hidden = false;
+  out.textContent = res.error || res.markdown_report || JSON.stringify(res, null, 2);
+}
+if ($('variance-run-btn')) {
+  $('variance-run-btn').onclick = () => runVarianceFromFiles($('variance-base-file').files[0], $('variance-act-file').files[0]);
+}
+if ($('variance-dropzone')) {
+  const dz = $('variance-dropzone');
+  dz.ondragover = e => { e.preventDefault(); };
+  dz.ondrop = e => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (files.length >= 2) runVarianceFromFiles(files[0], files[1]);
+  };
+}
+if ($('geo-feed-btn')) {
+  $('geo-feed-btn').onclick = async () => {
+    const feedId = $('geo-feed-sel').value;
+    $('geo-feed-status').textContent = 'Fetching public feed...';
+    const res = await api('/api/geospatial', {action:'feed', feed_id:feedId});
+    if (res.error) { $('geo-feed-status').textContent = res.error; return; }
+    activeFeedMarkers = res.markers || [];
+    $('geo-feed-status').textContent = `${res.label}: ${res.item_count} item(s), ${activeFeedMarkers.length} plotted on globe.`;
+    drawGlobe(Number($('sar-lat').value), Number($('sar-lon').value));
+  };
+}
 $('sar-form').onsubmit = async event => {
   event.preventDefault();
   const res = await api('/api/geospatial', {
@@ -2618,6 +2719,13 @@ function drawGlobe(markerLat, markerLon) {
     if (mp) {
       ctx.beginPath(); ctx.arc(mp[0], mp[1], 4.5, 0, Math.PI * 2);
       ctx.fillStyle = '#ffb347'; ctx.fill();
+    }
+  }
+  for (const fm of activeFeedMarkers) {
+    const fp = project(Number(fm.lat), Number(fm.lon));
+    if (fp) {
+      ctx.beginPath(); ctx.arc(fp[0], fp[1], 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#5ef2a8'; ctx.fill();
     }
   }
 }

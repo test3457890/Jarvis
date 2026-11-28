@@ -12,6 +12,7 @@ Security rules:
 """
 import ipaddress
 import os
+import shutil
 import socket
 import threading
 import urllib.parse
@@ -66,10 +67,31 @@ class SafeBrowserSession:
         self._pages: list = []
         self._active_idx = 0
 
+    @staticmethod
+    def _resolve_browser_executable(pw_executable: str | None) -> str | None:
+        env_exe = os.environ.get("JARVIS_CHROME")
+        if env_exe:
+            return env_exe
+        if pw_executable and Path(pw_executable).exists():
+            return None
+        for cmd in ("chrome", "msedge", "chromium", "chromium-browser", "google-chrome"):
+            found = shutil.which(cmd)
+            if found:
+                return found
+        for candidate in (
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        ):
+            if Path(candidate).exists():
+                return candidate
+        return None
+
     def __enter__(self):
         from playwright.sync_api import sync_playwright
         self._pw = sync_playwright().start()
-        exe = os.environ.get("JARVIS_CHROME") or None
+        exe = self._resolve_browser_executable(getattr(self._pw.chromium, "executable_path", None))
         self._browser = self._pw.chromium.launch(headless=True, executable_path=exe)
         self._context = self._browser.new_context()
         self._context.route("**/*", self._route_guard)
