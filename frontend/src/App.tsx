@@ -131,7 +131,7 @@ export const App: React.FC = () => {
 
           <main className="cc-main">
             <div hidden={!canvasOpen}><IntelligenceCanvas incoming={visualEvent} /></div>
-            {!canvasOpen && <WorkspaceView id={workspace} />
+            {!canvasOpen && <WorkspaceView id={workspace} />}
           </main>
         </div>
       </div>
