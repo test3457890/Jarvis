@@ -98,6 +98,35 @@ pub fn summarize_audit_file(path: &Path) -> std::io::Result<AuditSummary> {
     Ok(summarize_audit_log(&data))
 }
 
+/// Detect paths pointing to sensitive credential stores, SSH/GPG/cloud keys, or browser profiles.
+pub fn is_sensitive_path(path: &str) -> bool {
+    let lower = path.replace('\\', "/").to_ascii_lowercase();
+    let blocked_tokens = [
+        "/.ssh/", "/.gnupg/", "/.aws/", "/.kube/",
+        "secrets.bin", "id_rsa", "id_ed25519",
+        "/google/chrome/user data", "/microsoft/edge/user data",
+        "/.env", ".pem", ".key",
+    ];
+    blocked_tokens.iter().any(|tok| lower.contains(tok))
+}
+
+/// Classify a shell command's defensive risk: "BLOCKED" for privilege elevation or encoded payloads,
+/// "T3" for destructive operations, or "T2" for standard reviewable commands.
+pub fn classify_command_risk(cmd: &str) -> &'static str {
+    let lower = cmd.to_ascii_lowercase();
+    for forbidden in ["sudo ", "runas ", "doas ", "pkexec ", " -enc ", " -encodedcommand ", "base64 -d"] {
+        if lower.contains(forbidden) || lower.starts_with(forbidden.trim_start()) {
+            return "BLOCKED";
+        }
+    }
+    for destructive in ["rm -rf", "del /f", "format ", "shutdown", "remove-item -recurse", "rmdir /s"] {
+        if lower.contains(destructive) {
+            return "T3";
+        }
+    }
+    "T2"
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,5 +192,18 @@ corrupted line
         assert_eq!(s.valid_json_objects, 3);
         assert_eq!(s.malformed_lines, 1);
         assert_eq!(s.blocked_events, 2);
+    }
+
+    #[test]
+    fn detects_sensitive_paths_and_command_risk() {
+        assert!(is_sensitive_path("C:\\Users\\alice\\.ssh\\id_rsa"));
+        assert!(is_sensitive_path("/home/alice/.aws/credentials"));
+        assert!(is_sensitive_path("C:\\Users\\alice\\AppData\\Roaming\\Jarvis\\secrets.bin"));
+        assert!(!is_sensitive_path("C:\\Users\\alice\\Documents\\notes.txt"));
+
+        assert_eq!(classify_command_risk("sudo rm -rf /"), "BLOCKED");
+        assert_eq!(classify_command_risk("powershell -enc AAAA"), "BLOCKED");
+        assert_eq!(classify_command_risk("Remove-Item -Recurse temp"), "T3");
+        assert_eq!(classify_command_risk("git status"), "T2");
     }
 }

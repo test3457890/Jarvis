@@ -19,8 +19,8 @@ import time
 import webbrowser
 
 from . import (
-    agents, appactions, assistants, bgtasks, cloudprovider, config, connections, connectors,
-    documents, domains, extensions, fastpath, filejobs, hardware, images, localprovider,
+    agents, appactions, assistants, bgtasks, browser_auto, clipboard, cloudprovider, config, connections, connectors,
+    desktop, documents, domains, extensions, fastpath, filejobs, hardware, images, localprovider,
     macros, mcp_client, memextract, monitors, net, nomad, planner, providers, recovery, secure,
     sentinel, setupwizard, skills, telemetry, undo, watchchecks, workflows,
 )
