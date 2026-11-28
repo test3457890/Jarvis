@@ -182,6 +182,14 @@ def serve(app, port: int):
                 self._json(app.models_operation())
             elif self.path == "/api/provider":
                 self._json(app.provider_operation())
+            elif self.path == "/api/vitals":
+                self._json(app.vitals_operation())
+            elif self.path == "/api/providers":
+                self._json(app.providers_operation())
+            elif self.path == "/api/tools/history":
+                self._json(app.tool_history_operation())
+            elif self.path == "/api/undo":
+                self._json(app.undo_operation())
             else:
                 self._json({"error": "not found"}, 404)
 
@@ -312,7 +320,7 @@ def serve(app, port: int):
                 except (ValueError, TypeError, OSError) as error:
                     return self._json({"error": str(error)}, 400)
                 self._json(result)
-            elif self.path in ("/api/mcp", "/api/conversations", "/api/projects", "/api/feeds", "/api/documents/preview"):
+            elif self.path in ("/api/mcp", "/api/conversations", "/api/projects", "/api/feeds", "/api/documents/preview", "/api/providers", "/api/tools/dry-run"):
                 try:
                     ops = {
                         "/api/mcp": app.mcp_operation,
@@ -320,6 +328,8 @@ def serve(app, port: int):
                         "/api/projects": app.projects_operation,
                         "/api/feeds": app.feeds_operation,
                         "/api/documents/preview": app.document_preview_operation,
+                        "/api/providers": app.providers_operation,
+                        "/api/tools/dry-run": app.dry_run_operation,
                     }
                     result = ops[self.path](data)
                 except (ValueError, TypeError, OSError) as error:

@@ -212,6 +212,24 @@ def scrub_claims(reply: str) -> str:
     return (" ".join(kept) + " " + warning).strip()
 
 
+_SECRET_PATTERNS = re.compile(
+    r"(?:"
+    r"\bsk-[A-Za-z0-9_-]{12,}\b|"
+    r"\bnvapi-[A-Za-z0-9_-]{12,}\b|"
+    r"\bgsk_[A-Za-z0-9_-]{12,}\b|"
+    r"\bAIza[A-Za-z0-9_-]{16,}\b|"
+    r"\bgh[pousr]_[A-Za-z0-9_]{16,}\b|"
+    r"(?i:\bBearer\s+[A-Za-z0-9._\-]{12,})|"
+    r"(?i:\b(?:api[_-]?key|password|secret|token)\s*[:=]\s*['\"]?[^\s'\"]{6,}['\"]?)"
+    r")"
+)
+
+
+def redact(text: str) -> str:
+    """Redact common API keys, tokens, and credential patterns from logs and journals."""
+    return _SECRET_PATTERNS.sub("[REDACTED]", str(text or ""))
+
+
 def fence(text: str) -> str:
     return UNTRUSTED_NOTE + text.replace("<<<", "< < <") + UNTRUSTED_END
 

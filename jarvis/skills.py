@@ -19,11 +19,89 @@ import urllib.request
 import json
 import math
 import webbrowser
+from collections import deque
 from pathlib import Path
+import threading
 
 from . import net, secure
 
 SKILLS = {}
+_HISTORY_LOCK = threading.Lock()
+TOOL_HISTORY: deque[dict] = deque(maxlen=100)
+
+# T0: read-only/observe, T1: reversible local mutation, T2: consequential/external, T3: destructive/system-level
+_T3_SKILLS = frozenset({"power", "empty_recycle_bin", "execute_file_job", "execute_folder_job", "run_code", "run_project_build", "run_project_tests"})
+_T1_SKILLS = frozenset({"set_reminder", "cancel_reminder", "remember", "forget", "write_note", "add_task", "complete_task", "add_event", "remove_event", "add_contact", "draft_email", "write_code", "fix_code", "media_control", "lock_pc", "open_app", "open_file"})
+
+
+def risk_tier(name: str) -> str:
+    """Classify any registered skill into T0 (Observe), T1 (Reversible), T2 (Consequential), or T3 (Destructive)."""
+    s = SKILLS.get(name)
+    if not s:
+        return "T3"
+    if name in _T3_SKILLS:
+        return "T3"
+    if s["risky"]:
+        return "T2"
+    if name in _T1_SKILLS:
+        return "T1"
+    return "T0"
+
+
+def dry_run(ctx: "Context", name: str, args: dict | None = None) -> dict:
+    """Inspect a tool call without executing it: risk tier, permission decision, and preview."""
+    s = SKILLS.get(name)
+    if not s:
+        return {"ok": False, "tool": name, "error": f"Unknown tool '{name}'."}
+    tier = risk_tier(name)
+    level = permission_level(ctx.cfg, name)
+    lockdown = bool(ctx.cfg.get("lockdown"))
+    blocked_reason = None
+    if lockdown and s["risky"]:
+        blocked_reason = "Blocked by Lockdown mode."
+    elif level == "off":
+        blocked_reason = "Disabled in skill_permissions."
+    elif s["internet"] and not ctx.cfg.get("allow_internet_tools"):
+        blocked_reason = "Blocked in offline mode."
+    elif s["available"] and not s["available"](ctx.cfg):
+        blocked_reason = "Not configured / unavailable."
+    clean = {k: v for k, v in (args or {}).items() if k in set(s["params"])}
+    preview = ""
+    if s["preview"] and not blocked_reason:
+        try:
+            preview = str(s["preview"](ctx, **clean))
+        except Exception as exc:
+            preview = f"Preview error: {exc}"
+    return {
+        "ok": blocked_reason is None,
+        "tool": name,
+        "tier": tier,
+        "risky": bool(s["risky"]),
+        "internet": bool(s["internet"]),
+        "untrusted": bool(s["untrusted"]),
+        "permission": level,
+        "requires_confirmation": bool(s["risky"] or level == "ask"),
+        "blocked_reason": blocked_reason,
+        "preview": preview or s["description"],
+    }
+
+
+def recent_tool_history(limit: int = 30) -> list[dict]:
+    with _HISTORY_LOCK:
+        return [dict(e) for e in list(TOOL_HISTORY)[:max(1, min(limit, 100))]]
+
+
+def _record_tool_history(name: str, tier: str, status: str, fields: list[str], elapsed_ms: float) -> None:
+    entry = {
+        "ts": round(time.time(), 2),
+        "tool": name,
+        "tier": tier,
+        "status": status,
+        "fields": fields,
+        "elapsed_ms": round(elapsed_ms, 1),
+    }
+    with _HISTORY_LOCK:
+        TOOL_HISTORY.appendleft(entry)
 
 
 def skill(description, params=None, risky=False, internet=False, untrusted=False,
@@ -156,12 +234,26 @@ def run(ctx: Context, name: str, args: dict, confirmed=False) -> str:
             return f"Rate limit reached: at most {limit} calls, texts, or emails are allowed per {int(window)} seconds."
     if ctx.cancelled is not None and ctx.cancelled.is_set():
         return "Stopped by the user."
+    if confirmed and isinstance(ctx.pending, dict) and ctx.pending.get("fingerprint"):
+        from . import undo
+        fp = ctx.pending["fingerprint"]
+        ok_fp, reason_fp = undo.verify_fingerprint(fp["path"], fp)
+        if not ok_fp:
+            secure.audit("stale_target_blocked", {"skill": name})
+            _record_tool_history(name, risk_tier(name), "stale_target_blocked", sorted(clean), 0.0)
+            return f"Blocked for safety: {reason_fp}"
+    started = time.perf_counter()
+    tier = risk_tier(name)
     try:
         result = str(s["fn"](ctx, **clean))
+        status_label = "ok"
     except TypeError as e:
+        _record_tool_history(name, tier, "bad_args", sorted(clean), (time.perf_counter() - started) * 1000.0)
         return f"Bad arguments for {name}: {e}"
     except Exception as e:  # a broken skill must never crash Jarvis
         result = f"{name} failed: {e}"
+        status_label = "error"
+    _record_tool_history(name, tier, status_label, sorted(clean), (time.perf_counter() - started) * 1000.0)
     if s["risky"] or s["internet"]:
         secure.audit(name, {"fields": sorted(clean), "outcome": "reported"})
     if s["untrusted"]:

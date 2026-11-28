@@ -7,7 +7,7 @@ import time
 import urllib.error
 import urllib.request
 
-from . import agents, assistants, cloudprovider, coder, net, online, planner, secure, sentinel, skills, filejobs, localprovider
+from . import agents, assistants, cloudprovider, coder, fastpath, filejobs, localprovider, net, online, planner, providers, secure, sentinel, skills
 
 _YES = re.compile(r"^\W*(yes|yeah|yep|yup|sure|do it|confirm(ed)?|go ahead|affirmative|please do|ok(ay)?)\b", re.I)
 _NO = re.compile(r"^\W*(no|nope|cancel|stop|don'?t|never ?mind|abort)\b", re.I)
@@ -282,6 +282,18 @@ class Brain:
                 return self._confirm_online_text(command)
             self.tools_used = []
             self.last_trace = None
+            handled_fast, fast_reply, fast_tool = fastpath.try_execute(self.ctx, command)
+            if handled_fast:
+                self.model_used = f"fast-path:{fast_tool}"
+                if fast_tool:
+                    self.tools_used.append(fast_tool)
+                if not self.cfg.get("temporary_chat"):
+                    self.memory.log("user", user_text, conversation_id=self.conversation_id)
+                    self.memory.log("assistant", fast_reply, conversation_id=self.conversation_id)
+                self.history += [{"role": "user", "content": command},
+                                 {"role": "assistant", "content": fast_reply}]
+                self.history = self.history[-2 * self.cfg.get("history_turns", 12):]
+                return fast_reply
             if self.cfg.get("assistant") == "both" and self.cfg.get("mode") != "talk" and not self.ctx.pending:
                 reply, trace = agents.cooperative_review(self, command, room_context)
                 self.last_trace = trace

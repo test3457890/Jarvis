@@ -319,6 +319,21 @@
   body[data-compact=true] header { flex-wrap:wrap; gap:8px; }
   body[data-compact=true] .chat { min-height:60vh; flex-shrink:0; }
   body[data-compact=true] #log { min-height:180px; max-height:40vh; }
+  #vitals-panel, #providers-panel, #audit-ops-panel { border-top:1px solid var(--line); padding:8px 16px; max-height:52%; overflow:auto; }
+  body[data-mode=talk] #vitals-panel, body[data-mode=talk] #providers-panel, body[data-mode=talk] #audit-ops-panel { display:none; }
+  #vitals-panel summary, #providers-panel summary, #audit-ops-panel summary { color:var(--cyan2); cursor:pointer; font-weight:600; }
+  .vitals-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:8px; margin:8px 0; }
+  .vital-card { border:1px solid var(--line); border-radius:6px; padding:8px; background:var(--panel); min-width:0; }
+  .vital-card .v-label { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; }
+  .vital-card .v-val { font-size:18px; font-weight:700; color:var(--cyan2); }
+  .vital-card .v-sub { font-size:12px; color:var(--dim); overflow-wrap:anywhere; }
+  .spark-wrap { border:1px solid var(--line); border-radius:6px; padding:6px; margin:6px 0; background:var(--panel); }
+  .spark-wrap svg { width:100%; height:56px; display:block; }
+  .ng-table-wrap { overflow-x:auto; max-width:100%; }
+  .ng-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .ng-table th, .ng-table td { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+  .tier-badge { display:inline-block; padding:1px 6px; border-radius:4px; font-size:11px; font-weight:700; border:1px solid var(--line2); }
+  .tier-T0 { color:var(--ok); } .tier-T1 { color:var(--cyan2); } .tier-T2 { color:var(--warn); } .tier-T3 { color:#ff6b6b; border-color:#ff6b6b; }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
 </style>
 </head>
@@ -391,9 +406,11 @@
 
   <section class="panel chat">
     <nav id="command-nav" aria-label="Command Center tools">
-      <button type="button" data-panel="planner">Plan</button><button type="button" data-panel="knowledge">Research</button>
-      <button type="button" data-panel="workflows">Workflows</button><button type="button" data-panel="connections-panel">Connections</button>
-      <button type="button" data-panel="sentinel-panel">Sentinel</button><button type="button" data-panel="setup-panel">Setup</button>
+      <button type="button" data-panel="vitals-panel">Vitals</button><button type="button" data-panel="providers-panel">Providers</button>
+      <button type="button" data-panel="audit-ops-panel">Audit &amp; Undo</button><button type="button" data-panel="planner">Plan</button>
+      <button type="button" data-panel="knowledge">Research</button><button type="button" data-panel="workflows">Workflows</button>
+      <button type="button" data-panel="connections-panel">Connections</button><button type="button" data-panel="sentinel-panel">Sentinel</button>
+      <button type="button" data-panel="setup-panel">Setup</button>
     </nav>
     <div class="chat-tools">
       <span id="activity" role="status"></span>
@@ -581,6 +598,53 @@
       </div>
       <div id="hardware-summary" class="hint"></div>
       <div id="audio-devices-list" class="hint"></div>
+    </details>
+    <details id="vitals-panel" name="assistant-tools">
+      <summary>System vitals &amp; processes</summary>
+      <p class="hint">Live local hardware telemetry (CPU, RAM, GPU/VRAM, Disk, Network &amp; Top Processes). Readings come directly from OS sensors and nvidia-smi; unavailable sensors show N/A.</p>
+      <div class="ft-row">
+        <button id="vitals-refresh" type="button">Refresh vitals</button>
+        <span id="vitals-status" role="status" class="hint"></span>
+      </div>
+      <div id="vitals-cards" class="vitals-grid"></div>
+      <div class="spark-wrap" aria-label="Live CPU, RAM and GPU history chart">
+        <div class="hint" id="vitals-spark-legend">History: CPU (cyan) · RAM (amber) · GPU (green)</div>
+        <svg id="vitals-sparkline" viewBox="0 0 300 56" preserveAspectRatio="none" role="img" aria-label="System utilization sparkline"></svg>
+      </div>
+      <div class="ng-table-wrap"><table class="ng-table" id="vitals-procs"><thead><tr><th scope="col">PID</th><th scope="col">Process</th><th scope="col">CPU %</th><th scope="col">RAM MB</th></tr></thead><tbody></tbody></table></div>
+    </details>
+    <details id="providers-panel" name="assistant-tools">
+      <summary>AI providers, privacy &amp; cost</summary>
+      <p class="hint">Local-first model routing across Ollama, LM Studio, local OpenAI-compatible servers, and opt-in cloud APIs. Cloud providers never run without explicit consent and fail closed in Local-Only privacy mode.</p>
+      <div class="ft-row">
+        <label>Privacy mode <select id="privacy-mode-select">
+          <option value="local">Local-Only (hard-block cloud)</option>
+          <option value="hybrid">Hybrid (local-first, explicit cloud opt-in)</option>
+          <option value="cloud">Cloud-Assisted (explicit consent required)</option>
+        </select></label>
+        <button id="privacy-mode-save" type="button">Save privacy mode</button>
+        <button id="providers-probe" type="button">Probe local providers</button>
+      </div>
+      <div id="providers-usage" class="hint" role="status"></div>
+      <div id="providers-status" class="hint" role="status"></div>
+      <div class="ng-table-wrap"><table class="ng-table" id="providers-table"><thead><tr><th scope="col">Provider</th><th scope="col">Kind</th><th scope="col">Status</th><th scope="col">Models</th></tr></thead><tbody></tbody></table></div>
+    </details>
+    <details id="audit-ops-panel" name="assistant-tools">
+      <summary>Tool history, dry-run &amp; undo journal</summary>
+      <p class="hint">Inspect any tool's risk tier (T0–T3) and permission decision without executing it, review recent tool runs, and track reversible actions.</p>
+      <form id="dryrun-form" class="ft-row">
+        <input id="dryrun-tool" type="text" placeholder="Tool name, e.g. power or web_search" maxlength="80" aria-label="Tool name for dry run" required>
+        <input id="dryrun-args" type="text" placeholder='Optional JSON args, e.g. {"action":"shutdown"}' maxlength="500" aria-label="JSON arguments for dry run">
+        <button>Dry-run inspect</button>
+      </form>
+      <pre id="dryrun-output" hidden></pre>
+      <div class="ft-row">
+        <button id="tool-history-refresh" type="button">Refresh tool history</button>
+        <button id="undo-journal-refresh" type="button">Refresh undo journal</button>
+        <span id="audit-ops-status" role="status" class="hint"></span>
+      </div>
+      <div class="ng-table-wrap"><table class="ng-table" id="tool-history-table"><thead><tr><th scope="col">Tool</th><th scope="col">Tier</th><th scope="col">Status</th><th scope="col">Time (ms)</th></tr></thead><tbody></tbody></table></div>
+      <div id="undo-journal-list" class="hint"></div>
     </details>
     <details id="sentinel-panel" name="assistant-tools">
       <summary>Sentinel security &amp; MCP</summary>
@@ -2187,6 +2251,151 @@ $('doc-preview-file').onchange = () => {
     } catch (error) { $('memory-status').textContent = error.message || 'Could not preview document.'; }
   };
   reader.readAsDataURL(file);
+};
+
+// ---- Phase 1 Next-Gen: Live System Vitals, Providers/Cost, Tool Dry-Run & Undo Journal
+function drawSparkline(svg, history) {
+  svg.replaceChildren();
+  if (!history || history.length < 2) return;
+  const ns = 'http://www.w3.org/2000/svg';
+  const series = [
+    ['cpu_percent', '#4fd8ff'],
+    ['mem_percent', '#ffb347'],
+    ['gpu_percent', '#5ee88c'],
+  ];
+  const n = history.length;
+  for (const [key, stroke] of series) {
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const val = history[i][key];
+      if (typeof val !== 'number') continue;
+      const x = ((i / Math.max(1, n - 1)) * 296 + 2).toFixed(1);
+      const y = (52 - (Math.max(0, Math.min(100, val)) / 100) * 48).toFixed(1);
+      pts.push(`${x},${y}`);
+    }
+    if (pts.length >= 2) {
+      const poly = document.createElementNS(ns, 'polyline');
+      poly.setAttribute('fill', 'none');
+      poly.setAttribute('stroke', stroke);
+      poly.setAttribute('stroke-width', '2');
+      poly.setAttribute('points', pts.join(' '));
+      svg.appendChild(poly);
+    }
+  }
+}
+async function loadVitals() {
+  try {
+    const v = await api('/api/vitals');
+    if (v.error) throw new Error(v.error);
+    const cards = $('vitals-cards');
+    cards.replaceChildren();
+    const makeCard = (label, val, sub) => {
+      const c = el('div', 'vital-card');
+      c.append(el('div', 'v-label', label), el('div', 'v-val', val), el('div', 'v-sub', sub));
+      cards.appendChild(c);
+    };
+    makeCard('CPU', v.cpu?.percent != null ? v.cpu.percent + '%' : 'N/A', `${v.cpu?.logical_cores || '?'} threads${v.cpu?.freq_mhz ? ' · ' + v.cpu.freq_mhz + ' MHz' : ''}`);
+    makeCard('Memory', v.memory?.percent != null ? v.memory.percent + '%' : 'N/A', v.memory?.total_gb != null ? `${v.memory.used_gb} / ${v.memory.total_gb} GB` : 'Unavailable');
+    const g = (v.gpus && v.gpus[0]) || null;
+    makeCard('GPU', g && g.utilization_percent != null ? g.utilization_percent + '%' : 'N/A',
+      g ? `${g.name} · VRAM ${g.vram_used_gb}/${g.vram_total_gb} GB${g.temperature_c != null ? ' · ' + g.temperature_c + '°C' : ''}` : 'No NVIDIA GPU detected');
+    makeCard('Disk', v.disk?.percent != null ? v.disk.percent + '%' : 'N/A', v.disk?.free_gb != null ? `${v.disk.free_gb} GB free` : 'Unavailable');
+    makeCard('Network', v.network?.down_kbps != null ? `${v.network.down_kbps} KB/s` : 'N/A',
+      v.network?.up_kbps != null ? `Up ${v.network.up_kbps} KB/s` : 'Unavailable');
+    if (v.battery) makeCard('Battery', v.battery.percent + '%', v.battery.plugged ? 'Plugged in' : 'On battery');
+    drawSparkline($('vitals-sparkline'), v.history || []);
+    const tbody = $('vitals-procs').querySelector('tbody');
+    tbody.replaceChildren();
+    for (const p of v.processes || []) {
+      const tr = el('tr');
+      tr.append(el('td', '', String(p.pid)), el('td', '', p.name), el('td', '', String(p.cpu_percent)), el('td', '', String(p.memory_mb)));
+      tbody.appendChild(tr);
+    }
+    $('vitals-status').textContent = `Updated ${new Date().toLocaleTimeString()} · ${v.os}`;
+  } catch (error) { $('vitals-status').textContent = error.message || 'Could not load system vitals.'; }
+}
+let vitalsTimer = null;
+$('vitals-refresh').onclick = loadVitals;
+$('vitals-panel').ontoggle = () => {
+  if ($('vitals-panel').open) {
+    loadVitals();
+    if (!vitalsTimer) vitalsTimer = setInterval(() => { if ($('vitals-panel').open) loadVitals(); }, 4000);
+  } else if (vitalsTimer) { clearInterval(vitalsTimer); vitalsTimer = null; }
+};
+
+function renderProviders(data) {
+  if (data.privacy_mode) $('privacy-mode-select').value = data.privacy_mode;
+  const u = data.usage || {};
+  $('providers-usage').textContent = `Session usage: ${u.requests || 0} req (${u.fast_path_hits || 0} fast-path) · Tokens: ${u.input_tokens || 0} in / ${u.output_tokens || 0} out · Est. cost: $${Number(u.estimated_cost_usd || 0).toFixed(4)}`;
+  const tbody = $('providers-table').querySelector('tbody');
+  tbody.replaceChildren();
+  for (const p of data.providers || []) {
+    const tr = el('tr');
+    tr.append(
+      el('td', '', (p.active ? '* ' : '') + p.name),
+      el('td', '', p.kind),
+      el('td', '', p.state),
+      el('td', '', (p.models || []).slice(0, 3).join(', ') || '—')
+    );
+    tbody.appendChild(tr);
+  }
+}
+async function loadProviders(body) {
+  try {
+    const res = await api('/api/providers', body);
+    if (res.error) throw new Error(res.error);
+    renderProviders(res);
+    $('providers-status').textContent = body?.action === 'probe' ? 'Local loopback probe complete.' : `Privacy mode: ${res.privacy_mode}.`;
+  } catch (error) { $('providers-status').textContent = error.message || 'Could not load providers.'; }
+}
+$('providers-panel').ontoggle = () => { if ($('providers-panel').open) loadProviders(); };
+$('providers-probe').onclick = () => loadProviders({action:'probe'});
+$('privacy-mode-save').onclick = () => loadProviders({action:'privacy_mode', privacy_mode:$('privacy-mode-select').value});
+
+async function loadToolHistory() {
+  try {
+    const res = await api('/api/tools/history');
+    if (res.error) throw new Error(res.error);
+    const tbody = $('tool-history-table').querySelector('tbody');
+    tbody.replaceChildren();
+    for (const h of res.history || []) {
+      const tr = el('tr');
+      const tierCell = el('td'); tierCell.appendChild(el('span', 'tier-badge tier-' + h.tier, h.tier));
+      tr.append(el('td', '', h.tool), tierCell, el('td', '', h.status), el('td', '', String(h.elapsed_ms)));
+      tbody.appendChild(tr);
+    }
+    $('audit-ops-status').textContent = `${res.total_skills || 0} registered tools · ${(res.history || []).length} recent run(s).`;
+  } catch (error) { $('audit-ops-status').textContent = error.message || 'Could not load tool history.'; }
+}
+async function loadUndoJournal() {
+  try {
+    const res = await api('/api/undo');
+    if (res.error) throw new Error(res.error);
+    const list = $('undo-journal-list');
+    list.replaceChildren();
+    const entries = res.entries || [];
+    if (!entries.length) { list.textContent = 'No undo journal entries recorded yet.'; return; }
+    for (const e of entries) {
+      list.appendChild(el('div', 'memory-row', `[${e.category}] ${e.tool}: ${e.summary}${e.undo_hint ? ' (Undo: ' + e.undo_hint + ')' : ''}${e.undone ? ' [UNDONE]' : ''}`));
+    }
+  } catch (error) { $('audit-ops-status').textContent = error.message || 'Could not load undo journal.'; }
+}
+$('audit-ops-panel').ontoggle = () => { if ($('audit-ops-panel').open) { loadToolHistory(); loadUndoJournal(); } };
+$('tool-history-refresh').onclick = loadToolHistory;
+$('undo-journal-refresh').onclick = loadUndoJournal;
+$('dryrun-form').onsubmit = async event => {
+  event.preventDefault();
+  try {
+    const rawArgs = $('dryrun-args').value.trim();
+    const parsedArgs = rawArgs ? JSON.parse(rawArgs) : {};
+    const res = await api('/api/tools/dry-run', {tool:$('dryrun-tool').value.trim(), args:parsedArgs});
+    if (res.error) throw new Error(res.error);
+    $('dryrun-output').hidden = false;
+    $('dryrun-output').textContent = JSON.stringify(res, null, 2);
+  } catch (error) {
+    $('dryrun-output').hidden = false;
+    $('dryrun-output').textContent = 'Dry-run error: ' + (error.message || 'Invalid JSON arguments.');
+  }
 };
 </script>
 </body>

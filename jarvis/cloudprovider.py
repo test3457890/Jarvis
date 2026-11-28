@@ -42,11 +42,44 @@ PROVIDERS = {
         "secret_key": "cloud_gemini_key",
         "default_model": "gemini-2.0-flash",
     },
+    "nvidia": {
+        "label": "NVIDIA NIM API",
+        "host": "integrate.api.nvidia.com",
+        "endpoint": "https://integrate.api.nvidia.com/v1/chat/completions",
+        "secret_key": "cloud_nvidia_key",
+        "default_model": "meta/llama-3.3-70b-instruct",
+    },
+    "openrouter": {
+        "label": "OpenRouter API",
+        "host": "openrouter.ai",
+        "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+        "secret_key": "cloud_openrouter_key",
+        "default_model": "openai/gpt-4o-mini",
+    },
+    "groq": {
+        "label": "Groq API",
+        "host": "api.groq.com",
+        "endpoint": "https://api.groq.com/openai/v1/chat/completions",
+        "secret_key": "cloud_groq_key",
+        "default_model": "llama-3.3-70b-versatile",
+    },
 }
 
 
 def configured_provider(cfg: dict) -> tuple[str, dict] | None:
     name = str(cfg.get("cloud_provider") or "").strip().lower()
+    if name == "custom_openai":
+        raw_url = str(cfg.get("custom_cloud_url") or "").strip()
+        ep = net._parse_endpoint(raw_url)
+        if not ep or ep[0] != "https" or not secure.has_secret("cloud_custom_openai_key"):
+            return None
+        return name, {
+            "label": "Custom OpenAI-Compatible API",
+            "host": ep[1],
+            "endpoint": raw_url,
+            "secret_key": "cloud_custom_openai_key",
+            "default_model": str(cfg.get("cloud_model") or "custom-model"),
+        }
     if name not in PROVIDERS:
         return None
     spec = PROVIDERS[name]
@@ -56,6 +89,9 @@ def configured_provider(cfg: dict) -> tuple[str, dict] | None:
 
 
 def ready(cfg: dict) -> bool:
+    privacy = str(cfg.get("privacy_mode") or "hybrid").strip().lower()
+    if privacy == "local" and "privacy_mode" in cfg:
+        return False
     return bool(
         cfg.get("allow_internet_tools")
         and cfg.get("allow_cloud_provider")
@@ -104,6 +140,8 @@ def ask(cfg: dict, prompt: str, timeout: int = 60) -> dict:
     """Execute one explicitly approved cloud chat completion. Never called without confirmation."""
     if not cfg.get("allow_internet_tools") or not cfg.get("allow_cloud_provider") or cfg.get("lockdown"):
         raise ValueError("Cloud provider requires Internet on, cloud opt-in enabled, and Lockdown off.")
+    if str(cfg.get("privacy_mode") or "hybrid").strip().lower() == "local" and "privacy_mode" in cfg:
+        raise ValueError("Cloud provider is blocked while privacy_mode is set to 'local'.")
     found = configured_provider(cfg)
     if not found:
         raise ValueError("Cloud provider is not configured.")
@@ -156,19 +194,30 @@ def ask(cfg: dict, prompt: str, timeout: int = 60) -> dict:
     if name == "anthropic":
         blocks = data.get("content") or []
         text = "".join(b.get("text", "") for b in blocks if isinstance(b, dict) and b.get("type") == "text").strip()
+        usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+        in_tok = usage.get("input_tokens")
+        out_tok = usage.get("output_tokens")
     else:
         choices = data.get("choices") or []
         text = (choices[0].get("message", {}).get("content", "") if choices and isinstance(choices[0], dict) else "").strip()
+        usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+        in_tok = usage.get("prompt_tokens")
+        out_tok = usage.get("completion_tokens")
 
     if not text:
         raise ValueError("Cloud provider returned an empty response.")
     elapsed = round(time.perf_counter() - started, 3)
-    secure.audit("cloud_chat", {"provider": name, "model": model, "chars_sent": len(clean), "seconds": elapsed})
+    from . import providers
+    entry = providers.USAGE.record(name, model, input_tokens=in_tok, output_tokens=out_tok, latency_s=elapsed, tier="cloud")
+    secure.audit("cloud_chat", {"provider": name, "model": model, "chars_sent": len(clean), "seconds": elapsed, "cost_usd": entry["cost_usd"]})
     return {
         "provider": spec["label"],
         "model": model,
         "text": text[:100_000],
         "seconds": elapsed,
+        "input_tokens": in_tok,
+        "output_tokens": out_tok,
+        "cost_usd": entry["cost_usd"],
     }
 
 

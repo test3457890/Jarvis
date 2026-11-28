@@ -58,6 +58,9 @@ def allowed_endpoints(cfg: dict) -> set[tuple[str, str, int]]:
         local_chat = local_image_endpoint(cfg.get("local_chat_url"))
         if local_chat:
             allowed.add(_parse_endpoint(local_chat))
+    lmstudio = local_image_endpoint(cfg.get("lmstudio_url", "http://127.0.0.1:1234"))
+    if lmstudio:
+        allowed.add(_parse_endpoint(lmstudio))
 
     nomad = _parse_endpoint(cfg.get("nomad_url", "http://127.0.0.1:8080"))
     if nomad:
@@ -91,11 +94,15 @@ def allowed_endpoints(cfg: dict) -> set[tuple[str, str, int]]:
             allowed.add(("https", "imgs.search.brave.com", 443))
         if cfg.get("github_upload_repo") and secure.has_secret("github_upload_token"):
             allowed.add(("https", "api.github.com", 443))
-        if cfg.get("allow_cloud_provider"):
+        if cfg.get("allow_cloud_provider") and not (
+            str(cfg.get("privacy_mode") or "hybrid").strip().lower() == "local" and "privacy_mode" in cfg
+        ):
             from . import cloudprovider
             found = cloudprovider.configured_provider(cfg)
             if found:
-                allowed.add(("https", found[1]["host"], 443))
+                ep = _parse_endpoint(found[1]["endpoint"])
+                if ep:
+                    allowed.add(ep)
 
     return allowed
 

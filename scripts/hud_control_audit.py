@@ -969,6 +969,42 @@ def audit(app, cfg, code, files, url):
             assert app.cfg.get("temporary_chat") is False
             page.locator("#setup-panel summary").click()
 
+        @check("Phase 1 Vitals & Processes", "open Vitals panel and refresh", "shows live CPU/RAM/Disk/Processes and captures screenshot")
+        def _():
+            page.locator("#vitals-panel summary").click()
+            expect(page.locator("#vitals-cards .vital-card").first).to_be_visible()
+            expect(page.locator("#vitals-status")).to_contain_text("Updated")
+            page.locator("#vitals-refresh").click()
+            page.screenshot(path=OUT / "nextgen-phase1-vitals.png")
+            page.locator("#vitals-panel summary").click()
+
+        @check("Phase 1 Providers & Privacy", "inspect 9+ providers and toggle privacy mode", "lists Ollama/LM Studio/OpenAI/Groq/NIM and persists privacy_mode")
+        def _():
+            page.locator("#providers-panel summary").click()
+            expect(page.locator("#providers-table tbody tr").first).to_be_visible()
+            expect(page.locator("#providers-table")).to_contain_text("Ollama")
+            expect(page.locator("#providers-table")).to_contain_text("Groq")
+            page.locator("#privacy-mode-select").select_option("local")
+            page.locator("#privacy-mode-save").click()
+            expect(page.locator("#providers-status")).to_contain_text("local")
+            assert app.cfg.get("privacy_mode") == "local"
+            page.locator("#privacy-mode-select").select_option("hybrid")
+            page.locator("#privacy-mode-save").click()
+            expect(page.locator("#providers-status")).to_contain_text("hybrid")
+            page.locator("#providers-panel summary").click()
+
+        @check("Phase 1 Dry-Run, Tool History & Undo", "dry-run power tool and inspect history", "reports T3 tier without executing")
+        def _():
+            page.locator("#audit-ops-panel summary").click()
+            page.locator("#dryrun-tool").fill("power")
+            page.locator("#dryrun-args").fill('{"action":"shutdown"}')
+            page.locator("#dryrun-form button").click()
+            expect(page.locator("#dryrun-output")).to_be_visible()
+            expect(page.locator("#dryrun-output")).to_contain_text('"tier": "T3"')
+            page.locator("#tool-history-refresh").click()
+            expect(page.locator("#audit-ops-status")).to_contain_text("registered tools")
+            page.locator("#audit-ops-panel summary").click()
+
         # ---------------------------------------------------------------- layout and connection
         @check("Phone layout", "390 px wide", "no sideways scrolling")
         def _():

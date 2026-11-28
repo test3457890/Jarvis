@@ -20,9 +20,9 @@ import webbrowser
 
 from . import (
     agents, appactions, assistants, cloudprovider, config, connections, connectors,
-    documents, domains, extensions, filejobs, hardware, images, localprovider,
-    mcp_client, net, nomad, planner, recovery, secure, sentinel, setupwizard,
-    skills, watchchecks, workflows,
+    documents, domains, extensions, fastpath, filejobs, hardware, images, localprovider,
+    mcp_client, net, nomad, planner, providers, recovery, secure, sentinel, setupwizard,
+    skills, telemetry, undo, watchchecks, workflows,
 )
 from .brain import Brain
 from .memory import Memory
@@ -821,6 +821,46 @@ class App:
                 raise ValueError("Choose plan, start or finish.")
         self.emit("toggles", self.state())
         return setupwizard.summary(self.cfg)
+
+    def vitals_operation(self):
+        return telemetry.snapshot()
+
+    def providers_operation(self, data=None):
+        if data is None:
+            return providers.health_summary(self.cfg, probe_local=False)
+        action = str(data.get("action") or "").strip().lower()
+        if action == "probe":
+            return providers.health_summary(self.cfg, probe_local=True)
+        if action == "privacy_mode":
+            if self.cfg.get("lockdown"):
+                raise ValueError("Turn off Lockdown to change privacy mode.")
+            mode = str(data.get("privacy_mode") or "").strip().lower()
+            if mode not in providers.PRIVACY_MODES:
+                raise ValueError("Choose local, hybrid, or cloud privacy mode.")
+            with self.brain._lock, self._settings_lock:
+                updated = {**self.cfg, "privacy_mode": mode}
+                config.save(updated)
+                self.cfg["privacy_mode"] = mode
+            secure.audit("privacy_mode_changed", {"privacy_mode": mode})
+            return providers.health_summary(self.cfg, probe_local=False)
+        raise ValueError("Choose probe or privacy_mode.")
+
+    def tool_history_operation(self):
+        return {
+            "total_skills": len(skills.SKILLS),
+            "history": skills.recent_tool_history(limit=40),
+        }
+
+    def dry_run_operation(self, data):
+        if not isinstance(data, dict) or not isinstance(data.get("tool"), str) or not data["tool"].strip():
+            raise ValueError("Provide a tool name to inspect.")
+        args = data.get("args")
+        if args is not None and not isinstance(args, dict):
+            raise ValueError("Tool args must be a JSON object.")
+        return skills.dry_run(self.brain.ctx, data["tool"].strip(), args or {})
+
+    def undo_operation(self):
+        return {"entries": undo.JOURNAL.list_entries(limit=40)}
 
     def preview_voice(self, assistant="jarvis"):
         if not self.speaker:

@@ -58,14 +58,18 @@ DEFAULTS = {
     # Small local model used to turn memories into vectors for smarter recall.
     "embed_model": "nomic-embed-text",
     "ollama_url": "http://127.0.0.1:11434",
+    "lmstudio_url": "http://127.0.0.1:1234",
     "chat_provider": "ollama",
     "local_chat_url": "http://127.0.0.1:8081",
     "local_chat_model": "",
     "local_chat_stream": False,
+    "privacy_mode": "hybrid",
+    "fast_path_enabled": True,
     # Optional per-request-consented cloud AI provider (off by default, never silent fallback).
     "allow_cloud_provider": False,
     "cloud_provider": "",
     "cloud_model": "",
+    "custom_cloud_url": "",
     # Approved saved RSS/Atom feed subscriptions and local stdio MCP servers (disabled by default).
     "saved_feeds": [],
     "mcp_servers": [],
